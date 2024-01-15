@@ -1,0 +1,127 @@
+{
+    "First name": {
+        "answer": "Utsav"
+    },
+    "Last name": {
+        "answer": "Chaudhary"
+    },
+    "Phone country code": {
+        "options": [
+            "Select an option",
+            "United States (+1)",
+            "Zimbabwe (+263)"
+        ],
+        "answer": "United States (+1)"
+    },
+    "Mobile phone number": {
+        "answer": "6072969583"
+    },
+    "Email address": {
+        "options": [
+            "Select an option",
+            "utsavmaan28@gmail.com"
+        ],
+        "answer": "utsavmaan28@gmail.com"
+    },
+    "Your Name": {
+        "answer": "Utsav Vinodchandra Chaudhary"
+    },
+    "Street address line 1": {
+        "answer": "18 Haendel St. Atp 2"
+    },
+    "ZIP / Postal Code": {
+        "answer": "13905"
+    },
+    "State": {
+        "answer": "New York"
+    },
+    "Race": {
+        "options": [
+            "Select an option",
+            "Decline to answer",
+            "Hispanic or Latino",
+            "White, not Hispanic or Latino",
+            "Black or African-American, not Hispanic or Latino",
+            "Asian, not Hispanic or Latino",
+            "Native Hawaiian or Other Pacific Islander, not Hispanic or Latino",
+            "American Indian or Alaskan Native, not Hispanic or Latino",
+            "Two or More Races, not Hispanic or Latino"
+        ],
+        "answer": "Asian, not Hispanic or Latino"
+    },
+    "City\nCity": {
+        "answer": "Binghamton"
+    },
+    "Gender": {
+        "options": [
+            "Male",
+            "Female",
+            "Decline to answer"
+        ],
+        "answer": "Male"
+    },
+    "Disability": {
+        "options": [
+            "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+            "No, I Don't Have A Disability, Or A History/Record Of Having A Disability",
+            "I don't wish to answer"
+        ],
+        "answer": "No, I Don't Have A Disability, Or A History/Record Of Having A Disability"
+    },
+    "Male": {
+        "answer": "Male"
+    },
+    "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability": {
+        "answer": "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability"
+    },
+    "How many years of work experience do you have with C++?": {
+        "answer": "3"
+    },
+    "How many years of Engineering experience do you currently have?": {
+        "answer": "4"
+    },
+    "Are you able to travel approximately 20% - 30% throughout the year?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes"
+    },
+    "How many years of work experience do you have with Python (Programming Language)?": {
+        "answer": "5"
+    },
+    "How many years of work experience do you have with SQL?": {
+        "answer": "3"
+    },
+    "What is your level of proficiency in Chinese?": {
+        "options": [
+            "Select an option",
+            "None",
+            "Conversational",
+            "Professional",
+            "Native or bilingual"
+        ],
+        "answer": "None"
+    },
+    "How many years of Information Technology experience do you currently have?": {
+        "answer": "5"
+    },
+    "All staff at this terrific company must be vaccinated against Covid-19.": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes"
+    },
+    "How many years of work experience do you have with Cisco Routers?": {
+        "answer": ""
+    },
+    "How many years of work experience do you have with Cisco Systems Products?": {
+        "answer": ""
+    },
+    "How many years of work experience do you have with Routers?": {
+        "answer": ""
+    }
+}
