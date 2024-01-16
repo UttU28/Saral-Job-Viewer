@@ -26,7 +26,7 @@ options.add_argument(f"webdriver.chrome.driver={chrome_driver_path}")
 options.add_argument("--disable-notifications")
 driver = webdriver.Chrome(options=options)
 
-def buttonLoadHoneDe(driver1, classToFind): WebDriverWait(driver1, 30).until(EC.element_to_be_clickable((By.CLASS_NAME, classToFind)))
+def buttonLoadHoneDe(driver1, classToFind): WebDriverWait(driver1, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, classToFind)))
     
 def saveDataToFile(formData):
     try:
@@ -37,7 +37,7 @@ def saveDataToFile(formData):
 
     for key, value in formData.items():
         if key not in existing_data:
-            existing_data[key] = value
+            existing_data["pendingAnswers"][key] = value
 
     with open('data.json', 'w') as fp:
         json.dump(existing_data, fp, indent=4)
@@ -50,8 +50,10 @@ def readingAndFillingForm(driver1, form_data):
     except FileNotFoundError:
         existing_data = {}
 
-    
-    form_content = driver1.find_element(By.CLASS_NAME, "jobs-easy-apply-content")
+    try:
+        form_content = driver1.find_element(By.CLASS_NAME, "jobs-easy-apply-content")
+    except:
+        return "ALREADY APPLIED", {}
     form_sections = form_content.find_elements(By.CLASS_NAME, "jobs-easy-apply-form-section__grouping")
 
     print(len(form_sections))
@@ -148,10 +150,12 @@ def readingAndFillingForm(driver1, form_data):
 
     sleep(2)
     allButtons = driver1.find_element(By.CLASS_NAME, "jobs-easy-apply-content").find_element(By.TAG_NAME, "footer").find_elements(By.TAG_NAME, "button")
-    # print("Done")
+    print("Done")
 
-
-    currentProgress = form_content.find_element(By.CLASS_NAME, "artdeco-completeness-meter-linear__progress-element").get_attribute("value")
+    try:
+        currentProgress = form_content.find_element(By.CLASS_NAME, "artdeco-completeness-meter-linear__progress-element").get_attribute("value")
+    except:
+        return "1", form_data
     print(f"CURRENT PROGRESS: {currentProgress}")
     # print(allButtons[0].tartdeco-button__textext)
     try:
@@ -167,6 +171,9 @@ def readingAndFillingForm(driver1, form_data):
                     return "0", form_data
                 elif eachButton.text.strip() == "Review":
                     eachButton.click()
+                    if form_content.find_element(By.CLASS_NAME, "artdeco-completeness-meter-linear__progress-element").get_attribute("value") == currentProgress:
+                        print("SAME PAGE")
+                        return "SAME PAGE", form_data
                     return "1", form_data
 
                     sleep(2)
@@ -187,15 +194,11 @@ with open('bhawishyaWani.json') as bhawishyaWani:
     data = json.load(bhawishyaWani)
 
 for key, bhawishyaWani in data.items():
-    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply":
+    timeStamp = time.time()
+    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:
         driver.get(bhawishyaWani['link'])
-        
-        # driver.get("https://www.linkedin.com/jobs/view/3800594550")
-        # driver.get("https://www.linkedin.com/jobs/view/3781909181/?eBP=JOB_SEARCH_ORGANIC&refId=r965w6QB8bwDN%2FpLffkawA%3D%3D&trackingId=wCQ9pu1YITMzieqLW%2FaK2Q%3D%3D&trk=flagship3_search_srp_jobs")
         sleep(5)
-        # buttonLoadHoneDe(driver, "jobs-s-apply")
         applyButton = driver.find_elements(By.CLASS_NAME, "jobs-apply-button")
-        # button = driver.find_elements(By.TAG_NAME, "button")
         for button in applyButton:
             print(button.text)
             if button.text == "Easy Apply":
@@ -203,28 +206,37 @@ for key, bhawishyaWani in data.items():
                 sleep(5)
                 break
         form_data = {}
-        
+
         status, formData = readingAndFillingForm(driver, form_data)
-        print(status, formData)
         while status=="0":
             status, formData = readingAndFillingForm(driver, formData)
-        
-        saveDataToFile(formData)
+        # print(status)
+        if status == "ALREADY APPLIED":
+            bhawishyaWani["status"] = "Applied"
+            bhawishyaWani["state"] = "applied"
+            bhawishyaWani["applyTime"] = timeStamp
+        else:
+            saveDataToFile(formData)
+            if status == "SAME PAGE":
+                bhawishyaWani["state"] = "verification"
 
-        thisForm = driver.find_element(By.CLASS_NAME, "jobs-easy-apply-content")
-        print(status)
-        if status == "1":
-            unselectFollowButton = thisForm.find_element(By.CLASS_NAME, "job-details-easy-apply-footer__section").find_element(By.TAG_NAME, "label").click()
-            sleep(3)
-            allButtons = thisForm.find_element(By.TAG_NAME, "footer").find_elements(By.TAG_NAME, "button")
-            for button in allButtons:
-                thisLabel = button.find_element(By.TAG_NAME, "span")
-                if thisLabel.text == "Submit application":
-                    thisLabel.click()
-                    sleep(3)
-                    bhawishyaWani["status"] = "Applied"
-                    with open('bhawishyaWani.json', 'w') as bhawishyaWani_file:
-                        json.dump(data, bhawishyaWani_file, indent=2)
+            thisForm = driver.find_element(By.CLASS_NAME, "jobs-easy-apply-content")
+            if status == "1":
+                try: unselectFollowButton = thisForm.find_element(By.CLASS_NAME, "job-details-easy-apply-footer__section").find_element(By.TAG_NAME, "label").click()
+                except: pass
+                sleep(3)
+                allButtons = thisForm.find_element(By.TAG_NAME, "footer").find_elements(By.TAG_NAME, "button")
+                for button in allButtons:
+                    thisLabel = button.find_element(By.TAG_NAME, "span")
+                    if thisLabel.text == "Submit application":
+                        thisLabel.click()
+                        sleep(3)
+                        bhawishyaWani["status"] = "Applied"
+                        bhawishyaWani["state"] = "applied"
+                        bhawishyaWani["applyTime"] = timeStamp
+    with open('bhawishyaWani.json', 'w') as bhawishyaWani_file:
+        json.dump(data, bhawishyaWani_file, indent=2)
+        print("Data Saved")
 
         # print(status)
         

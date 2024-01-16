@@ -77,17 +77,18 @@ if __name__ == "__main__":
 
     readingBhawishyawaniPage(driver)
 
-    pagingData = driver.find_element(By.CLASS_NAME, "jobs-search-results-list__pagination")
-    allPages = pagingData.find_elements(By.TAG_NAME, "button")
-    for i in range(2):
-        print(allPages[i].text)
+    for i in range(5):
+        pagingData = driver.find_element(By.CLASS_NAME, "jobs-search-results-list__pagination")
+        allPages = pagingData.find_elements(By.TAG_NAME, "button")
+        print("Current page", i+2)
         for ii in range(len(allPages)):
-            if allPages[i].text == str(ii+2):
-                allPages[i].click()
+            if allPages[ii].text == str(i+2):
+                allPages[ii].click()
                 sleep(5)
                 scrollToSpecific(distance=-800, sleepTime=1, rangeNo=10)
                 sleep(2)
                 readingBhawishyawaniPage(driver)
+                break
 
 
     # for i in range(3):
