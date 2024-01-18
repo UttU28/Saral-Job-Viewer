@@ -1,12 +1,15 @@
 :root {
-    --primary-light: #8abdff;
-    --primary: #6d5dfc;
-    --primary-dark: #5b0eeb;
-    --white: #ffffff;
-    --greyLight-1: #e4ebf5;
-    --greyLight-2: #c8d0e7;
+    --primary-light: #1c2839;
+    --primary: #da9292;
+    --primary-dark: #eb0e0e;
+    --white: #000000;
+    --greyLight-1: #282828;
+    --greyLight-2: #222222;
     --greyLight-3: #bec8e4;
-    --greyDark: #9baacf;
+    --greyDark: #b0b0b0;
+    --myRed: rgb(255, 150, 150);
+    --myGreen: rgb(150, 255, 150);
+    --myBlue: rgb(150, 150, 255);
   }
   
   *,
@@ -16,12 +19,17 @@
     padding: 0;
     box-sizing: inherit;
   }
-  
+  fieldset{
+    border: none;
+    padding: none;
+    text-decoration: none;
+  }  
   html {
     box-sizing: border-box;
     font-size: 62.5%;
     overflow-y: scroll;
     background: var(--greyLight-1);
+    font-family: "Poppins", sans-serif;
   }
   @media screen and (min-width: 900px) {
     html {
@@ -30,14 +38,14 @@
   }
   
   .container {
-    margin-top: 5rem;
+    margin-top: 2rem;
+    margin-bottom: 2rem;
     display: -webkit-box;
     display: flex;
     -webkit-box-pack: center;
     justify-content: center;
     -webkit-box-align: center;
     align-items: center;
-    font-family: "Poppins", sans-serif;
     background: var(--greyLight-1);
   }
   
@@ -193,15 +201,12 @@
     transition: 0.3s ease;
   }
   .btn__primary {
-    /* background: var(--primary); */
-    /* box-shadow: inset 0.2rem 0.2rem 1rem var(--primary-light), */
-      /* inset -0.2rem -0.2rem 1rem var(--primary-dark), */
-      /* 0.3rem 0.3rem 0.6rem var(--greyLight-2), -0.2rem -0.2rem 0.5rem var(--white); */
+    /* box-shadow: inset 0.2rem 0.2rem 1rem var(--primary-light), inset -0.2rem -0.2rem 1rem var(--primary-dark), 0.3rem 0.3rem 0.6rem var(--greyLight-2), -0.2rem -0.2rem 0.5rem var(--white); */
     color: var(--greyLight-1);
-    color: var(--greyDark);
+    color: var(--myBlue);
   }
   .btn__primary:hover {
-    color: var(--primary);
+    color: var(--myRed);
     /* color: var(--white); */
   }
   .btn__primary:active {
@@ -231,7 +236,7 @@
     font-size: 1.6rem;
   }
   .navigatonButtons{
-    margin-top: 1rem;
+    margin-top: 2rem;
     width: 100%;
     display: flex;
     justify-content: space-between;
@@ -243,13 +248,17 @@
     
     font-weight: bold;
   }
-  
+
+  .selected div{
+    color: var(--myGreen);
+  }
+
   /*  FORM  */
   .text {
     font-size: 1.8rem;
     padding-left: 1.4rem;
     padding-bottom: 1.4rem;
-    font-family: inherit;
+    font-weight: bold;
     color: var(--greyDark);
   }
   .form {
@@ -264,7 +273,6 @@
     box-shadow: inset 0.2rem 0.2rem 0.5rem var(--greyLight-2),
       inset -0.2rem -0.2rem 0.5rem var(--white);
     background: none;
-    font-family: inherit;
     color: var(--greyDark);
   }
   .form__input::-webkit-input-placeholder {
@@ -308,7 +316,6 @@
     box-shadow: inset 0.2rem 0.2rem 0.5rem var(--greyLight-2),
       inset -0.2rem -0.2rem 0.5rem var(--white);
     background: none;
-    font-family: inherit;
     color: var(--greyDark);
   }
   .search__input::-webkit-input-placeholder {
@@ -389,13 +396,24 @@
 .heading{
     width: 100%;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding-top: 2rem;;
+    padding-top: 2rem;
 }
 .saralApply{
+    padding: 2rem;
     font-size: 4rem;
-    font-family: inherit;
     color: var(--greyDark);
+}
 
+
+.progress-bar-container{
+  margin: 1rem;
+  margin-bottom: 3rem;
+  width: 100%;
+}
+
+.progress-bar-container progress{
+  width: 100%;
 }

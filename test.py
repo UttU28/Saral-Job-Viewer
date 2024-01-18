@@ -37,16 +37,17 @@ def saveDataToFile(formData):
 
     for key, value in formData.items():
         if key not in existing_data:
-            existing_data["pendingAnswers"][key] = value
+            existing_data[key] = value
 
     with open('data.json', 'w') as fp:
         json.dump(existing_data, fp, indent=4)
     
 def readingAndFillingForm(driver1, form_data):
-
     try:
         with open('data.json', 'r') as fp:
             existing_data = json.load(fp)
+            existing_data = {key: value for key, value in existing_data.items() if value.get('status', '') == 'approved'}
+
     except FileNotFoundError:
         existing_data = {}
 
@@ -57,7 +58,6 @@ def readingAndFillingForm(driver1, form_data):
     form_sections = form_content.find_elements(By.CLASS_NAME, "jobs-easy-apply-form-section__grouping")
 
     print(len(form_sections))
-    # Write a condition that checks the text of all the buttons present inside the <footer> tag, and if there is next then add the data to form_data and press next and keep doing and adding data to from_data until you reach "review" instead of "next"
     for section in form_sections:
         # print(question_label.split("\n")[-1])
         try:
@@ -80,7 +80,8 @@ def readingAndFillingForm(driver1, form_data):
                             # print("Different Answer")
                     form_data[question_label] = {
                         "options": options,
-                        "answer": selected_answer
+                        "answer": selected_answer,
+                        "status": "pending"
                     }
                     continue
             except: pass
@@ -121,7 +122,8 @@ def readingAndFillingForm(driver1, form_data):
                     else:
                         form_data[f"randomMCQ{randint(0,1000000)}"] = {
                             "options": options,
-                            "answer": selected_answer
+                            "answer": selected_answer,
+                            "status": "pending"
                         }
                     continue
             except: pass
@@ -138,7 +140,8 @@ def readingAndFillingForm(driver1, form_data):
                                 input_element.clear()
                                 input_element.send_keys(final_answer)
                         form_data[question_label] = {
-                            "answer": entered_answer
+                            "answer": entered_answer,
+                            "status": "pending"
                         }
                         continue
                 except:
@@ -195,7 +198,8 @@ with open('bhawishyaWani.json') as bhawishyaWani:
 
 for key, bhawishyaWani in data.items():
     timeStamp = time.time()
-    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:
+    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] in ['verification']:
+    # if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:
         driver.get(bhawishyaWani['link'])
         sleep(5)
         applyButton = driver.find_elements(By.CLASS_NAME, "jobs-apply-button")
@@ -203,7 +207,7 @@ for key, bhawishyaWani in data.items():
             print(button.text)
             if button.text == "Easy Apply":
                 button.click()
-                sleep(5)
+                sleep(3)
                 break
         form_data = {}
 

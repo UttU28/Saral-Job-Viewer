@@ -1,64 +1,185 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Saral Apply</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
+
 <body>
     <div class="heading">
         <h1 class="saralApply">SARAL APPLY</h1>
+        <div class="text">Pending Answers</div>
     </div>
     <div class="container">
         <div class="components">
-            <form method="post" action="{{ url_for('index') }}">
-                <input type="hidden" name="current_index" value="{{ current_index }}">
+            <div class="progress-bar-container">
+                <progress id="progressBar" value="0" max="{{ total_questions }}"></progress>
+            </div>
+            <form method="post" id="msform" action="{{ url_for('index') }}">
                 {% for key, value in data.items() %}
-                    {% if key == current_question %}
-                        <div class="text">{{ key }}</div>
-                        {% if 'options' in value %}
-                            <div class="segmented-control">
-                            {% for option in value['options'][1:] %}
-                                <div class="optionBox"><div class="btn btn__secondary" name="{{ key }}"><p>{{ option}}</p></div></div>
-                            {% endfor %}
-                            <div class="segmented-control__color"></div>
+                <fieldset>
+                    <div class="text">{{ key }}</div>
+                    {% if 'options' in value %}
+                    <div class="segmented-control">
+                        {% for option in value['options'] %}
+                        {% if value['answer'] == option %}
+                        <div class="optionBox selected">
+                            <div class="btn btn__secondary" name="{{ key }}">
+                                <p>{{ option }}</p>
                             </div>
+                        </div>
                         {% else %}
-                            <div class="form"><input type="text" id="inputField" class="form__input" name="{{ key }}" value="{{ value['answer'] }}" placeholder="{{ value['answer'] }}"></div>
+                        <div class="optionBox">
+                            <div class="btn btn__secondary" name="{{ key }}">
+                                <p>{{ option }}</p>
+                            </div>
+                        </div>
                         {% endif %}
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="form">
+                        <input type="text" id="inputTag {{ key|replace(' ', '_') }}" class="form__input"
+                            name="{{ key }}" value="{{ value['answer'] }}" placeholder="{{ value['answer'] }}">
+                    </div>
                     {% endif %}
+                </fieldset>
                 {% endfor %}
                 <div class="navigatonButtons">
-                    {% if current_index > 0 %}
-                        <div class="backButton"><div class="btn btn__primary"><p class="navButton" onclick="moveTo('back')" style="font-size: 1.2rem; color: rgb(255, 69, 69);">BACK</p></div></div>
-                    {% endif %}
-                    <div class="skipButton"><div class="btn btn__primary" onclick="moveTo('skip')"><p class="navButton" style="font-size: 1.2rem; color:rgb(95, 159, 255)">SKIP</p></div></div>
-                    <div class="nextButton">
-                        <div class="btn btn__primary" onclick="moveTo('next')"><p class="navButton" style="font-size: 1.2rem; color:rgb(78, 78, 78)">NEXT</p></div></div>
+                    <div class="backButton previous">
+                        <div class="btn btn__primary">
+                            <p class="navButton" style="font-size: 1.2rem; color: rgb(255, 150, 150);">BACK</p>
+                        </div>
+                    </div>
+                    <div class="skipButton skip">
+                        <div class="btn btn__primary">
+                            <p class="navButton" style="font-size: 1.2rem; color:rgb(150, 150, 255)">SKIP</p>
+                        </div>
+                    </div>
+                    <div class="nextButton next">
+                        <div class="btn btn__primary">
+                            <p class="navButton" style="font-size: 1.2rem; color:rgb(150, 255, 150)">NEXT</p>
+                        </div>
+                    </div>
                 </div>
-                
-            </form>
+                <div class="submitButton submit">
+                    <div class="btn btn__primary">
+                        <p class="navButton" style="font-size: 1.2rem; color:rgb(255, 255, 255)">COMMIT CHANGES</p>
+                    </div>
             </form>
         </div>
     </div>
     <script>
-        document.addEventListener("DOMContentLoaded", function() {
-            document.getElementById("inputField").focus();
-            document.getElementById("inputField").select();
+        document.addEventListener("DOMContentLoaded", function () {
+            const fieldsets = document.querySelectorAll('fieldset');
+            let currentIndex = 0;
+            let answers = {}; // Initialize answers object
+            let currentKey = "";
+
+            function updateVisibility() {
+                fieldsets.forEach((fieldset, index) => {
+                    setTimeout(() => {
+                        fieldset.style.display = index === currentIndex ? 'block' : 'none';
+                        const input = fieldset.querySelector('.form__input');
+                        if (input) {
+                            input.focus();
+                            input.select();
+                        }
+                    }, 200);
+                });
+                currentKey = Object.keys(answers)[currentIndex]; // Update currentKey based on currentIndex
+                updateProgressBar()
+            }
+
+            function updateProgressBar() {
+                const progressBar = document.getElementById('progressBar');
+                if (progressBar) {
+                    progressBar.value = currentIndex + 1; // Adding 1 because progress bar starts from 1
+                }
+            }
+
+            document.querySelectorAll('.optionBox .btn__secondary').forEach((button, index) => {
+                button.addEventListener('click', function () {
+                    const key = button.getAttribute('name');
+                    answers[key] = answers[key] || {};
+                    document.querySelectorAll(
+                        `fieldset:nth-child(${currentIndex + 1}) .optionBox`).forEach(
+                        optionBox => {
+                            optionBox.classList.remove('selected');
+                        });
+                    button.parentNode.classList.add('selected');
+                });
+            });
+
+
+            function getMoreDetails() {
+                const blockFieldset = document.querySelectorAll('fieldset')[currentIndex];
+                if (blockFieldset) {
+                    const currentQuestion = blockFieldset.querySelector('div.text').textContent.trim();
+                    let currentAnswer = '';
+                    try {
+                        currentAnswer = blockFieldset.querySelector('form input').value;
+                    } catch {
+                        currentAnswer = blockFieldset.querySelector('div.selected').querySelector('p').innerText;
+                    }
+                    return [currentQuestion, currentAnswer]
+                }
+            }
+
+
+            document.querySelector('.submit').addEventListener('click', function () {
+                document.getElementById('msform').submit();
+                fetch("{{ url_for('submit_form') }}", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(answers)
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log("Response from Python script:", data);
+                        window.location.href = "{{ url_for('index') }}";
+                    })
+                    .catch(error => {
+                        console.error("Error:", error);
+                    });
+            });
+
+            document.querySelector('.next').addEventListener('click', function () {
+                let [tempQuestion, tempAnswer] = getMoreDetails();
+                answers[tempQuestion] = {answer: tempAnswer,status: "approved"};
+                currentIndex = (currentIndex + 1) % fieldsets.length;
+                updateVisibility();
+            });
+
+            document.querySelector('.skip').addEventListener('click', function () {
+                let [tempQuestion, tempAnswer] = getMoreDetails();
+                answers[tempQuestion] = {answer: tempAnswer,status: "pending"};
+                currentIndex = (currentIndex + 1) % fieldsets.length;
+                updateVisibility();
+            });
+
+            document.querySelector('.previous').addEventListener('click', function () {
+                currentIndex = (currentIndex - 1 + fieldsets.length) % fieldsets.length;
+                updateVisibility();
+            });
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    let [tempQuestion, tempAnswer] = getMoreDetails();
+                    answers[tempQuestion] = {answer: tempAnswer,status: "approved"};
+                    currentIndex = (currentIndex + 1) % fieldsets.length;
+                    updateVisibility();
+                }
+            });
+
+            updateVisibility();
         });
-    
-        function moveTo(direction) {
-            // Set the hidden input value to indicate the navigation direction
-            const hiddenInput = document.querySelector('input[name="current_index"]');
-            hiddenInput.value = direction;
-    
-            // Submit the form
-            document.querySelector('form').submit();
-        }
     </script>
-    
-    
-    
 </body>
+
 </html>
