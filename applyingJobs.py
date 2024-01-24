@@ -196,7 +196,10 @@ def readingAndFillingForm(driver1, form_data):
 with open('bhawishyaWani.json') as bhawishyaWani:
     data = json.load(bhawishyaWani)
 
-for key, bhawishyaWani in data.items():
+filtered_data = {job_id: job_data for job_id, job_data in data.items() if job_data.get('status') == 'NotApplied' and job_data.get('method') == 'EasyApply'}
+
+
+for key, bhawishyaWani in filtered_data.items():
     timeStamp = time.time()
     if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] in ['verification']:
     # if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:

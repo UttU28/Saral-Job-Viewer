@@ -23,8 +23,7 @@ options.add_argument(f"webdriver.chrome.driver={chrome_driver_path}")
 options.add_argument("--disable-notifications")
 driver = webdriver.Chrome(options=options)
 
-driver.get("https://www.linkedin.com/jobs/search/?currentJobId=3778956671&distance=25.0&geoId=103644278&keywords=python%20developer&origin=JOB_SEARCH_PAGE_JOB_FILTER&sortBy=R")
-
+driver.get(input("LinkedIn Job Link: "))
 def pageLoadHoneDe(driver1, classToFind):
     WebDriverWait(driver1, 30).until(
         EC.presence_of_element_located((By.CLASS_NAME, classToFind))
@@ -90,28 +89,5 @@ if __name__ == "__main__":
                 readingBhawishyawaniPage(driver)
                 break
 
-
-    # for i in range(3):
-    #     try:
-    #         scrollToSpecific(distance=-800, sleepTime=1, rangeNo=10)
-    #         pageLoadHoneDe(driver, "job-card-container--clickable")
-
-    #         readingBhawishyawaniPage(driver)
-
-    #         pageNumbers = driver.find_elements(By.CLASS_NAME, "artdeco-pagination__indicator--number")
-    #         for pageNumber in pageNumbers:
-    #             if pageNumber.get_attribute("data-test-pagination-page-btn") == str(currentPage + 1):
-    #                 print(currentPage + 1, "this", pageNumber.get_attribute("data-test-pagination-page-btn"))
-    #                 currentPage += 1
-    #                 pageNumber.click()
-    #                 print("Page is now clicked")
-    #                 pageLoadHoneDe(driver)
-    #                 scrollToSpecific(distance=200, sleepTime=0.3, rangeNo=1)
-    #                 sleep(5)
-
-    #         print(pageNumbers)
-    #     except Exception as e:
-    #         print(f"Error in main loop")
-    #         print("Exiting loop")
 
 driver.quit()

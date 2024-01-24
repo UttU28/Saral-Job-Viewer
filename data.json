@@ -1,701 +1,1218 @@
 {
-  "First name": {
-    "answer": "Utsav",
-    "status": "approved"
-  },
-  "Last name": {
-    "answer": "Chaudhary",
-    "status": "approved"
-  },
-  "Phone country code": {
-    "options": [
-      "Select an option",
-      "United States (+1)",
-      "Zimbabwe (+263)"
-    ],
-    "answer": "United States (+1)",
-    "status": "approved"
-  },
-  "Mobile phone number": {
-    "answer": "6072969583",
-    "status": "approved"
-  },
-  "Email address": {
-    "options": [
-      "Select an option",
-      "utsavmaan28@gmail.com"
-    ],
-    "answer": "utsavmaan28@gmail.com",
-    "status": "approved"
-  },
-  "Your Name": {
-    "answer": "Utsav Vinodchandra Chaudhary",
-    "status": "approved"
-  },
-  "Street address line 1": {
-    "answer": "18 Haendel St. Atp 2",
-    "status": "approved"
-  },
-  "ZIP / Postal Code": {
-    "answer": "13905",
-    "status": "approved"
-  },
-  "State": {
-    "answer": "New York",
-    "status": "approved"
-  },
-  "Race": {
-    "options": [
-      "Select an option",
-      "Decline to answer",
-      "Hispanic or Latino",
-      "White, not Hispanic or Latino",
-      "Black or African-American, not Hispanic or Latino",
-      "Asian, not Hispanic or Latino",
-      "Native Hawaiian or Other Pacific Islander, not Hispanic or Latino",
-      "American Indian or Alaskan Native, not Hispanic or Latino",
-      "Two or More Races, not Hispanic or Latino"
-    ],
-    "answer": "Asian, not Hispanic or Latino",
-    "status": "approved"
-  },
-  "City\nCity": {
-    "answer": "",
-    "status": "approved"
-  },
-  "Gender": {
-    "options": [
-      "Male",
-      "Female",
-      "Decline to answer"
-    ],
-    "answer": "Male",
-    "status": "approved"
-  },
-  "Disability": {
-    "options": [
-      "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
-      "No, I Don't Have A Disability, Or A History/Record Of Having A Disability",
-      "I don't wish to answer"
-    ],
-    "answer": "No, I Don't Have A Disability, Or A History/Record Of Having A Disability",
-    "status": "approved"
-  },
-  "Male": {
-    "answer": "Male",
-    "status": "approved"
-  },
-  "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability": {
-    "answer": "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with C++?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of Engineering experience do you currently have?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "Are you able to travel approximately 20% - 30% throughout the year?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Python (Programming Language)?": {
-    "answer": "5",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with SQL?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "What is your level of proficiency in Chinese?": {
-    "options": [
-      "Select an option",
-      "None",
-      "Conversational",
-      "Professional",
-      "Native or bilingual"
-    ],
-    "answer": "None",
-    "status": "approved"
-  },
-  "How many years of Information Technology experience do you currently have?": {
-    "answer": "5",
-    "status": "approved"
-  },
-  "All staff at this terrific company must be vaccinated against Covid-19.": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Machine Learning?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "Do you have experience with GitHub?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have experience with Snowflake / Databricks?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Do you have experience with SQL / ETL pipeline?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience annotation for machine learning?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Are you willing to work for w2 position?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "To your knowledge are you eligible to obtain a US Secret Clearance?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Amazon Web Services (AWS)?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "Email": {
-    "options": [
-      "Select an option",
-      "utsavmaan28@gmail.com"
-    ],
-    "answer": "utsavmaan28@gmail.com",
-    "status": "approved"
-  },
-  "Phone": {
-    "answer": "6072969583",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Docker Products?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Microsoft Azure?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Poetry?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Django?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Tableau?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "Are you currently local to Alpharetta, GA?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with API Gateways?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with PostgreSQL?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "What is your university grade point average (4.0 GPA Scale)?": {
-    "answer": "3.44",
-    "status": "approved"
-  },
-  "Do you have a degree in Computer Science?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Camunda BPM?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with NETCONF?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Looking for Python Developer in Denver, CO - Remote // Full Time (Only USC & GC)": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Continuous Integration and Continuous Delivery (CI/CD)?": {
-    "answer": "0",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Kubernetes?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of Financial Services experience do you currently have?": {
-    "answer": "0",
-    "status": "approved"
-  },
-  "How many years of experience do you have with Python (pandas, scikit-learn, numpy, etc)?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "Do you have buy-side experience, risk management, trading analytics, etc. ?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Would you be interested in learning about MBS markets?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Microsoft SQL Server?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of experience do you have with Frontend development?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Microsoft Power BI?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of Hospitals and Health Care experience do you currently have?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Are you USC or GC holder?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Do you have experience working with AWS services like Lambda, Redshift, Aurora, RDS?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Big Data?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Oracle Database?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of experience do you have with Azure Services?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Fixed Income Technology?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Due to the nature of work performed within our facilities, U.S. citizenship is required; Are you currently a US Citizen?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Databases?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with .NET Core?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Active Server Pages (ASP)?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Are you eligible to obtain and maintain a U.S. TS clearance?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Would you be willing to relocate to Costa Mesa, CA should you not be local? *Relocation assistance provided": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have minimum 4+ years working experience in either Java, Rust, Python or Go? *Unfortunately internships will not be considered": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Do you have Backend development experience?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Microservices?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Jenkins?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of backend programming do you have?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "How many years of recent golang/ go programming do you have?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Have you worked with go programming/ golang in the past year?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of kubernetes experience do you have?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Ruby?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Java?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Linux?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "experience of deploying open-source applications to on-Prem servers or to the cloud.": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Test Equipment?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Ruby on Rails?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of experience do you have with AWS technologies? Lambda, ECS, S3, Dynamo DB, API gateway, etc.": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with SQL Server Integration Services (SSIS)?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Datasets?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Pandas (Software)?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Visual Studio?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with C#?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "Years of hands-on experience on Microservices?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "Years of hands-on experience on Terraform?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "Have you Implemented on Infrastructure as a code?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Years of hands-on experience on Kubernetes?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Years of hands-on experience on Github Actions?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Have you worked on SQL, Kafka, PostgreSQL and MongoDB": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with HTML?": {
-    "answer": "5",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with JavaScript?": {
-    "answer": "5",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Dashboard Building?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "Have you built a game before?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Powershell?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Data Modeling?": {
-    "answer": "2",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Relational Databases?": {
-    "answer": "3",
-    "status": "approved"
-  },
-  "Are you located in USA": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have experience in Vector Databases Do you have 8+ years in Python and LangChain experience?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Do you have at minimum of 3 years software engineering experience?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have strength with frontend JavaScript technologies (React.js/ Angular/ Vue.js)?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have strong experience with Python and python based frameworks such as Django or Flask?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have any backend Node.js experience?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have any strength working with scalable systems and architecture?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "Do you have experience with GNNs and simulation model engineering?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "Do you have Crypto/ Trading Experience?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of Biotechnology Research experience do you currently have?": {
-    "answer": "0",
-    "status": "approved"
-  },
-  "Do you have an active US Government security clearance?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with Software Development?": {
-    "answer": "4",
-    "status": "approved"
-  },
-  "This position requires US Citizenship. Do you qualify for the position?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "No",
-    "status": "approved"
-  },
-  "How many years Go (Golang) development experience do you have?": {
-    "answer": "1",
-    "status": "approved"
-  },
-  "Are you OK working on-site in Warrenton, VA?": {
-    "options": [
-      "Select an option",
-      "Yes",
-      "No"
-    ],
-    "answer": "Yes",
-    "status": "approved"
-  },
-  "How many years of work experience do you have with GitHub?": {
-    "answer": "3",
-    "status": "approved"
-  }
+    "First name": {
+        "answer": "Utsav",
+        "status": "approved"
+    },
+    "Last name": {
+        "answer": "Chaudhary",
+        "status": "approved"
+    },
+    "Phone country code": {
+        "options": [
+            "Select an option",
+            "United States (+1)",
+            "Zimbabwe (+263)"
+        ],
+        "answer": "United States (+1)",
+        "status": "approved"
+    },
+    "Mobile phone number": {
+        "answer": "6072969583",
+        "status": "approved"
+    },
+    "Email address": {
+        "options": [
+            "Select an option",
+            "utsavmaan28@gmail.com"
+        ],
+        "answer": "utsavmaan28@gmail.com",
+        "status": "approved"
+    },
+    "Your Name": {
+        "answer": "Utsav Vinodchandra Chaudhary",
+        "status": "approved"
+    },
+    "Street address line 1": {
+        "answer": "18 Haendel St. Atp 2",
+        "status": "approved"
+    },
+    "ZIP / Postal Code": {
+        "answer": "13905",
+        "status": "approved"
+    },
+    "State": {
+        "answer": "New York",
+        "status": "approved"
+    },
+    "Race": {
+        "options": [
+            "Select an option",
+            "Decline to answer",
+            "Hispanic or Latino",
+            "White, not Hispanic or Latino",
+            "Black or African-American, not Hispanic or Latino",
+            "Asian, not Hispanic or Latino",
+            "Native Hawaiian or Other Pacific Islander, not Hispanic or Latino",
+            "American Indian or Alaskan Native, not Hispanic or Latino",
+            "Two or More Races, not Hispanic or Latino"
+        ],
+        "answer": "Asian, not Hispanic or Latino",
+        "status": "approved"
+    },
+    "City\nCity": {
+        "answer": "",
+        "status": "approved"
+    },
+    "Gender": {
+        "options": [
+            "Male",
+            "Female",
+            "Decline to answer"
+        ],
+        "answer": "Male",
+        "status": "approved"
+    },
+    "Disability": {
+        "options": [
+            "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+            "No, I Don't Have A Disability, Or A History/Record Of Having A Disability",
+            "I don't wish to answer"
+        ],
+        "answer": "No, I Don't Have A Disability, Or A History/Record Of Having A Disability",
+        "status": "approved"
+    },
+    "Male": {
+        "answer": "Male",
+        "status": "approved"
+    },
+    "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability": {
+        "answer": "Yes, I Have A Disability, Or Have A History/Record Of Having A Disability",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with C++?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of Engineering experience do you currently have?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "Are you able to travel approximately 20% - 30% throughout the year?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Python (Programming Language)?": {
+        "answer": "5",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with SQL?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "What is your level of proficiency in Chinese?": {
+        "options": [
+            "Select an option",
+            "None",
+            "Conversational",
+            "Professional",
+            "Native or bilingual"
+        ],
+        "answer": "None",
+        "status": "approved"
+    },
+    "How many years of Information Technology experience do you currently have?": {
+        "answer": "5",
+        "status": "approved"
+    },
+    "All staff at this terrific company must be vaccinated against Covid-19.": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Machine Learning?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "Do you have experience with GitHub?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have experience with Snowflake / Databricks?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have experience with SQL / ETL pipeline?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience annotation for machine learning?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Are you willing to work for w2 position?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "To your knowledge are you eligible to obtain a US Secret Clearance?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Amazon Web Services (AWS)?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Email": {
+        "options": [
+            "Select an option",
+            "utsavmaan28@gmail.com"
+        ],
+        "answer": "utsavmaan28@gmail.com",
+        "status": "approved"
+    },
+    "Phone": {
+        "answer": "6072969583",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Docker Products?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Microsoft Azure?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Poetry?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Django?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Tableau?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Are you currently local to Alpharetta, GA?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with API Gateways?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PostgreSQL?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "What is your university grade point average (4.0 GPA Scale)?": {
+        "answer": "3.44",
+        "status": "approved"
+    },
+    "Do you have a degree in Computer Science?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Camunda BPM?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with NETCONF?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Looking for Python Developer in Denver, CO - Remote // Full Time (Only USC & GC)": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Continuous Integration and Continuous Delivery (CI/CD)?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Kubernetes?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of Financial Services experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of experience do you have with Python (pandas, scikit-learn, numpy, etc)?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "Do you have buy-side experience, risk management, trading analytics, etc. ?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Would you be interested in learning about MBS markets?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Microsoft SQL Server?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of experience do you have with Frontend development?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Microsoft Power BI?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of Hospitals and Health Care experience do you currently have?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Are you USC or GC holder?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have experience working with AWS services like Lambda, Redshift, Aurora, RDS?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Big Data?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Oracle Database?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of experience do you have with Azure Services?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Fixed Income Technology?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Due to the nature of work performed within our facilities, U.S. citizenship is required; Are you currently a US Citizen?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Databases?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with .NET Core?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Active Server Pages (ASP)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Are you eligible to obtain and maintain a U.S. TS clearance?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Would you be willing to relocate to Costa Mesa, CA should you not be local? *Relocation assistance provided": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have minimum 4+ years working experience in either Java, Rust, Python or Go? *Unfortunately internships will not be considered": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have Backend development experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Microservices?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Jenkins?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of backend programming do you have?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "How many years of recent golang/ go programming do you have?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Have you worked with go programming/ golang in the past year?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of kubernetes experience do you have?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Ruby?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Java?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Linux?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "experience of deploying open-source applications to on-Prem servers or to the cloud.": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Test Equipment?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Ruby on Rails?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of experience do you have with AWS technologies? Lambda, ECS, S3, Dynamo DB, API gateway, etc.": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with SQL Server Integration Services (SSIS)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Datasets?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Pandas (Software)?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Visual Studio?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with C#?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "Years of hands-on experience on Microservices?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "Years of hands-on experience on Terraform?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Have you Implemented on Infrastructure as a code?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Years of hands-on experience on Kubernetes?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Years of hands-on experience on Github Actions?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Have you worked on SQL, Kafka, PostgreSQL and MongoDB": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with HTML?": {
+        "answer": "5",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with JavaScript?": {
+        "answer": "5",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Dashboard Building?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "Have you built a game before?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Powershell?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Data Modeling?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Relational Databases?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "Are you located in USA": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have experience in Vector Databases Do you have 8+ years in Python and LangChain experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have at minimum of 3 years software engineering experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have strength with frontend JavaScript technologies (React.js/ Angular/ Vue.js)?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have strong experience with Python and python based frameworks such as Django or Flask?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have any backend Node.js experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have any strength working with scalable systems and architecture?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have experience with GNNs and simulation model engineering?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have Crypto/ Trading Experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of Biotechnology Research experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "Do you have an active US Government security clearance?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Software Development?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "This position requires US Citizenship. Do you qualify for the position?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years Go (Golang) development experience do you have?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Are you OK working on-site in Warrenton, VA?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with GitHub?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Google Cloud Platform (GCP)?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with MongoDB?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Do you have experience working within energy trading, hedge funds, banking, commodities or finance?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have experience with multiple Python libraries (Pandas, TensorFlow, Scikit-Learn, Numpy, Keras, PyTorch etc) LightGBM. Eli5. SciPy.": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have prior knowledge of pricing, risk experience & market data?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Are you happy being present in the office for 2 / 3 days' a week? (hybrid model)": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Are you local to Northern Virginia and available to be onsite 3 days a week starting day one in McLean VA?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with .NET?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Address": {
+        "answer": "Texas, Arlington",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PySpark?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PLC Allen Bradley?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Variable-Frequency Drives (VFD)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "If you are not located in the St. Joseph area. Are you willing to relocate?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Robotic Process Automation (RPA)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Analog Semiconductors?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with SCADA?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Allen-Bradley?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with DeltaV?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Good Manufacturing Practice (GMP)?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Microsoft Power Automate?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Siemens Tia Portal?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Rockwell Studio 5000?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with OPC DA and UA Communication": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with ABB Robots?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PLC Siemens?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Unix?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of experience do you have working in a FDA-regulated biotechnology or pharmaceutical company?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "Do you currently live within a commutable distance to Hopewell, NJ?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of experience do you have in automated software package deployment, specifically with Linux systems?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of experience do you have in scripting languages such as PowerShell, Bash, Python, and BigFix Action Script?": {
+        "answer": "4",
+        "status": "approved"
+    },
+    "Have you previously administered a BigFix environment?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you possess any professional certifications in Microsoft, Linux, or CompTIA technologies?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Are you local to Columbia, SC?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of Automation Machinery Manufacturing experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Programmable Logic Controller (PLC)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with WinCC?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Software Development Life Cycle (SDLC)?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of Pharmaceutical Manufacturing experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Automation?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Life Science Industry?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of Chemical Manufacturing experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Electrical Engineering?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you have experience troubleshooting equipment in a manufacturing plant?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Automation Engineering?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Are you good to work on w2?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with food, cosmetic, pharmaceutical, and/or water treatment?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "Are you willing to travel?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of Food and Beverage Manufacturing experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Mechanicals?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Electrical Design?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "Do you have experience in metal or pipe production?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of experience do you have in robot programming, integration and/or support?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Information Security Engineering?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Terraform?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Computer Numerical Control (CNC)?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with AutoCAD?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of experience do you have with Siemens TIA Portal?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of experience do you have with Rockwell PLC Programming?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of experience do you have with SCADA system and HMI application?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Biopharmaceuticals?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Distributed Control System (DCS)?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with LabVIEW?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Test Stand?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Ladder Logic?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you have SCADA experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you live in Arkansas or are you willing to relocate?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with 5G?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with VolTE?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "Do you have experience with industrial or marine HVAC systems?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Rockwell Automation?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Servo Control?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "How Many years of Experience do you have in industrial networking?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "What is your level of proficiency in English?": {
+        "options": [
+            "Select an option",
+            "None",
+            "Conversational",
+            "Professional",
+            "Native or bilingual"
+        ],
+        "answer": "Professional",
+        "status": "approved"
+    },
+    "How many years of Manufacturing experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "On a scale 1-10 how proficient are you with Structured Text or Ladder Logic?": {
+        "answer": "6",
+        "status": "approved"
+    },
+    "How many years of experience do you have in Substation Automation?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you like within 200 miles of Lehigh County, PA?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Technical Manuals?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Wiring Diagrams?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you have at least 3-5 years of experience with Allen Bradley PLC, Servo programming, and HMI development?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Do you have experience designing panel layouts and electrical wiring diagrams?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Have you watched the video linked in the job description?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PLC Ladder Logic?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Liquid Handling?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Scripting?": {
+        "answer": "2",
+        "status": "approved"
+    },
+    "Are you willing to travel up to 75%?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with Selenium?": {
+        "answer": "3",
+        "status": "approved"
+    },
+    "How many years of Consulting experience do you currently have?": {
+        "answer": "0",
+        "status": "approved"
+    },
+    "How many years of work experience do you have with PLC Programming?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you have knowledge of current computer technology and TCP/ IP configuration?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have and understanding of TCP/IP based protocols such as Modbus TCP, Ethernet IP?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Yes",
+        "status": "approved"
+    },
+    "Do you have an understanding of system architecture and Microsoft technologies, including licensing models?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "How many years of experience do you have with control systems networking and communications?": {
+        "answer": "1",
+        "status": "approved"
+    },
+    "Do you have experience working with qualification documentation and practices, including SOPs, URS, RA, FS, SDS, HDS, and DIA?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "No",
+        "status": "approved"
+    },
+    "Headline": {
+        "answer": "",
+        "status": "pending"
+    }
 }
