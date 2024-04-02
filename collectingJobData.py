@@ -12,7 +12,7 @@ from selenium.common.exceptions import NoSuchElementException
 
 
 chrome_driver_path = "C:/chromeDriver/chromedriver.exe"
-subprocess.Popen(['C:/Program Files/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/tempData/'])
+subprocess.Popen(['C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/tempData/'])
 # subprocess.Popen(['C:/Program Files/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/linkedInData/'])
 sleep(2)
 options = Options()

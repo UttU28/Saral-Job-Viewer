@@ -1214,5 +1214,434 @@
     "Headline": {
         "answer": "",
         "status": "pending"
+    },
+    "How many years of work experience do you have with Test Automation Tools?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of Motor Vehicle Manufacturing experience do you currently have?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Automated Processes?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Have you worked with / programmed robots in a manufacturing facility?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of experience do you have with Allen Bradley PLC ?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Infotainment?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Do you have 3+ years of professional manufacturing experience, specifically in any of the following: pharma, industrial, or semiconductor?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Knowledge of GXP, GAMP5, 21 CFR part 11?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Must have either Rockwell FactoryTalk, NuGenesis, Siemens, or Delta V": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience with troubleshooting PLC's and programming?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience with Ladder Logic and Structured Text or familiarity with it?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Experience with integration of components with PLC's?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with NI LabVIEW?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Experience in Electrical and Electronics Engineering domain background.": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Cucumber?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have in Biotech / Pharmaceutical?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Citizenship?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of Transportation, Logistics, Supply Chain and Storage experience do you currently have?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Building Management Systems?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Can you commit to working on-site in Souderton (PA) 3-4 days per week?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Test Automation?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Embedded C?": {
+        "answer": "2",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Test Engineering?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with the design, development of Automation Testing?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Do you have work experience with Cloud, API or other cloud technologies?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have work experience in using source control (GIT), Postman?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have work experience with Automation tools/Frameworks (Selenium, Cucumber, Karate Framework)?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with CAPL?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Office 365?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of experience do you have in an Engineering Test Lab?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Jakarta EE?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Spring Framework?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with UiPath?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with AutoCAD Electrical?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Are you familiar with UL508A and NEC": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience designing electrical controls panels? Have you used AutoCAD Electrical or other similar software?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have at least 5 years\u2019 experience in controls/instrumentation design": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience working with air handling devices? (Compressors, Blowers, Condensers, Fans)": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of experience do you have with high-volume, precision assembly processes?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Microsoft Office?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Microsoft Excel?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Microsoft Word?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of Other experience do you currently have?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with SOLIDWORKS?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Electrical Safety?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "Are you a lawful US Citizen, Green Card holder or Permanant resident of the US?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Quality Engineering?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of Quality Assurance experience do you currently have?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Power Integrity?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of work experience do you have with Electrical Testing?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "How many years of Project Management experience do you currently have?": {
+        "answer": "",
+        "status": "pending"
+    },
+    "If you are not living in San Jose/ bay area, are you willing to relocate to San Jose/ bay area?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Are you willing to relocate or commute to Birmingham, AL for this hybrid position?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience with SQL, Relational Database queries?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have Object-Oriented Programing experience?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience with REST Web Services?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Do you have experience with XML and JSON?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Are you willing to work onsite for this position?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "Are you willing to work 2:30pm - 11pm?": {
+        "options": [
+            "Select an option",
+            "Yes",
+            "No"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "If you selected \u2018job board\u2019 or \u2018other\u2019, please share where you found out about this position.": {
+        "answer": "",
+        "status": "pending"
+    },
+    "In which U.S. state are you located?": {
+        "options": [
+            "Select an option",
+            "Alabama",
+            "Alaska",
+            "Arkansas",
+            "California",
+            "Colorado",
+            "Connecticut",
+            "Delaware",
+            "Florida",
+            "Georgia",
+            "Hawaii",
+            "Idaho",
+            "Illinois",
+            "Indiana",
+            "Iowa",
+            "Kansas",
+            "Kentucky",
+            "Louisiana",
+            "Maine",
+            "Maryland",
+            "Massachusetts",
+            "Michigan",
+            "Minnesota",
+            "Mississippi",
+            "Missouri",
+            "Montana",
+            "Nebraska",
+            "Nevada",
+            "New Hampshire",
+            "New Jersey",
+            "New Mexico",
+            "New York",
+            "North Carolina",
+            "North Dakota",
+            "Ohio",
+            "Oklahoma",
+            "Oregon",
+            "Pennsylvania",
+            "Rhode Island",
+            "South Carolina",
+            "South Dakota",
+            "Tennessee",
+            "Texas",
+            "Utah",
+            "Vermont",
+            "Virginia",
+            "Washington",
+            "West Virginia",
+            "Wisconsin",
+            "Wyoming"
+        ],
+        "answer": "Select an option",
+        "status": "pending"
+    },
+    "I identify as one or more of the classifications of protected veteran listed above": {
+        "answer": "ProtectedVeteran",
+        "status": "pending"
+    },
+    "Yes, I have a disability, or have had one in the past": {
+        "answer": "Yes",
+        "status": "pending"
     }
 }

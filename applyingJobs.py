@@ -15,7 +15,7 @@ from selenium.webdriver.support.ui import Select
 from datetime import datetime
 
 chrome_driver_path = "C:/chromeDriver/chromedriver.exe"
-subprocess.Popen(['C:/Program Files/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/tempData/'])
+subprocess.Popen(['C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/tempData/'])
 # subprocess.Popen(['C:/Program Files/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/linkedInData/'])
 sleep(2)
 options = Options()
@@ -198,11 +198,11 @@ with open('bhawishyaWani.json') as bhawishyaWani:
 
 filtered_data = {job_id: job_data for job_id, job_data in data.items() if job_data.get('status') == 'NotApplied' and job_data.get('method') == 'EasyApply'}
 
-
 for key, bhawishyaWani in filtered_data.items():
     timeStamp = time.time()
-    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] in ['verification']:
-    # if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:
+
+    # if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] in ['verification']:
+    if bhawishyaWani["status"] != "Applied" and bhawishyaWani["method"] == "EasyApply" and bhawishyaWani["state"] not in ['verification', 'applied']:
         driver.get(bhawishyaWani['link'])
         sleep(5)
         applyButton = driver.find_elements(By.CLASS_NAME, "jobs-apply-button")
