@@ -11,18 +11,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 
 
-chrome_driver_path = "C:/chromeDriver/chromedriver.exe"
-subprocess.Popen(['C:/Program Files (x86)/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=8989', '--user-data-dir=C:/chromeDriver/letsCheck/'])
-sleep(2)
-
-options = Options()
-options.add_experimental_option("debuggerAddress", "localhost:8989")
-options.add_argument(f"webdriver.chrome.driver={chrome_driver_path}")
-options.add_argument("--start-maximized")
-options.add_argument("--disable-notifications")
-driver = webdriver.Chrome(options=options)
-
-# 
 def pageLoadHoneDe(driver1):
     WebDriverWait(driver1, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, "job-card-container--clickable"))
@@ -69,13 +57,22 @@ def scrollToSpecific(distance, sleepTime, rangeNo):
         sleep(sleepTime)
 
 if __name__ == "__main__":
+    chrome_driver_path = 'C:/chromeDriver/chromedriver.exe'  # Ensure the path is correct
+    chromeApp = subprocess.Popen(['C:/Program Files/Google/Chrome/Application/chrome.exe', '--remote-debugging-port=9003', '--user-data-dir=C:/chromeDriver/letsCheck/'])
+    sleep(2)
+    options = Options()
+    options.add_experimental_option("debuggerAddress", "localhost:9003")
+    options.add_argument(f"webdriver.chrome.driver={chrome_driver_path}")
+    options.add_argument("--disable-notifications")
+    driver = webdriver.Chrome(options=options)
+
     myList = ["devops*", "cloud engineer", "cloud architect", "site reliability", "platform engineer", "aws", "azure"]
-    currentPage = 0
     for eachElement in myList:
+        currentPage = 0
         searchText = eachElement.strip().replace(" ","%20")
         print(searchText)
         while True:
-            pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true"
+            pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
             driver.get(pageURL+str(currentPage*25))
             currentPage += 1
             sleep(3)
@@ -84,10 +81,11 @@ if __name__ == "__main__":
                 print("All Jobs have been scraped")
                 break
             except:
-                scrollToSpecific(distance=-800, sleepTime=0.5, rangeNo=6)
+                scrollToSpecific(distance=-800, sleepTime=0.5, rangeNo=3)
                 sleep(1)
-                scrollToSpecific(distance=800, sleepTime=0.4, rangeNo=6)
+                scrollToSpecific(distance=800, sleepTime=0.4, rangeNo=3)
 
                 readingBhawishyawaniPage(driver)
 
-driver.quit()
+    chromeApp.terminate()
+    driver.quit()
