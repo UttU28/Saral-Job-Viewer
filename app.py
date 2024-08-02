@@ -1,39 +1,30 @@
-from flask import Flask, render_template, request, jsonify
 import json
+import time
+from flask import Flask, render_template
 
 app = Flask(__name__)
 
+def load_and_filter_data():
+    current_time = time.time()
+    filtered_data = {}
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    data = None
-    with open('data.json', 'r') as file:
+    with open('bhawishyaWani.json', 'r') as file:
         data = json.load(file)
-    pending_data = {key: value for key, value in data.items() if value.get('status', '') == 'pending'}
-    total_questions = len(pending_data)
-    return render_template('index.html', data=pending_data, total_questions=total_questions)
+        for key, value in data.items():
+            if current_time - value['timeStamp'] <= 26 * 3600:  # 26 hours in seconds
+                filtered_data[key] = value
+        sorted_data = dict(sorted(filtered_data.items(), key=lambda x: x[1]['timeStamp'], reverse=True))
 
-@app.route('/submit_form', methods=['POST'])
-def submit_form():
-    if request.method == 'POST':
-        submitted_answers = request.json
-        print("Submitted Answers:", submitted_answers)
-        
-        temp_data = None
-        with open('data.json', 'r+') as file:
-            temp_data = json.load(file)
+    with open('bhawishyaWani.json', 'w') as file:
+        json.dump(sorted_data, file, indent=4)
 
-        for key, answer_info in submitted_answers.items():
-            status = answer_info.get('status', '')
-            if status == 'approved':
-                submitted_answer = answer_info.get('answer', '')
-                temp_data[key]['answer'] = submitted_answer
-                temp_data[key]['status'] = "approved"
+    return sorted_data
 
-        with open('data.json', 'w') as file:
-            json.dump(temp_data, file, indent=2)
 
-        return jsonify({"message": "Form submitted successfully"})
+@app.route('/', methods=['GET'])
+def index():
+    jobs_data = load_and_filter_data()
+    return render_template('index.html', jobs=jobs_data)
 
 if __name__ == '__main__':
     app.run(debug=True)

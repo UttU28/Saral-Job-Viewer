@@ -1,6 +1,5 @@
 import json
-
-def checkAndAdd(id, jobLink, jobTitle, jobState, companyName, jobLocation, jobMethod, timeStamp, applyTime, status, revert):
+def addBhawishyaWani(id, jobLink, jobTitle, companyName, jobLocation, jobMethod, timeStamp, jobType, jobDescription):
     try:
         with open("bhawishyaWani.json", mode='r', encoding='utf-8') as bhawishyaWani:
             existing_data = json.load(bhawishyaWani)
@@ -11,14 +10,12 @@ def checkAndAdd(id, jobLink, jobTitle, jobState, companyName, jobLocation, jobMe
         new_entry = {
             "link": jobLink,
             "title": jobTitle,
-            "state": jobState,
             "companyName": companyName,
             "location": jobLocation,
             "method": jobMethod,
             "timeStamp": timeStamp,
-            "applyTime": applyTime,
-            "status": status,
-            "revert": revert,
+            "jobType": jobType,
+            "jobDescription": jobDescription,
         }
 
         existing_data[id] = new_entry
@@ -27,5 +24,14 @@ def checkAndAdd(id, jobLink, jobTitle, jobState, companyName, jobLocation, jobMe
     else:
         print(f"Entry with ID {id} already exists. Ignoring the new entry.")
 
+def checkBhawishyaWani(id):
+    try:
+        with open("bhawishyaWani.json", mode='r', encoding='utf-8') as bhawishyaWani:
+            existing_data = json.load(bhawishyaWani)
+    except (FileNotFoundError, json.decoder.JSONDecodeError):
+        existing_data = {}
+
+    if id not in existing_data: return True
+    return False
 # Example usage:
-# checkAndAdd("#jobID", "#Link", "#Title", "#State", "#companyName", "#Location", "EasyApply", "#timeStamp", "NoTime/applyTime", "Applied/NotApplied", "No")
+# checkAndAdd("#jobID", "#Link", "#Title", "#State", "#companyName", "#Location", "EasyApply", "#timeStamp", "NoTime/jobType", "Applied/NotApplied", "No")
