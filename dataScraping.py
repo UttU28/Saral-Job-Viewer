@@ -17,6 +17,9 @@ def pageLoadHoneDe(driver1):
     )
 
 def readingBhawishyawaniPage(driver1):
+    notMyCompany = ["Dice"]
+
+
     currentPageData = driver1.find_element(By.CLASS_NAME, "scaffold-layout__list-container")
     jobPostings = currentPageData.find_elements(By.CLASS_NAME, "job-card-container--clickable")
     print(len(jobPostings))
@@ -32,31 +35,21 @@ def readingBhawishyawaniPage(driver1):
             location = posting.find_element(By.CLASS_NAME, "job-card-container__metadata-item ").text.strip()
             applyMethod = None
 
-            try:
-                thisButton = posting.find_element(By.CLASS_NAME, "job-card-container__apply-method")
-                if thisButton:
-                    applyMethod = 'Manual'
-            except NoSuchElementException:
-                applyMethod = 'EasyApply'
-            if checkBhawishyaWani(id):
+            if checkBhawishyaWani(id) and companyName not in notMyCompany:
+                try:
+                    thisButton = posting.find_element(By.CLASS_NAME, "job-card-container__apply-method")
+                    if thisButton:
+                        applyMethod = 'Manual'
+                except NoSuchElementException:
+                    applyMethod = 'EasyApply'
                 posting.click()
-                sleep(1.5)
+                sleep(1)
                 jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description-content__text").text
                 addBhawishyaWani(id, link, title, companyName, location, applyMethod, time.time(), jobType, jobDescription)
 
         # except Exception as e:
         #     print(f"Error in readingBhawishyawaniPage: {e}")
-
-def scrollToSpecific(distance):
-    sleepTime = 0.4
-    rangeNo = 2
-    print("Scrolled")
-    screenX, screenY = py.size()
-    py.moveTo(screenX//3, screenY//2)
-    for _ in range(rangeNo):
-        py.scroll(distance)
-        sleep(sleepTime)
 
 if __name__ == "__main__":
     chrome_driver_path = 'C:/chromeDriver/chromedriver.exe'  # Ensure the path is correct
@@ -77,16 +70,12 @@ if __name__ == "__main__":
             pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
             driver.get(pageURL+str(currentPage*25))
             currentPage += 1
-            sleep(3)
+            sleep(5)
             try: 
                 driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
                 print("All Jobs have been scraped")
                 break
             except:
-                scrollToSpecific(-800)
-                sleep(1)
-                scrollToSpecific(800)
-
                 readingBhawishyawaniPage(driver)
 
     chromeApp.terminate()
