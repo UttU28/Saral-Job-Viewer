@@ -48,7 +48,9 @@ def readingBhawishyawaniPage(driver1):
         # except Exception as e:
         #     print(f"Error in readingBhawishyawaniPage: {e}")
 
-def scrollToSpecific(distance, sleepTime, rangeNo):
+def scrollToSpecific(distance):
+    sleepTime = 0.4
+    rangeNo = 2
     print("Scrolled")
     screenX, screenY = py.size()
     py.moveTo(screenX//3, screenY//2)
@@ -81,9 +83,9 @@ if __name__ == "__main__":
                 print("All Jobs have been scraped")
                 break
             except:
-                scrollToSpecific(distance=-800, sleepTime=0.5, rangeNo=3)
+                scrollToSpecific(-800)
                 sleep(1)
-                scrollToSpecific(distance=800, sleepTime=0.4, rangeNo=3)
+                scrollToSpecific(800)
 
                 readingBhawishyawaniPage(driver)
 
