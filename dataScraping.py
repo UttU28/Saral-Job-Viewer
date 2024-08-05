@@ -17,7 +17,7 @@ def pageLoadHoneDe(driver1):
     )
 
 def readingBhawishyawaniPage(driver1):
-    notMyCompany = ["Dice"]
+    notMyCompany = ["Dice", "Epic", "Jobot", "ClickJobs.io"]
 
 
     currentPageData = driver1.find_element(By.CLASS_NAME, "scaffold-layout__list-container")
@@ -25,7 +25,7 @@ def readingBhawishyawaniPage(driver1):
     print(len(jobPostings))
 
     for posting in jobPostings:
-        # try:
+        try:
             # posting.click()
             id = posting.get_attribute("data-job-id")
             data = posting.find_element(By.CLASS_NAME, "job-card-container__link")
@@ -48,8 +48,8 @@ def readingBhawishyawaniPage(driver1):
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description-content__text").text
                 addBhawishyaWani(id, link, title, companyName, location, applyMethod, time.time(), jobType, jobDescription)
 
-        # except Exception as e:
-        #     print(f"Error in readingBhawishyawaniPage: {e}")
+        except Exception as e:
+            print(f"Error in readingBhawishyawaniPage: {e}")
 
 if __name__ == "__main__":
     chrome_driver_path = 'C:/chromeDriver/chromedriver.exe'  # Ensure the path is correct
