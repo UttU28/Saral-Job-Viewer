@@ -1,3 +1,4 @@
-Flask==3.0.1
-pyautogui==0.9.54
-selenium==4.17.2
+Flask
+pyautogui
+selenium
+python-dotenv
