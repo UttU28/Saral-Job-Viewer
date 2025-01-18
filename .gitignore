@@ -1,3 +1,6 @@
 **/__pycache__/*
 **/env/*
 **/chromeData/*
+
+*.env
+*.db
