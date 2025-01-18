@@ -2,10 +2,13 @@
 
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Building2, MapPin, Clock, Briefcase } from "lucide-react";
+import { Building2, MapPin, Clock, Briefcase, Plus } from "lucide-react";
 import { Job } from "@/types/job";
 import { useState, useRef, useEffect } from "react";
 import { highlightKeywords } from "@/lib/utils";
+import { Button } from "./ui/button";
+import { toast } from "react-toastify";
+import { addToSettings } from "@/lib/api";
 
 interface SwipeCardProps {
   job: Job;
@@ -59,6 +62,24 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
     setCurrentX(0);
   };
 
+  const addToNoNoCompanies = async () => {
+    try {
+      const result = await addToSettings(job.companyName, 'NoCompany');
+      if (result.success) {
+        toast.success(`Added ${job.companyName} to NO NO Companies`);
+        // After adding to NO NO list, automatically reject the job
+        onSwipe('left');
+      } else {
+        throw new Error('Failed to add company');
+      }
+    } catch (error) {
+      console.error('Error adding company:', error);
+      toast.error('Failed to add company to NO NO list');
+      // Even if adding to NO NO list fails, still reject the job
+      onSwipe('left');
+    }
+  };
+
   useEffect(() => {
     const handleMouseUp = () => {
       if (isDragging) {
@@ -103,9 +124,23 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
             {job.title}
           </h2>
           
-          <div className="flex items-center gap-2 text-purple-300/70">
-            <Building2 className="w-4 h-4 shrink-0" />
-            <span className="text-base break-words">{job.companyName}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-purple-300/70">
+              <Building2 className="w-4 h-4 shrink-0" />
+              <span className="text-base break-words">{job.companyName}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-red-400 border-red-500/20 hover:bg-red-500/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                addToNoNoCompanies();
+              }}
+            >
+              <Plus className="mr-1.5 h-3.5 w-3.5" />
+              Add to NO NO
+            </Button>
           </div>
 
           <div className="flex flex-wrap gap-2">

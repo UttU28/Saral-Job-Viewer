@@ -2,13 +2,19 @@ import { sampleJobs } from "@/data/sample-jobs";
 
 export type ConnectionStatus = 'connecting' | 'fetching' | 'connected' | 'error';
 
+const API_BASE_URL = 'http://10.0.0.65:5000';
+
+async function handleApiResponse(response: Response) {
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return await response.json();
+}
+
 export async function fetchJobs() {
   try {
-    const response = await fetch('http://10.0.0.65:5000/getData');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
+    const response = await fetch(`${API_BASE_URL}/getData`);
+    const data = await handleApiResponse(response);
     return { data, isUsingSampleData: false };
   } catch (error) {
     console.error('Error fetching jobs:', error);
@@ -18,7 +24,7 @@ export async function fetchJobs() {
 
 export async function applyJob(jobId: string, method: string, link: string) {
   try {
-    const response = await fetch('http://10.0.0.65:5000/applyThis', {
+    const response = await fetch(`${API_BASE_URL}/applyThis`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -29,20 +35,21 @@ export async function applyJob(jobId: string, method: string, link: string) {
         link: link
       }),
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
+    await handleApiResponse(response);
+    return { success: true };
   } catch (error) {
     console.error('Error applying to job:', error);
-    return null;
+    // For sample data, simulate successful application
+    if (sampleJobs.find(job => job.id === jobId)) {
+      return { success: true };
+    }
+    return { success: false };
   }
 }
 
 export async function rejectJob(jobId: string) {
   try {
-    const response = await fetch('http://10.0.0.65:5000/rejectThis', {
+    const response = await fetch(`${API_BASE_URL}/rejectThis`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -51,13 +58,75 @@ export async function rejectJob(jobId: string) {
         jobID: jobId
       }),
     });
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    return await response.json();
+    await handleApiResponse(response);
+    return { success: true };
   } catch (error) {
     console.error('Error rejecting job:', error);
-    return null;
+    // For sample data, simulate successful rejection
+    if (sampleJobs.find(job => job.id === jobId)) {
+      return { success: true };
+    }
+    return { success: false };
+  }
+}
+
+export async function addToSettings(name: string, type: 'NoCompany' | 'SearchList') {
+  try {
+    const response = await fetch(`${API_BASE_URL}/addKeyword`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name,
+        type
+      }),
+    });
+    await handleApiResponse(response);
+    return { success: true };
+  } catch (error) {
+    console.error('Error adding to settings:', error);
+    return { success: false };
+  }
+}
+
+export async function removeFromSettings(id: number) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/removeKeyword`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id
+      }),
+    });
+    await handleApiResponse(response);
+    return { success: true };
+  } catch (error) {
+    console.error('Error removing from settings:', error);
+    return { success: false };
+  }
+}
+
+export async function getSettings() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/getKeywords`);
+    const data = await handleApiResponse(response);
+    return { data, isUsingSampleData: false };
+  } catch (error) {
+    console.error('Error fetching settings:', error);
+    // Return sample data as fallback
+    return {
+      data: [
+        { id: 1, name: 'Dice', type: 'NoCompany', created_at: new Date().toISOString() },
+        { id: 2, name: 'Job Bot', type: 'NoCompany', created_at: new Date().toISOString() },
+        { id: 3, name: 'Ventura', type: 'NoCompany', created_at: new Date().toISOString() },
+        { id: 4, name: 'python', type: 'SearchList', created_at: new Date().toISOString() },
+        { id: 5, name: 'flask', type: 'SearchList', created_at: new Date().toISOString() },
+        { id: 6, name: 'software development', type: 'SearchList', created_at: new Date().toISOString() },
+      ],
+      isUsingSampleData: true
+    };
   }
 }

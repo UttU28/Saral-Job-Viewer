@@ -1,13 +1,14 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Briefcase, Building2, Clock, MapPin, Check, X } from "lucide-react";
+import { Briefcase, Building2, Clock, MapPin, Check, X, Plus } from "lucide-react";
 import { Job } from "@/types/job";
 import { useState } from "react";
 import { JobDialog } from "./job-dialog";
 import { highlightKeywords } from "@/lib/utils";
 import { Button } from "./ui/button";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
+import { addToSettings } from "@/lib/api";
 
 interface JobCardProps {
   job: Job;
@@ -47,11 +48,6 @@ export function JobCard({ job }: JobCardProps) {
       });
 
       if (!response.ok) throw new Error('Failed to apply');
-      
-      const result = await response.json();
-      if (result.success) {
-        toast.success('Application submitted successfully');
-      }
     } catch (error) {
       console.error('Error applying to job:', error);
       toast.error('Failed to submit application');
@@ -72,16 +68,30 @@ export function JobCard({ job }: JobCardProps) {
       });
 
       if (!response.ok) throw new Error('Failed to reject');
-      
-      const result = await response.json();
-      if (result.success) {
-        toast.success('Job marked as passed');
-      }
     } catch (error) {
       console.error('Error rejecting job:', error);
       toast.error('Failed to reject job');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const addToNoNoCompanies = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const result = await addToSettings(job.companyName, 'NoCompany');
+      if (result.success) {
+        toast.success(`Added ${job.companyName} to NO NO Companies`);
+        // After adding to NO NO list, automatically reject the job
+        await handleReject(e);
+      } else {
+        throw new Error('Failed to add company');
+      }
+    } catch (error) {
+      console.error('Error adding company:', error);
+      toast.error('Failed to add company to NO NO list');
+      // Even if adding to NO NO list fails, still reject the job
+      await handleReject(e);
     }
   };
 
@@ -97,10 +107,21 @@ export function JobCard({ job }: JobCardProps) {
               <CardTitle className="text-sm sm:text-base font-medium text-blue-300 break-words">
                 {job.title}
               </CardTitle>
-              <CardDescription className="flex items-center gap-2 text-purple-300/70">
-                <Building2 className="w-3.5 h-3.5 shrink-0" />
-                <span className="break-words">{job.companyName}</span>
-              </CardDescription>
+              <div className="flex items-center justify-between gap-2">
+                <CardDescription className="flex items-center gap-2 text-purple-300/70">
+                  <Building2 className="w-3.5 h-3.5 shrink-0" />
+                  <span className="break-words">{job.companyName}</span>
+                </CardDescription>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-400 border-red-500/20 hover:bg-red-500/10"
+                  onClick={addToNoNoCompanies}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Add to NO NO
+                </Button>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full border border-blue-500/20 text-[10px] sm:text-xs">

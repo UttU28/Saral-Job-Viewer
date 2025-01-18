@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 import { Job } from "@/types/job";
 import { SwipeCard } from "@/components/swipe-card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid, Settings } from "lucide-react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 import { ConnectionStatusIndicator } from "@/components/connection-status";
 import { ConnectionStatus } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
+import { fetchJobs, applyJob, rejectJob } from "@/lib/api";
 
 export default function SwipePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -22,27 +23,20 @@ export default function SwipePage() {
   const [isUsingSampleData, setIsUsingSampleData] = useState(false);
 
   useEffect(() => {
-    const fetchJobs = async () => {
+    const loadJobs = async () => {
       try {
         setConnectionStatus('connecting');
         await new Promise(resolve => setTimeout(resolve, 1000));
         
         setConnectionStatus('fetching');
-        const response = await fetch('/api/jobs');
-        if (!response.ok) {
-          throw new Error('Failed to fetch jobs');
-        }
-        
-        const data = await response.json();
-        if (data.error) {
-          throw new Error(data.error);
-        }
+        const { data, isUsingSampleData: usingSample } = await fetchJobs();
         
         setJobs(data);
         setFilteredJobs(data.filter(job => activeFilters.has(job.method)));
-        setConnectionStatus('connected');
+        setIsUsingSampleData(usingSample);
+        setConnectionStatus(usingSample ? 'error' : 'connected');
       } catch (error) {
-        console.error('Error fetching jobs:', error);
+        console.error('Error loading jobs:', error);
         setConnectionStatus('error');
         setIsUsingSampleData(true);
       } finally {
@@ -50,7 +44,7 @@ export default function SwipePage() {
       }
     };
 
-    fetchJobs();
+    loadJobs();
   }, []);
 
   useEffect(() => {
@@ -65,29 +59,22 @@ export default function SwipePage() {
       const job = filteredJobs[currentIndex];
       
       try {
-        const response = await fetch('/api/jobs/' + (direction === 'right' ? 'apply' : 'reject'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            jobId: job.id,
-            method: job.method,
-            link: job.link
-          }),
-        });
+        let result;
+        if (isUsingSampleData) {
+          // Simulate success for sample data
+          result = { success: true };
+        } else {
+          result = await (direction === 'right' 
+            ? applyJob(job.id, job.method, job.link)
+            : rejectJob(job.id));
+        }
 
-        if (!response.ok) {
+        if (result?.success) {
+          setSwipeHistory(prev => [...prev, { jobId: job.id, direction }]);
+          setCurrentIndex(prev => prev + 1);
+        } else {
           throw new Error('Failed to process action');
         }
-
-        const result = await response.json();
-        if (result.success) {
-          toast.success(direction === 'right' ? 'Application submitted successfully' : 'Job marked as passed');
-        }
-
-        setSwipeHistory(prev => [...prev, { jobId: job.id, direction }]);
-        setCurrentIndex(prev => prev + 1);
       } catch (error) {
         console.error('Error processing swipe:', error);
         toast.error('Failed to process your action. Please try again.');
@@ -112,21 +99,8 @@ export default function SwipePage() {
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] relative">
-      <div className="absolute top-0 left-0 right-0">
-        <Progress 
-          value={progress} 
-          className="rounded-none h-1 bg-purple-950/20" 
-          indicatorClassName="bg-gradient-to-r from-blue-400 to-purple-400"
-        />
-        {filteredJobs.length > 0 && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
-            {currentIndex} / {filteredJobs.length} jobs
-          </div>
-        )}
-      </div>
-
       <div className="container mx-auto px-4 py-4 max-w-2xl">
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-4 mt-6">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
           <div className="flex items-center gap-4">
             <Link href="/">
               <Button variant="outline" size="icon" className="text-gray-400 border-gray-800 hover:bg-gray-800/50">
@@ -142,6 +116,15 @@ export default function SwipePage() {
               status={connectionStatus}
               isUsingSampleData={isUsingSampleData}
             />
+            <Link href="/settings">
+              <Button
+                variant="outline"
+                size="icon"
+                className="text-blue-300 border-blue-500/20 hover:bg-blue-500/10"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
+            </Link>
             <Link href="/">
               <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
                 <LayoutGrid className="mr-2 h-4 w-4" />
@@ -149,6 +132,20 @@ export default function SwipePage() {
               </Button>
             </Link>
           </div>
+        </div>
+
+        {/* Progress bar moved below header */}
+        <div className="relative mb-6">
+          <Progress 
+            value={progress} 
+            className="h-1 bg-purple-950/20" 
+            indicatorClassName="bg-gradient-to-r from-blue-400 to-purple-400"
+          />
+          {filteredJobs.length > 0 && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+              {currentIndex} / {filteredJobs.length} jobs
+            </div>
+          )}
         </div>
 
         <div className="flex justify-center gap-3 mb-6">

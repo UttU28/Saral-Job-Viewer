@@ -1,23 +1,48 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-from database import JobPosting, Session, addTheJob, checkTheJob  # Import from database.py
+from sqlalchemy import Column, Integer, String, Enum, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.exc import IntegrityError
 
-# Create FastAPI app
+DATABASE_URL = "mysql+pymysql://utsav:root@10.0.0.17:3306/bhawishyaWani"
+engine = create_engine(DATABASE_URL, echo=False)
+Base = declarative_base()
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+class JobPosting(Base):
+    __tablename__ = "allJobData"
+    id = Column(String, primary_key=True)
+    link = Column(String)
+    title = Column(String)
+    companyName = Column(String)
+    location = Column(String)
+    method = Column(String)
+    timeStamp = Column(String)
+    jobType = Column(String)
+    jobDescription = Column(String)
+    applied = Column(String)
+
+class Keyword(Base):
+    __tablename__ = "searchKeywords"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI()
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic model for data serialization
-class BhawishyaWaniModel(BaseModel):
+class JobPostingModel(BaseModel):
     id: str
     link: str
     title: str
@@ -30,88 +55,86 @@ class BhawishyaWaniModel(BaseModel):
     applied: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
+class KeywordModel(BaseModel):
+    id: int
+    name: str
+    type: str
+
+    class Config:
+        from_attributes = True
+
+class AddKeywordRequest(BaseModel):
+    name: str
+    type: str
+
+class RemoveKeywordRequest(BaseModel):
+    id: int
 
 class ApplyRequestModel(BaseModel):
     jobID: str
     applyMethod: str
     link: str
 
-
 class RejectRequestModel(BaseModel):
     jobID: str
 
-
-@app.get("/getData", response_model=list[BhawishyaWaniModel])
-def get_data():
-    """Endpoint to fetch all records from the JobPosting table."""
-    db: Session = Session()
+def getDb():
+    db = SessionLocal()
     try:
-        records = db.query(JobPosting).all()
-        if not records:
-            raise HTTPException(status_code=404, detail="No data found.")
-        return records
+        yield db
     finally:
         db.close()
 
+@app.get("/getData", response_model=list[JobPostingModel])
+def getData(db: Session = Depends(getDb)):
+    records = db.query(JobPosting).all()
+    if not records:
+        raise HTTPException(status_code=404, detail="No data found.")
+    return records
 
-@app.get("/getData/{id}", response_model=BhawishyaWaniModel)
-def get_data_by_id(id: str):
-    """Endpoint to fetch a specific record by ID."""
-    db: Session = Session()
-    try:
-        record = db.query(JobPosting).filter(JobPosting.id == id).first()
-        if not record:
-            raise HTTPException(status_code=404, detail=f"No record found with ID {id}.")
-        return record
-    finally:
-        db.close()
+@app.get("/getKeywords", response_model=list[KeywordModel])
+def getKeywords(db: Session = Depends(getDb)):
+    keywords = db.query(Keyword).all()
+    if not keywords:
+        raise HTTPException(status_code=404, detail="No keywords found.")
+    return keywords
 
+@app.post("/addKeyword")
+def addKeyword(request: AddKeywordRequest, db: Session = Depends(getDb)):
+    newKeyword = Keyword(name=request.name, type=request.type)
+    db.add(newKeyword)
+    db.commit()
+    db.refresh(newKeyword)
+    return {"message": "Keyword added successfully", "id": newKeyword.id}
+
+@app.post("/removeKeyword")
+def removeKeyword(request: RemoveKeywordRequest, db: Session = Depends(getDb)):
+    keyword = db.query(Keyword).filter(Keyword.id == request.id).first()
+    if not keyword:
+        raise HTTPException(status_code=404, detail=f"No keyword found with ID {request.id}.")
+    db.delete(keyword)
+    db.commit()
+    return {"message": "Keyword removed successfully"}
 
 @app.post("/applyThis")
-def apply_this(request: ApplyRequestModel):
-    """Endpoint to handle job application submissions."""
-    db: Session = Session()
-    try:
-        record = db.query(JobPosting).filter(JobPosting.id == request.jobID).first()
-        if not record:
-            raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
-        record.applied = "1"
-        db.commit()
-        return {
-            "message": "Application submitted successfully.",
-            "jobID": request.jobID,
-            "applyMethod": request.applyMethod,
-            "link": request.link
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
-    finally:
-        db.close()
-
+def applyThis(request: ApplyRequestModel, db: Session = Depends(getDb)):
+    record = db.query(JobPosting).filter(JobPosting.id == request.jobID).first()
+    if not record:
+        raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
+    record.applied = "YES"
+    db.commit()
+    return {"message": "Application submitted successfully.", "jobID": request.jobID, "applyMethod": request.applyMethod, "link": request.link}
 
 @app.post("/rejectThis")
-def reject_this(request: RejectRequestModel):
-    """Endpoint to handle job rejection submissions."""
-    db: Session = Session()
-    try:
-        record = db.query(JobPosting).filter(JobPosting.id == request.jobID).first()
-        if not record:
-            raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
-        record.applied = "0"
-        db.commit()
-        return {
-            "message": "Rejection recorded successfully.",
-            "jobID": request.jobID,
-        }
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
-    finally:
-        db.close()
-
+def rejectThis(request: RejectRequestModel, db: Session = Depends(getDb)):
+    record = db.query(JobPosting).filter(JobPosting.id == request.jobID).first()
+    if not record:
+        raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
+    record.applied = "NEVER"
+    db.commit()
+    return {"message": "Rejection recorded successfully.", "jobID": request.jobID}
 
 if __name__ == "__main__":
     import uvicorn

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Building2, MapPin, Clock, Briefcase, ExternalLink, Check, X } from "lucide-react";
 import { highlightKeywords } from "@/lib/utils";
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "react-toastify";
 
 interface JobDialogProps {
   job: Job;
@@ -47,11 +47,7 @@ export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
 
       if (!response.ok) throw new Error('Failed to apply');
       
-      const result = await response.json();
-      if (result.success) {
-        toast.success('Application submitted successfully');
-        onOpenChange(false);
-      }
+      onOpenChange(false);
     } catch (error) {
       console.error('Error applying to job:', error);
       toast.error('Failed to submit application');
@@ -71,11 +67,7 @@ export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
 
       if (!response.ok) throw new Error('Failed to reject');
       
-      const result = await response.json();
-      if (result.success) {
-        toast.success('Job marked as passed');
-        onOpenChange(false);
-      }
+      onOpenChange(false);
     } catch (error) {
       console.error('Error rejecting job:', error);
       toast.error('Failed to reject job');

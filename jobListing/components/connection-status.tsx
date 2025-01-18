@@ -57,7 +57,7 @@ export function ConnectionStatusIndicator({ status, isUsingSampleData, usingSamp
     
     switch (status) {
       case 'connecting':
-        return 'Connecting...';
+        return 'Connecting API...';
       case 'fetching':
         return 'Fetching...';
       case 'connected':

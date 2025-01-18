@@ -79,4 +79,61 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Remove selection highlight */
+  * {
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+  }
+  *:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  /* Remove selection highlight for buttons */
+  button, 
+  [role="button"],
+  a {
+    -webkit-tap-highlight-color: transparent;
+    outline: none !important;
+  }
+  button:focus,
+  [role="button"]:focus,
+  a:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  a:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  /* Remove selection highlight for inputs */
+  input:focus,
+  select:focus,
+  textarea:focus {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  /* Remove selection highlight for selectable text */
+  ::selection {
+    background-color: rgba(147, 51, 234, 0.2); /* Purple with low opacity */
+    color: inherit;
+  }
+}
+
+@layer components {
+  /* Override shadcn button focus styles */
+  .button:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
+  /* Override shadcn input focus styles */
+  .input:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+  }
 }

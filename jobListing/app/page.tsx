@@ -7,7 +7,7 @@ import { Job } from "@/types/job";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Search, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
+import { ArrowRight, Search, Settings, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TECH_KEYWORDS } from "@/lib/utils";
@@ -117,6 +117,15 @@ export default function Home() {
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
+              <Link href="/settings">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="text-blue-300 border-blue-500/20 hover:bg-blue-500/10"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </Link>
               <Link href="/swipe">
                 <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
                   <SwipeHorizontal className="mr-2 h-4 w-4" />
