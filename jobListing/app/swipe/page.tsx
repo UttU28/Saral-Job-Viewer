@@ -1,38 +1,56 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { fetchJobs, applyJob, rejectJob } from "@/lib/api";
 import { Job } from "@/types/job";
 import { SwipeCard } from "@/components/swipe-card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { ConnectionStatusIndicator } from "@/components/connection-status";
+import { ConnectionStatus } from "@/lib/api";
+import { Progress } from "@/components/ui/progress";
 
 export default function SwipePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [isUsingSampleData, setIsUsingSampleData] = useState(false);
   const [swipeHistory, setSwipeHistory] = useState<Array<{ jobId: string; direction: 'left' | 'right' }>>([]);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['EasyApply', 'Manual']));
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [isUsingSampleData, setIsUsingSampleData] = useState(false);
 
   useEffect(() => {
-    const getJobs = async () => {
+    const fetchJobs = async () => {
       try {
-        const data = await fetchJobs();
+        setConnectionStatus('connecting');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        setConnectionStatus('fetching');
+        const response = await fetch('/api/jobs');
+        if (!response.ok) {
+          throw new Error('Failed to fetch jobs');
+        }
+        
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(data.error);
+        }
+        
         setJobs(data);
-        setFilteredJobs(data);
-        setIsUsingSampleData(data.length === 2);
+        setFilteredJobs(data.filter(job => activeFilters.has(job.method)));
+        setConnectionStatus('connected');
       } catch (error) {
         console.error('Error fetching jobs:', error);
+        setConnectionStatus('error');
+        setIsUsingSampleData(true);
       } finally {
         setLoading(false);
       }
     };
 
-    getJobs();
+    fetchJobs();
   }, []);
 
   useEffect(() => {
@@ -47,16 +65,25 @@ export default function SwipePage() {
       const job = filteredJobs[currentIndex];
       
       try {
-        if (direction === 'right') {
-          const result = await applyJob(job.id, job.method, job.link);
-          if (result) {
-            toast.success('Application submitted successfully');
-          }
-        } else {
-          const result = await rejectJob(job.id);
-          if (result) {
-            toast.success('Job marked as passed');
-          }
+        const response = await fetch('/api/jobs/' + (direction === 'right' ? 'apply' : 'reject'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            jobId: job.id,
+            method: job.method,
+            link: job.link
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to process action');
+        }
+
+        const result = await response.json();
+        if (result.success) {
+          toast.success(direction === 'right' ? 'Application submitted successfully' : 'Job marked as passed');
         }
 
         setSwipeHistory(prev => [...prev, { jobId: job.id, direction }]);
@@ -81,20 +108,47 @@ export default function SwipePage() {
   };
 
   const currentJob = filteredJobs[currentIndex];
+  const progress = filteredJobs.length > 0 ? (currentIndex / filteredJobs.length) * 100 : 0;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] relative">
+      <div className="absolute top-0 left-0 right-0">
+        <Progress 
+          value={progress} 
+          className="rounded-none h-1 bg-purple-950/20" 
+          indicatorClassName="bg-gradient-to-r from-blue-400 to-purple-400"
+        />
+        {filteredJobs.length > 0 && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 text-[10px] text-gray-400">
+            {currentIndex} / {filteredJobs.length} jobs
+          </div>
+        )}
+      </div>
+
       <div className="container mx-auto px-4 py-4 max-w-2xl">
-        <div className="flex items-center justify-between mb-6">
-          <Link 
-            href="/"
-            className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
-          >
-            ← Back to List View
-          </Link>
-          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-            Saral Swiper
-          </h1>
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4 mt-6">
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="outline" size="icon" className="text-gray-400 border-gray-800 hover:bg-gray-800/50">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+              Saral Swiper
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <ConnectionStatusIndicator 
+              status={connectionStatus}
+              isUsingSampleData={isUsingSampleData}
+            />
+            <Link href="/">
+              <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
+                <LayoutGrid className="mr-2 h-4 w-4" />
+                Grid View
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="flex justify-center gap-3 mb-6">
@@ -126,17 +180,11 @@ export default function SwipePage() {
           <div className="text-gray-400 text-center py-4">Loading jobs...</div>
         ) : activeFilters.size === 0 ? (
           <div className="text-center py-12 px-4 rounded-lg bg-[#111111] border border-purple-900/20">
-            <p className="text-2xl font-bold text-gray-400 mb-2">APPLY KAR LODA</p>
+            <p className="text-2xl font-bold text-gray-400 mb-2">Select Application Method</p>
             <p className="text-sm text-gray-500">Select at least one application method to view jobs</p>
           </div>
         ) : filteredJobs.length > 0 && currentIndex < filteredJobs.length ? (
           <div className="space-y-6">
-            {isUsingSampleData && (
-              <div className="text-yellow-400 text-xs bg-yellow-400/10 border border-yellow-400/20 rounded-lg p-3">
-                ⚠️ API is unavailable. Showing sample data.
-              </div>
-            )}
-            
             <div className="relative h-[600px] mx-auto">
               <SwipeCard job={currentJob} onSwipe={handleSwipe} />
             </div>

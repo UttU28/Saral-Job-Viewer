@@ -34,6 +34,7 @@ export async function queryJobs() {
         jobDescription,
         applied
       FROM allJobData
+      WHERE applied = "NO"
       ORDER BY timeStamp DESC
     `);
     return rows;

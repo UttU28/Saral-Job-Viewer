@@ -2,41 +2,45 @@
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JobCard } from "@/components/job-card";
-import { fetchJobs } from "@/lib/api";
+import { fetchJobs, ConnectionStatus } from "@/lib/api";
 import { Job } from "@/types/job";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Database, Search, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
+import { ArrowRight, Search, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TECH_KEYWORDS } from "@/lib/utils";
+import { ConnectionStatusIndicator } from "@/components/connection-status";
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isUsingSampleData, setIsUsingSampleData] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
+  const [isUsingSampleData, setIsUsingSampleData] = useState(false);
 
   useEffect(() => {
     const getJobs = async () => {
       try {
-        const data = await fetchJobs();
+        setConnectionStatus('connecting');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        setConnectionStatus('fetching');
+        const { data, isUsingSampleData: usingSample } = await fetchJobs();
+        
         setJobs(data);
         setFilteredJobs(data);
-        setIsUsingSampleData(data.length === 2);
+        setIsUsingSampleData(usingSample);
+        setConnectionStatus(usingSample ? 'error' : 'connected');
       } catch (error) {
         console.error('Error fetching jobs:', error);
+        setConnectionStatus('error');
+        setIsUsingSampleData(true);
       } finally {
         setLoading(false);
       }
@@ -101,6 +105,10 @@ export default function Home() {
               Saral Viewer
             </h1>
             <div className="flex items-center gap-3">
+              <ConnectionStatusIndicator 
+                status={connectionStatus}
+                isUsingSampleData={isUsingSampleData}
+              />
               <Button
                 variant="outline"
                 size="icon"
@@ -109,12 +117,6 @@ export default function Home() {
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
-              <Link href="/mysql">
-                <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
-                  <Database className="mr-2 h-4 w-4" />
-                  MySQL Jobs
-                </Button>
-              </Link>
               <Link href="/swipe">
                 <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
                   <SwipeHorizontal className="mr-2 h-4 w-4" />
@@ -182,18 +184,11 @@ export default function Home() {
           {loading ? (
             <div className="text-gray-400 text-center py-4">Loading jobs...</div>
           ) : filteredJobs.length > 0 ? (
-            <>
-              {isUsingSampleData && (
-                <div className="text-yellow-400 text-xs mb-4 bg-yellow-400/10 border border-yellow-400/20 rounded-lg p-3">
-                  ⚠️ API is unavailable. Showing sample data.
-                </div>
-              )}
-              <div className="grid gap-4">
-                {filteredJobs.map((job) => (
-                  <JobCard key={job.id} job={job} />
-                ))}
-              </div>
-            </>
+            <div className="grid gap-4">
+              {filteredJobs.map((job) => (
+                <JobCard key={job.id} job={job} />
+              ))}
+            </div>
           ) : (
             <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
               No jobs match your filters

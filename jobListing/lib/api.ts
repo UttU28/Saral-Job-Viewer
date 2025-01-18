@@ -1,5 +1,7 @@
 import { sampleJobs } from "@/data/sample-jobs";
 
+export type ConnectionStatus = 'connecting' | 'fetching' | 'connected' | 'error';
+
 export async function fetchJobs() {
   try {
     const response = await fetch('http://10.0.0.65:5000/getData');
@@ -7,11 +9,10 @@ export async function fetchJobs() {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();
-    return data;
+    return { data, isUsingSampleData: false };
   } catch (error) {
     console.error('Error fetching jobs:', error);
-    console.log('Falling back to sample data');
-    return sampleJobs;
+    return { data: sampleJobs, isUsingSampleData: true };
   }
 }
 

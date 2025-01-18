@@ -4,8 +4,10 @@ import { Job } from "@/types/job";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Building2, MapPin, Clock, Briefcase, ExternalLink } from "lucide-react";
+import { Building2, MapPin, Clock, Briefcase, ExternalLink, Check, X } from "lucide-react";
 import { highlightKeywords } from "@/lib/utils";
+import { useState } from "react";
+import { toast } from "sonner";
 
 interface JobDialogProps {
   job: Job;
@@ -23,14 +25,62 @@ function formatDate(dateString: string) {
 }
 
 export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
-  const handleApply = () => {
-    if (job.method === "Manual") {
-      // For manual applications, open the job link in a new tab
-      window.open(job.link, '_blank');
-    } else {
-      // For non-manual applications, implement "Add to Apply" functionality
-      console.log('Added to apply list:', job.id);
-      // You can add more functionality here like saving to a list
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleApply = async () => {
+    setIsLoading(true);
+    try {
+      if (job.method === "Manual") {
+        window.open(job.link, '_blank');
+        return;
+      }
+
+      const response = await fetch('/api/jobs/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: job.id,
+          method: job.method,
+          link: job.link
+        }),
+      });
+
+      if (!response.ok) throw new Error('Failed to apply');
+      
+      const result = await response.json();
+      if (result.success) {
+        toast.success('Application submitted successfully');
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error('Error applying to job:', error);
+      toast.error('Failed to submit application');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/jobs/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: job.id }),
+      });
+
+      if (!response.ok) throw new Error('Failed to reject');
+      
+      const result = await response.json();
+      if (result.success) {
+        toast.success('Job marked as passed');
+        onOpenChange(false);
+      }
+    } catch (error) {
+      console.error('Error rejecting job:', error);
+      toast.error('Failed to reject job');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -82,24 +132,38 @@ export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
 
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-4 justify-between items-center pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-gray-400 hover:text-gray-300"
-              onClick={() => window.open(job.link, '_blank')}
-            >
-              <ExternalLink className="w-4 h-4 mr-2 shrink-0" />
-              View Original
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-gray-400 hover:text-gray-300"
+                onClick={() => window.open(job.link, '_blank')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2 shrink-0" />
+                View Original
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
+                onClick={handleReject}
+                disabled={isLoading}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Pass
+              </Button>
+            </div>
             
             <Button
               size="sm"
               className={job.method === "Manual" 
                 ? "bg-blue-600 hover:bg-blue-700" 
-                : "bg-purple-600 hover:bg-purple-700"}
+                : "bg-green-600 hover:bg-green-700"}
               onClick={handleApply}
+              disabled={isLoading}
             >
-              {job.method === "Manual" ? "Apply Now" : "Add to Apply"}
+              <Check className="mr-2 h-4 w-4" />
+              {job.method === "Manual" ? "Apply Now" : "Easy Apply"}
             </Button>
           </div>
         </div>

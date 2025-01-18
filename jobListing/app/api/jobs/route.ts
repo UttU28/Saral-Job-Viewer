@@ -25,6 +25,7 @@ export async function GET() {
         jobDescription,
         applied
       FROM allJobData
+      WHERE applied = "NO"
       ORDER BY timeStamp DESC
     `);
     return NextResponse.json(rows);
