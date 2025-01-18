@@ -45,7 +45,7 @@ def readingBhawishyawaniPage(driver1):
 
             print(id, title, companyName, location)
 
-            if checkBhawishyaWani(id) and companyName not in notMyCompany:
+            if checkTheJob(id) and companyName not in notMyCompany:
                 try:
                     thisButton = driver.find_element(By.CLASS_NAME, "jobs-apply-button")
                     clickThis = thisButton.find_element(By.CLASS_NAME, "artdeco-button__text").text
@@ -60,7 +60,7 @@ def readingBhawishyawaniPage(driver1):
                 # jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
                 print(jobDescription)
-                addBhawishyaWani(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription)
+                addTheJob(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "no")
 
         except Exception as e:
             print(f"Error in readingBhawishyawaniPage: {e}")

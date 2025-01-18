@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 
 Base = declarative_base()
 
-class BhawishyaWani(Base):
+class JobPosting(Base):
     __tablename__ = "bhawishya_wani"
 
     id = Column(String, primary_key=True)
@@ -16,9 +16,10 @@ class BhawishyaWani(Base):
     timeStamp = Column(Text)
     jobType = Column(Text)
     jobDescription = Column(Text)
+    applied = Column(Text)
 
 
-engine = create_engine("sqlite:///bhawishyaWani.db", echo=True)
+engine = create_engine("sqlite:///database.db", echo=True)
 
 
 Base.metadata.create_all(engine)
@@ -26,7 +27,7 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 
-def addBhawishyaWani(
+def addTheJob(
     id,
     jobLink,
     jobTitle,
@@ -36,13 +37,14 @@ def addBhawishyaWani(
     timeStamp,
     jobType,
     jobDescription,
+    applied
 ):
     session = Session()
 
-    existing_entry = session.query(BhawishyaWani).filter_by(id=id).first()
+    existing_entry = session.query(JobPosting).filter_by(id=id).first()
 
     if existing_entry is None:
-        new_entry = BhawishyaWani(
+        new_entry = JobPosting(
             id=id,
             link=jobLink,
             title=jobTitle,
@@ -52,6 +54,7 @@ def addBhawishyaWani(
             timeStamp=timeStamp,
             jobType=jobType,
             jobDescription=jobDescription,
+            applied=applied,
         )
         session.add(new_entry)
         session.commit()
@@ -62,9 +65,9 @@ def addBhawishyaWani(
     session.close()
 
 
-def checkBhawishyaWani(id):
+def checkTheJob(id):
     session = Session()
-    existing_entry = session.query(BhawishyaWani).filter_by(id=id).first()
+    existing_entry = session.query(JobPosting).filter_by(id=id).first()
     session.close()
     if existing_entry is None:
         return True
