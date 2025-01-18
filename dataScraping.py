@@ -31,7 +31,6 @@ def readingBhawishyawaniPage(driver1):
 
     currentPageData = driver1.find_element(By.CLASS_NAME, "scaffold-layout__list")
     jobPostings = currentPageData.find_elements(By.CLASS_NAME, "job-card-container--clickable")
-    print(len(jobPostings))
 
     for posting in jobPostings:
         try:
@@ -43,9 +42,10 @@ def readingBhawishyawaniPage(driver1):
             location = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__caption ").text.strip()
             applyMethod = None
 
-            print(id, title, companyName, location)
 
             if checkTheJob(id) and companyName not in notMyCompany:
+                posting.click()
+                sleep(1)
                 try:
                     thisButton = driver.find_element(By.CLASS_NAME, "jobs-apply-button")
                     clickThis = thisButton.find_element(By.CLASS_NAME, "artdeco-button__text").text
@@ -55,11 +55,8 @@ def readingBhawishyawaniPage(driver1):
                         applyMethod = 'Manual'
                 except NoSuchElementException:
                     applyMethod = 'CHECK'
-                posting.click()
-                sleep(1)
                 # jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
-                print(jobDescription)
                 addTheJob(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "no")
 
         except Exception as e:
@@ -101,9 +98,11 @@ if __name__ == "__main__":
                 driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
                 print("All Jobs have been scraped")
                 break
-            except:
+            except NoSuchElementException:
                 readingBhawishyawaniPage(driver)
-            
+            except Exception as error:
+                print(f"Error: {error}")
+
             try:
                 currentPage += 1
                 nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")

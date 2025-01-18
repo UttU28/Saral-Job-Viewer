@@ -2,3 +2,6 @@ Flask
 pyautogui
 selenium
 python-dotenv
+sqlalchemy
+uvicorn
+fastapi
