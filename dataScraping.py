@@ -47,14 +47,17 @@ def readingBhawishyawaniPage(driver1):
 
             if checkBhawishyaWani(id) and companyName not in notMyCompany:
                 try:
-                    thisButton = posting.find_element(By.CLASS_NAME, "job-card-container__apply-method")
-                    if thisButton:
+                    thisButton = driver.find_element(By.CLASS_NAME, "jobs-apply-button")
+                    clickThis = thisButton.find_element(By.CLASS_NAME, "artdeco-button__text").text
+                    if 'easy' in clickThis.lower():
+                        applyMethod = 'EasyApply'
+                    else:
                         applyMethod = 'Manual'
                 except NoSuchElementException:
-                    applyMethod = 'EasyApply'
+                    applyMethod = 'CHECK'
                 posting.click()
                 sleep(1)
-                jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
+                # jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
                 print(jobDescription)
                 addBhawishyaWani(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription)
@@ -90,17 +93,23 @@ if __name__ == "__main__":
         currentPage = 0
         searchText = eachElement.strip().replace(" ", "%20")
         print(searchText)
+        pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
+        driver.get(pageURL + str(currentPage * 25))
         while True:
-            pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
-            driver.get(pageURL + str(currentPage * 25))
-            currentPage += 1
-            sleep(5)
+            sleep(4)
             try:
                 driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
                 print("All Jobs have been scraped")
                 break
             except:
                 readingBhawishyawaniPage(driver)
-
+            
+            try:
+                currentPage += 1
+                nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
+                nextButton.click()
+            except:
+                print("No more pages to scrape")
+                break
     chromeApp.terminate()
     driver.quit()

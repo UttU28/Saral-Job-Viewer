@@ -24,7 +24,7 @@
                 {% for job_id, job in jobs.items() %}
                 <tr data-job-id="{{ job_id }}">
                     <td>{{ job_id }}</td>
-                    <td>{{ job['jobType'] }}</td>
+                    <td>{{ job['method'] }}</td>
                     <td><a href="{{ job['link'] }}" target="_blank" class="job-link">{{ job['title'] }}</a></td>
                     <td class="centreKar">{{ job['companyName'] }}</td>
                     <td class="centreKar">{{ job['location'] }}</td>
