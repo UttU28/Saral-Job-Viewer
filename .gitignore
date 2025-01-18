@@ -1,7 +1,6 @@
 **/__pycache__/*
 **/env/*
 **/chromeData/*
-**/jobListing/*
 
 *.env
 *.db
