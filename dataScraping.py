@@ -62,6 +62,37 @@ def readingBhawishyawaniPage(driver1):
         except Exception as e:
             print(f"Error in readingBhawishyawaniPage: {e}")
 
+
+from urllib.parse import urlencode
+
+params = {
+    "distance": "25.0",                   
+    "f_JT": "F",                            # Fulltime 
+    # "f_JT": "F,C",                        # Fulltime + Contract
+    "f_TPR": "r86400",                      
+    "geoId": "103644278",                 
+    "keywords": "{searchText}",           
+    "origin": "JOB_SEARCH_PAGE_JOB_FILTER", 
+    "refresh": "true",                    
+    "sortBy": "DD",                       
+    "spellCorrectionEnabled": "true",    
+}
+
+
+def build_linkedin_url(search_text):
+    """
+    Dynamically constructs a LinkedIn job search URL with pagination support.
+
+    :param search_text: The job keywords to search for.
+    :param start: The pagination index (default: 0).
+    :param current_job_id: The ID of the current job (default: "4129302155").
+    :return: The complete LinkedIn job search URL.
+    """
+    params["keywords"] = search_text
+    base_url = "https://www.linkedin.com/jobs/search/"
+    query_string = urlencode(params)
+    return f"{base_url}?{query_string}"
+
 if __name__ == "__main__":
     chrome_data_dir = os.path.join(os.getcwd(), 'chromeData')
     if not os.path.exists(chrome_data_dir):
@@ -85,13 +116,13 @@ if __name__ == "__main__":
     driver = webdriver.Chrome(options=options)
 
     # Job Keywords List
-    myList = ["devops*", "cloud engineer", "cloud architect", "site reliability", "platform engineer", "aws", "azure"]
+    myList = ["flask", "python auotmation", "python developer"]
     for eachElement in myList:
         currentPage = 0
-        searchText = eachElement.strip().replace(" ", "%20")
+        searchText = build_linkedin_url(eachElement.strip().replace(" ", "%20"))
         print(searchText)
-        pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
-        driver.get(pageURL + str(currentPage * 25))
+        # pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
+        driver.get(searchText)
         while True:
             sleep(4)
             try:

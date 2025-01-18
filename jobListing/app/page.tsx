@@ -7,7 +7,7 @@ import { Job } from "@/types/job";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Search, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
+import { ArrowRight, Database, Search, SlidersHorizontal, FlipHorizontal as SwipeHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -109,6 +109,12 @@ export default function Home() {
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </Button>
+              <Link href="/mysql">
+                <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
+                  <Database className="mr-2 h-4 w-4" />
+                  MySQL Jobs
+                </Button>
+              </Link>
               <Link href="/swipe">
                 <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
                   <SwipeHorizontal className="mr-2 h-4 w-4" />

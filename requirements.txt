@@ -5,3 +5,5 @@ python-dotenv
 sqlalchemy
 uvicorn
 fastapi
+cryptography
+pymysql

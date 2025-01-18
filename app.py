@@ -11,7 +11,7 @@ Base = declarative_base()
 
 # Define the SQLAlchemy model
 class BhawishyaWani(Base):
-    __tablename__ = "bhawishya_wani"
+    __tablename__ = "allJobData"
 
     id = Column(String, primary_key=True)
     link = Column(Text)
@@ -22,9 +22,12 @@ class BhawishyaWani(Base):
     timeStamp = Column(Text)
     jobType = Column(Text)
     jobDescription = Column(Text)
+    applied = Column(Text)
+
+
 
 # Database setup
-DATABASE_URL = "sqlite:///bhawishyaWani.db"
+DATABASE_URL = "mysql+pymysql://utsav:root@10.0.0.17:3306/bhawishyaWani" 
 engine = create_engine(DATABASE_URL, echo=True)
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -44,14 +47,15 @@ app.add_middleware(
 # Pydantic model for data serialization
 class BhawishyaWaniModel(BaseModel):
     id: str
-    link: str
-    title: str
+    jobLink: str
+    jobTitle: str
     companyName: str
-    location: str
-    method: str
+    jobLocation: str
+    jobMethod: str
     timeStamp: str
     jobType: str
     jobDescription: str
+    applied: str
 
     class Config:
         orm_mode = True
@@ -91,22 +95,55 @@ def get_data_by_id(id: str):
 @app.post("/applyThis")
 def apply_this(request: ApplyRequestModel):
     """Endpoint to handle job application submissions."""
-    print("Received application request:", request.dict())
-    return {
-        "message": "Application data validated successfully.",
-        "jobID": request.jobID,
-        "applyMethod": request.applyMethod,
-        "link": request.link
-    }
+    db: Session = SessionLocal()
+    try:
+        # Fetch the job record by ID
+        record = db.query(BhawishyaWani).filter(BhawishyaWani.id == request.jobID).first()
+        if not record:
+            raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
+
+        # Update the `applied` column to "YES"
+        record.applied = "YES"
+        db.commit()  # Commit the transaction
+
+        return {
+            "message": "Application submitted successfully.",
+            "jobID": request.jobID,
+            "applyMethod": request.applyMethod,
+            "link": request.link
+        }
+    except Exception as e:
+        db.rollback()  # Rollback in case of an error
+        raise HTTPException(status_code=500, detail="An error occurred while processing the request.") from e
+    finally:
+        db.close()
 
 @app.post("/rejectThis")
 def reject_this(request: RejectRequestModel):
     """Endpoint to handle job rejection submissions."""
-    print("Received rejection request:", request.dict())
-    return {
-        "message": "Rejection data validated successfully.",
-        "jobID": request.jobID,
-    }
+    db: Session = SessionLocal()
+    try:
+        # Fetch the job record by ID
+        record = db.query(BhawishyaWani).filter(BhawishyaWani.id == request.jobID).first()
+        if not record:
+            raise HTTPException(status_code=404, detail=f"No record found with ID {request.jobID}.")
+
+        # Update the `applied` column to "NO"
+        record.applied = "NO"
+        db.commit()  # Commit the transaction
+
+        return {
+            "message": "Rejection recorded successfully.",
+            "jobID": request.jobID,
+        }
+    except Exception as e:
+        db.rollback()  # Rollback in case of an error
+        # Log the full error message
+        print(f"Error occurred: {e}")
+        raise HTTPException(status_code=500, detail=f"An error occurred: {e}")
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     import uvicorn
