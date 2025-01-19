@@ -8,5 +8,4 @@ export interface Job {
   timeStamp: string;
   jobType: string;
   jobDescription: string;
-  applied: any;
 }

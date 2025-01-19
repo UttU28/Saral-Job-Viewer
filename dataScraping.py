@@ -56,7 +56,7 @@ def readingBhawishyawaniPage(driver1):
                     applyMethod = 'CHECK'
                 # jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
-                add_the_job(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "no")
+                add_the_job(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "NO")
 
         except Exception as e:
             print(f"Error in readingBhawishyawaniPage: {e}")

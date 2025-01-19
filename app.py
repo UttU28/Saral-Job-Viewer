@@ -8,6 +8,7 @@ from database import (
     add_keyword,
     remove_keyword,
     update_job_status,
+    add_to_easy_apply,
 )
 
 app = FastAPI()
@@ -63,6 +64,12 @@ class ApplyRequestModel(BaseModel):
 
 class RejectRequestModel(BaseModel):
     jobID: str
+
+
+class AddToEasyApplyRequest(BaseModel):
+    jobID: int
+    userName: str
+    status: str
 
 
 @app.get("/")
@@ -127,6 +134,20 @@ def rejectThis(request: RejectRequestModel):
     raise HTTPException(
         status_code=404, detail=f"No record found with ID {request.jobID}."
     )
+
+
+@app.post("/addToEasyApply")
+def addToEasyApply(request: AddToEasyApplyRequest):
+    easy_apply_entry = add_to_easy_apply(request.jobID, request.userName, request.status)
+    if easy_apply_entry:
+        return {
+            "message": "Added to Easy Apply successfully",
+            "entryID": easy_apply_entry.id,
+        }
+    raise HTTPException(
+        status_code=500, detail="Failed to add to Easy Apply"
+    )
+
 
 if __name__ == "__main__":
     import uvicorn

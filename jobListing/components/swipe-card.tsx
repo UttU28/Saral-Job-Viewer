@@ -51,28 +51,35 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
   };
 
   const handleMouseStart = (e: React.MouseEvent) => {
+    e.preventDefault(); // Prevent text selection during drag
     setStartX(e.clientX);
     setIsDragging(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!isDragging) return;
+    e.preventDefault(); // Prevent scrolling while swiping
     const currentX = e.touches[0].clientX;
-    setCurrentX(currentX - startX);
+    const delta = currentX - startX;
+    setCurrentX(Math.min(Math.max(delta, -300), 300)); // Limit the drag distance
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
-    setCurrentX(e.clientX - startX);
+    e.preventDefault(); // Prevent text selection during drag
+    const delta = e.clientX - startX;
+    setCurrentX(Math.min(Math.max(delta, -300), 300)); // Limit the drag distance
   };
 
   const handleDragEnd = () => {
     if (Math.abs(currentX) >= SWIPE_THRESHOLD) {
       const direction = currentX > 0 ? 'right' : 'left';
       onSwipe(direction);
+    } else {
+      // Spring back animation
+      setCurrentX(0);
     }
     setIsDragging(false);
-    setCurrentX(0);
   };
 
   const addToNoNoCompanies = async () => {
@@ -90,6 +97,17 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
       onSwipe('left');
     }
   };
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (isDragging) {
+        handleDragEnd();
+      }
+    };
+
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => window.removeEventListener('mouseup', handleMouseUp);
+  }, [isDragging, currentX]);
 
   const getAppliedStatusColor = () => {
     const status = job.applied;
@@ -110,18 +128,7 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
     return status;
   };
 
-  useEffect(() => {
-    const handleMouseUp = () => {
-      if (isDragging) {
-        handleDragEnd();
-      }
-    };
-
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => window.removeEventListener('mouseup', handleMouseUp);
-  }, [isDragging, currentX]);
-
-  const rotation = currentX * 0.1;
+  const rotation = (currentX * 0.1) * (1 - Math.abs(currentX) / 1000); // Dampen rotation at extremes
   const opacity = Math.max(0, 1 - Math.abs(currentX) / 500);
 
   const getSwipeIndicator = () => {
@@ -139,7 +146,7 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
       style={{
         transform: `translateX(${currentX}px) rotate(${rotation}deg)`,
         opacity,
-        transition: isDragging ? 'none' : 'all 0.3s ease'
+        transition: isDragging ? 'none' : 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -147,7 +154,7 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
       onMouseDown={handleMouseStart}
       onMouseMove={handleMouseMove}
     >
-      <div className="p-6 space-y-4 h-full flex flex-col relative">
+      <div className="p-6 space-y-4 h-full flex flex-col relative select-none">
         <div className="space-y-4">
           {/* Top row with status badges and blacklist button */}
           <div className="flex items-center justify-between gap-2">

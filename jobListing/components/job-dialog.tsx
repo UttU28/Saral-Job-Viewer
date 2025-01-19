@@ -8,11 +8,14 @@ import { Building2, MapPin, Clock, Briefcase, ExternalLink, Check, X } from "luc
 import { highlightKeywords } from "@/lib/utils";
 import { useState } from "react";
 import { toast } from "react-toastify";
+import { applyJob, rejectJob } from "@/lib/api";
 
 interface JobDialogProps {
   job: Job;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  easyApplyEnabled?: boolean;
+  onJobUpdate?: (updatedJob: Job) => void;
 }
 
 function formatDate(dateString: string) {
@@ -24,30 +27,27 @@ function formatDate(dateString: string) {
   });
 }
 
-export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
+export function JobDialog({ job, open, onOpenChange, easyApplyEnabled = false, onJobUpdate }: JobDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleApply = async () => {
     setIsLoading(true);
     try {
-      if (job.method === "Manual") {
-        window.open(job.link, '_blank');
-        return;
-      }
-
-      const response = await fetch('/api/jobs/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId: job.id,
-          method: job.method,
-          link: job.link
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to apply');
+      const result = await applyJob(job.id, job.method, job.link);
       
-      onOpenChange(false);
+      if (result.success) {
+        const updatedJob = { ...job, applied: "YES" };
+        onJobUpdate?.(updatedJob);
+        toast.success('Application submitted successfully');
+        onOpenChange(false); // Close dialog first
+        
+        // If Easy Apply is disabled or it's a Manual application, open in new window
+        if (!easyApplyEnabled || job.method === "Manual") {
+          window.open(job.link, '_blank');
+        }
+      } else {
+        throw new Error(result.error || 'Failed to apply');
+      }
     } catch (error) {
       console.error('Error applying to job:', error);
       toast.error('Failed to submit application');
@@ -59,15 +59,16 @@ export function JobDialog({ job, open, onOpenChange }: JobDialogProps) {
   const handleReject = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/jobs/reject', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: job.id }),
-      });
-
-      if (!response.ok) throw new Error('Failed to reject');
+      const result = await rejectJob(job.id);
       
-      onOpenChange(false);
+      if (result.success) {
+        const updatedJob = { ...job, applied: "NEVER" };
+        onJobUpdate?.(updatedJob);
+        toast.success('Job rejected successfully');
+        onOpenChange(false);
+      } else {
+        throw new Error(result.error || 'Failed to reject');
+      }
     } catch (error) {
       console.error('Error rejecting job:', error);
       toast.error('Failed to reject job');

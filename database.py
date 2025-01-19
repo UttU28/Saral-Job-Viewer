@@ -1,10 +1,11 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text, Enum, Integer
+from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -39,6 +40,13 @@ class Keyword(Base):
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
 
+class EasyApply(Base):
+    __tablename__ = "easyApplyData"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    jobID = Column(Integer, nullable=False)
+    userName = Column(String(255), nullable=False)
+    status = Column(String(50), nullable=False)
+    createdAt = Column(DateTime, default=datetime.utcnow)
 
 # Connect to the database
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -178,5 +186,27 @@ def update_job_status(job_id: str, applied_status: str):
     except Exception as e:
         session.rollback()
         print(f"Error: Could not update job status. Reason: {e}")
+    finally:
+        session.close()
+
+
+def add_to_easy_apply(job_id: int, user_name: str, status: str):
+    session = get_session()
+    try:
+        new_entry = EasyApply(jobID=job_id, userName=user_name, status=status)
+        session.add(new_entry)
+        session.commit()
+        session.refresh(new_entry)
+        return new_entry
+    except Exception as e:
+        session.rollback()
+        print(f"Error: Could not add to easy apply. Reason: {e}")
+    finally:
+        session.close()
+
+def get_all_easy_apply():
+    session = get_session()
+    try:
+        return session.query(EasyApply).all()
     finally:
         session.close()

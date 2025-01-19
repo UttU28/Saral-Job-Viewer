@@ -2,7 +2,7 @@ import { sampleJobs } from "@/data/sample-jobs";
 
 export type ConnectionStatus = 'connecting' | 'fetching' | 'connected' | 'error';
 
-const API_BASE_URL = 'http://cbf4-2603-7080-2b3c-2cff-00-1bd6.ngrok-free.app';
+const API_BASE_URL = 'http://94fa-73-206-193-141.ngrok-free.app';
 
 async function handleApiResponse(response: Response) {
   if (!response.ok) {
@@ -35,15 +35,15 @@ export async function applyJob(jobId: string, method: string, link: string) {
         link: link
       }),
     });
-    await handleApiResponse(response);
-    return { success: true };
+    const result = await handleApiResponse(response);
+    return { success: true, data: result };
   } catch (error) {
     console.error('Error applying to job:', error);
     // For sample data, simulate successful application
     if (sampleJobs.find(job => job.id === jobId)) {
-      return { success: true };
+      return { success: true, data: null };
     }
-    return { success: false };
+    return { success: false, error: 'Failed to apply to job' };
   }
 }
 
@@ -58,15 +58,15 @@ export async function rejectJob(jobId: string) {
         jobID: jobId
       }),
     });
-    await handleApiResponse(response);
-    return { success: true };
+    const result = await handleApiResponse(response);
+    return { success: true, data: result };
   } catch (error) {
     console.error('Error rejecting job:', error);
     // For sample data, simulate successful rejection
     if (sampleJobs.find(job => job.id === jobId)) {
-      return { success: true };
+      return { success: true, data: null };
     }
-    return { success: false };
+    return { success: false, error: 'Failed to reject job' };
   }
 }
 

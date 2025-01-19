@@ -1,17 +1,19 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Briefcase, Building2, Clock, MapPin, Check, X, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Building2, MapPin, Clock, Briefcase, Check, X, Trash2 } from "lucide-react";
 import { Job } from "@/types/job";
 import { useState, useEffect } from "react";
 import { JobDialog } from "./job-dialog";
 import { highlightKeywords } from "@/lib/utils";
-import { Button } from "./ui/button";
 import { toast } from "react-toastify";
-import { addToSettings, getSettings } from "@/lib/api";
+import { addToSettings, applyJob, rejectJob, getSettings } from "@/lib/api";
 
 interface JobCardProps {
   job: Job;
+  showIfBlacklisted?: boolean;
+  easyApplyEnabled?: boolean;
 }
 
 function formatDate(dateString: string) {
@@ -23,53 +25,56 @@ function formatDate(dateString: string) {
   });
 }
 
-export function JobCard({ job }: JobCardProps) {
+export function JobCard({ job: initialJob, showIfBlacklisted = false, easyApplyEnabled = false }: JobCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isBlacklisted, setIsBlacklisted] = useState(false);
+  const [job, setJob] = useState(initialJob);
+  const isApplied = job.applied === "YES" || job.applied === "1";
+  const isNeverApply = job.applied === "NEVER";
 
+  // Check blacklist status on mount and when showIfBlacklisted changes
   useEffect(() => {
-    const checkIfBlacklisted = async () => {
+    const checkBlacklistStatus = async () => {
       try {
         const { data } = await getSettings();
         const noNoCompanies = data
           .filter((kw: any) => kw.type === 'NoCompany')
           .map((kw: any) => kw.name.toLowerCase());
+        
         setIsBlacklisted(noNoCompanies.includes(job.companyName.toLowerCase()));
       } catch (error) {
         console.error('Error checking blacklist status:', error);
       }
     };
 
-    checkIfBlacklisted();
-  }, [job.companyName]);
+    checkBlacklistStatus();
+  }, [job.companyName, showIfBlacklisted]);
 
   const handleApply = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsLoading(true);
     
     try {
-      if (job.method === "Manual") {
-        window.open(job.link, '_blank');
-        return;
+      const result = await applyJob(job.id, job.method, job.link);
+      
+      if (result.success) {
+        setJob(prev => ({ ...prev, applied: "YES" }));
+        toast.success('Application submitted successfully');
+        
+        // If Easy Apply is disabled or it's a Manual application, open in new window
+        if (!easyApplyEnabled || job.method === "Manual") {
+          window.open(job.link, '_blank');
+        }
+      } else {
+        throw new Error(result.error || 'Failed to apply');
       }
-
-      const response = await fetch('/api/jobs/apply', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jobId: job.id,
-          method: job.method,
-          link: job.link
-        }),
-      });
-
-      if (!response.ok) throw new Error('Failed to apply');
     } catch (error) {
       console.error('Error applying to job:', error);
       toast.error('Failed to submit application');
     } finally {
       setIsLoading(false);
+      setDialogOpen(false); // Close dialog after action
     }
   };
 
@@ -78,18 +83,20 @@ export function JobCard({ job }: JobCardProps) {
     setIsLoading(true);
     
     try {
-      const response = await fetch('/api/jobs/reject', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: job.id }),
-      });
-
-      if (!response.ok) throw new Error('Failed to reject');
+      const result = await rejectJob(job.id);
+      
+      if (result.success) {
+        setJob(prev => ({ ...prev, applied: "NEVER" }));
+        toast.success('Job rejected successfully');
+      } else {
+        throw new Error(result.error || 'Failed to reject');
+      }
     } catch (error) {
       console.error('Error rejecting job:', error);
       toast.error('Failed to reject job');
     } finally {
       setIsLoading(false);
+      setDialogOpen(false); // Close dialog after action
     }
   };
 
@@ -101,6 +108,7 @@ export function JobCard({ job }: JobCardProps) {
       if (result.success) {
         toast.success(`Added ${job.companyName} to NO NO Companies`);
         setIsBlacklisted(true);
+        setDialogOpen(false);
       } else {
         throw new Error('Failed to add company');
       }
@@ -112,23 +120,62 @@ export function JobCard({ job }: JobCardProps) {
     }
   };
 
+  const handleJobUpdate = (updatedJob: Job) => {
+    setJob(updatedJob);
+  };
+
+  // If job is blacklisted and we're not showing blacklisted jobs, don't render anything
+  if (isBlacklisted && !showIfBlacklisted) {
+    return null;
+  }
+
+  // Render blacklisted job card
   if (isBlacklisted) {
     return (
       <>
         <Card 
-          className="bg-red-950/20 hover:bg-red-950/30 transition-colors border-red-900/20 cursor-pointer w-full overflow-hidden group"
+          className="bg-red-950/20 hover:bg-red-950/30 transition-colors border-red-900/20 cursor-pointer w-full overflow-hidden"
           onClick={() => setDialogOpen(true)}
         >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium text-red-300 break-words">
-                {job.title}
-              </h3>
-              <p className="text-xs text-red-300/70 flex items-center gap-2">
-                <Building2 className="w-3.5 h-3.5 shrink-0" />
-                {job.companyName}
-              </p>
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="flex flex-col gap-3">
+              <div className="space-y-2">
+                <CardTitle className="text-sm sm:text-base font-medium text-red-300 break-words">
+                  {job.title}
+                </CardTitle>
+                <CardDescription className="flex items-center gap-2 text-red-300/70">
+                  <Building2 className="w-3.5 h-3.5 shrink-0" />
+                  <span className="break-words">{job.companyName}</span>
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="bg-red-500/10 text-red-300 px-3 py-1 rounded-full border border-red-500/20 text-[10px] sm:text-xs">
+                  {job.method}
+                </span>
+                <span className="bg-red-500/10 text-red-300 px-3 py-1 rounded-full border border-red-500/20 text-[10px] sm:text-xs">
+                  {job.jobType}
+                </span>
+              </div>
             </div>
+          </CardHeader>
+          <CardContent className="pb-4 px-5">
+            <div className="flex flex-wrap gap-4 text-[10px] sm:text-xs text-red-300/70 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <MapPin className="w-3.5 h-3.5 shrink-0" />
+                <span className="break-words">{job.location}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">{formatDate(job.timeStamp)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">ID: {job.id}</span>
+              </div>
+            </div>
+            <p className="text-[10px] sm:text-xs text-red-300/50 line-clamp-2 break-words">
+              {highlightKeywords(job.jobDescription)}
+            </p>
           </CardContent>
         </Card>
 
@@ -136,15 +183,82 @@ export function JobCard({ job }: JobCardProps) {
           job={job}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
+          easyApplyEnabled={easyApplyEnabled}
+          onJobUpdate={handleJobUpdate}
         />
       </>
     );
   }
 
+  // Render applied job card
+  if (isApplied) {
+    return (
+      <>
+        <Card 
+          className="bg-green-950/20 hover:bg-green-950/30 transition-colors border-green-900/20 cursor-pointer w-full overflow-hidden"
+          onClick={() => setDialogOpen(true)}
+        >
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="space-y-2">
+              <CardTitle className="text-sm sm:text-base font-medium text-green-300 break-words">
+                {job.title}
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2 text-green-300/70">
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="break-words">{job.companyName}</span>
+              </CardDescription>
+            </div>
+          </CardHeader>
+        </Card>
+
+        <JobDialog 
+          job={job}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          easyApplyEnabled={easyApplyEnabled}
+          onJobUpdate={handleJobUpdate}
+        />
+      </>
+    );
+  }
+
+  // Render never apply job card
+  if (isNeverApply) {
+    return (
+      <>
+        <Card 
+          className="bg-gray-900/20 hover:bg-gray-900/30 transition-colors border-gray-800/20 cursor-pointer w-full overflow-hidden"
+          onClick={() => setDialogOpen(true)}
+        >
+          <CardHeader className="pb-3 pt-4 px-5">
+            <div className="space-y-2">
+              <CardTitle className="text-sm sm:text-base font-medium text-gray-400 break-words">
+                {job.title}
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2 text-gray-500">
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                <span className="break-words">{job.companyName}</span>
+              </CardDescription>
+            </div>
+          </CardHeader>
+        </Card>
+
+        <JobDialog 
+          job={job}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          easyApplyEnabled={easyApplyEnabled}
+          onJobUpdate={handleJobUpdate}
+        />
+      </>
+    );
+  }
+
+  // Render regular job card
   return (
     <>
       <Card 
-        className="bg-[#111111] hover:bg-[#161616] transition-colors border-purple-900/20 cursor-pointer w-full overflow-hidden group"
+        className="bg-[#111111] hover:bg-[#161616] transition-colors border-purple-900/20 cursor-pointer w-full overflow-hidden"
         onClick={() => setDialogOpen(true)}
       >
         <CardHeader className="pb-3 pt-4 px-5">
@@ -164,8 +278,8 @@ export function JobCard({ job }: JobCardProps) {
                   className="text-red-400 border-red-500/20 hover:bg-red-500/10"
                   onClick={addToNoNoCompanies}
                 >
-                  <Trash2 className="h-3 w-3" />
-                  &nbsp; Company
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Add to NO NO
                 </Button>
               </div>
             </div>
@@ -197,7 +311,7 @@ export function JobCard({ job }: JobCardProps) {
           <p className="text-[10px] sm:text-xs text-gray-500 line-clamp-2 break-words mb-4">
             {highlightKeywords(job.jobDescription)}
           </p>
-          <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex justify-end gap-2">
             <Button
               size="sm"
               variant="outline"
@@ -229,6 +343,8 @@ export function JobCard({ job }: JobCardProps) {
         job={job}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        easyApplyEnabled={easyApplyEnabled}
+        onJobUpdate={handleJobUpdate}
       />
     </>
   );

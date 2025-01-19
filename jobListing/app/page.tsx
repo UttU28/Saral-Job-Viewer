@@ -6,12 +6,13 @@ import { fetchJobs, ConnectionStatus } from "@/lib/api";
 import { Job } from "@/types/job";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Search, SlidersHorizontal, Briefcase, CheckCircle2, XCircle, Clock } from "lucide-react";
+import { Search, SlidersHorizontal, Briefcase, CheckCircle2, XCircle, Clock, EyeOff, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TECH_KEYWORDS } from "@/lib/utils";
 import { ConnectionStatusIndicator } from "@/components/connection-status";
 import { AnimatedStat } from "@/components/animated-stat";
+import { Switch } from "@/components/ui/switch";
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -21,9 +22,11 @@ export default function Home() {
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [appliedFilter, setAppliedFilter] = useState<string>("all");
+  const [showBlacklisted, setShowBlacklisted] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [isUsingSampleData, setIsUsingSampleData] = useState(false);
+  const [easyApplyEnabled, setEasyApplyEnabled] = useState(false);
 
   useEffect(() => {
     const getJobs = async () => {
@@ -115,6 +118,14 @@ export default function Home() {
   const notAppliedJobs = jobs.filter(job => !job.applied || job.applied === "0" || job.applied === "NO").length;
   const pendingJobs = totalJobs - appliedJobs - notAppliedJobs;
 
+  // Separate jobs into two sections
+  const availableJobs = filteredJobs.filter(job => 
+    !job.applied || job.applied === "0" || job.applied === "NO"
+  );
+  const processedJobs = filteredJobs.filter(job => 
+    job.applied === "YES" || job.applied === "1" || job.applied === "NEVER"
+  );
+
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
       <main className="container mx-auto px-4 py-4 max-w-5xl">
@@ -160,15 +171,41 @@ export default function Home() {
           </div>
 
           {/* Filters Section */}
-          <div className="flex items-center justify-end">
-            <Button
-              variant="outline"
-              size="icon"
-              className={`text-purple-300 border-purple-500/20 hover:bg-purple-500/10 ${showFilters ? 'bg-purple-500/10' : ''}`}
-              onClick={() => setShowFilters(!showFilters)}
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                className={`text-purple-300 border-purple-500/20 hover:bg-purple-500/10 ${showFilters ? 'bg-purple-500/10' : ''}`}
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+              </Button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={showBlacklisted}
+                    onCheckedChange={setShowBlacklisted}
+                    className="data-[state=checked]:bg-red-500"
+                  />
+                  <span className="text-sm text-gray-400 flex items-center gap-2">
+                    <EyeOff className="h-4 w-4" />
+                    Show Blacklisted
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={easyApplyEnabled}
+                    onCheckedChange={setEasyApplyEnabled}
+                    className="data-[state=checked]:bg-green-500"
+                  />
+                  <span className="text-sm text-gray-400 flex items-center gap-2">
+                    <Zap className="h-4 w-4" />
+                    Easy Apply
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className={`grid gap-4 transition-all duration-300 ease-in-out ${
@@ -249,15 +286,61 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="mt-6">
+        <div className="mt-6 space-y-8">
           {loading ? (
             <div className="text-gray-400 text-center py-4">Loading jobs...</div>
           ) : filteredJobs.length > 0 ? (
-            <div className="grid gap-4">
-              {filteredJobs.map((job) => (
-                <JobCard key={job.id} job={job} />
-              ))}
-            </div>
+            <>
+              {/* Available Jobs Section */}
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold text-blue-300 border-b border-blue-900/20 pb-2">
+                  Dekh le jo pasand aaye wo
+                  <span className="text-sm font-normal text-gray-400 ml-2">
+                    ({availableJobs.length} jobs)
+                  </span>
+                </h2>
+                <div className="grid gap-4">
+                  {availableJobs.map((job) => (
+                    <JobCard 
+                      key={job.id} 
+                      job={job} 
+                      showIfBlacklisted={showBlacklisted}
+                      easyApplyEnabled={easyApplyEnabled}
+                    />
+                  ))}
+                </div>
+                {availableJobs.length === 0 && (
+                  <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
+                    No available jobs match your filters
+                  </div>
+                )}
+              </div>
+
+              {/* Processed Jobs Section */}
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold text-purple-300 border-b border-purple-900/20 pb-2">
+                  Ye ho gaya ab
+                  <span className="text-sm font-normal text-gray-400 ml-2">
+                    ({processedJobs.length} jobs)
+                  </span>
+                </h2>
+                <div className="grid gap-4">
+                  {processedJobs.map((job) => (
+                    <JobCard 
+                      key={job.id} 
+                      job={job} 
+                      showIfBlacklisted={showBlacklisted}
+                      easyApplyEnabled={easyApplyEnabled}
+                    />
+                  ))}
+                </div>
+                {processedJobs.length === 0 && (
+                  <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
+                    No processed jobs match your filters
+                  </div>
+                )}
+              </div>
+            </>
           ) : (
             <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
               No jobs match your filters

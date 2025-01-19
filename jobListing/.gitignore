@@ -18,7 +18,6 @@
 # misc
 .DS_Store
 *.pem
-*-lock.json
 
 # debug
 npm-debug.log*
