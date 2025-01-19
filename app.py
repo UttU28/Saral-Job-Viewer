@@ -5,8 +5,14 @@ from sqlalchemy import Column, Integer, String, Enum, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import IntegrityError
+from dotenv import load_dotenv
+import os
 
-DATABASE_URL = "mysql+pymysql://utsav:root@10.0.0.17:3306/bhawishyaWani"
+load_dotenv()
+
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+
 engine = create_engine(DATABASE_URL, echo=False)
 Base = declarative_base()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -86,6 +92,11 @@ def getDb():
         yield db
     finally:
         db.close()
+
+
+@app.get("/")
+def helwld():
+    return "Hello Duniya"
 
 @app.get("/getData", response_model=list[JobPostingModel])
 def getData(db: Session = Depends(getDb)):

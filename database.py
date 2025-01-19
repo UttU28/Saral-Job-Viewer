@@ -4,6 +4,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 import os
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 # Configure logging to show only errors
 logging.basicConfig(level=logging.ERROR)
@@ -29,7 +33,7 @@ class JobPosting(Base):
 
 
 # Connect to the MySQL database
-DATABASE_URL = "mysql+pymysql://utsav:root@10.0.0.17:3306/bhawishyaWani"
+DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL, echo=False)  # Disable SQLAlchemy echo
 
 # Create tables if they don't exist
