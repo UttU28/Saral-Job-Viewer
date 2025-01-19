@@ -1,14 +1,14 @@
 'use client';
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Briefcase, Building2, Clock, MapPin, Check, X, Plus } from "lucide-react";
+import { Briefcase, Building2, Clock, MapPin, Check, X, Trash2 } from "lucide-react";
 import { Job } from "@/types/job";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { JobDialog } from "./job-dialog";
 import { highlightKeywords } from "@/lib/utils";
 import { Button } from "./ui/button";
 import { toast } from "react-toastify";
-import { addToSettings } from "@/lib/api";
+import { addToSettings, getSettings } from "@/lib/api";
 
 interface JobCardProps {
   job: Job;
@@ -26,6 +26,23 @@ function formatDate(dateString: string) {
 export function JobCard({ job }: JobCardProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isBlacklisted, setIsBlacklisted] = useState(false);
+
+  useEffect(() => {
+    const checkIfBlacklisted = async () => {
+      try {
+        const { data } = await getSettings();
+        const noNoCompanies = data
+          .filter((kw: any) => kw.type === 'NoCompany')
+          .map((kw: any) => kw.name.toLowerCase());
+        setIsBlacklisted(noNoCompanies.includes(job.companyName.toLowerCase()));
+      } catch (error) {
+        console.error('Error checking blacklist status:', error);
+      }
+    };
+
+    checkIfBlacklisted();
+  }, [job.companyName]);
 
   const handleApply = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,22 +95,51 @@ export function JobCard({ job }: JobCardProps) {
 
   const addToNoNoCompanies = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    setIsLoading(true);
     try {
       const result = await addToSettings(job.companyName, 'NoCompany');
       if (result.success) {
         toast.success(`Added ${job.companyName} to NO NO Companies`);
-        // After adding to NO NO list, automatically reject the job
-        await handleReject(e);
+        setIsBlacklisted(true);
       } else {
         throw new Error('Failed to add company');
       }
     } catch (error) {
       console.error('Error adding company:', error);
       toast.error('Failed to add company to NO NO list');
-      // Even if adding to NO NO list fails, still reject the job
-      await handleReject(e);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  if (isBlacklisted) {
+    return (
+      <>
+        <Card 
+          className="bg-red-950/20 hover:bg-red-950/30 transition-colors border-red-900/20 cursor-pointer w-full overflow-hidden group"
+          onClick={() => setDialogOpen(true)}
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="space-y-1">
+              <h3 className="text-sm font-medium text-red-300 break-words">
+                {job.title}
+              </h3>
+              <p className="text-xs text-red-300/70 flex items-center gap-2">
+                <Building2 className="w-3.5 h-3.5 shrink-0" />
+                {job.companyName}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <JobDialog 
+          job={job}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+        />
+      </>
+    );
+  }
 
   return (
     <>
@@ -118,8 +164,8 @@ export function JobCard({ job }: JobCardProps) {
                   className="text-red-400 border-red-500/20 hover:bg-red-500/10"
                   onClick={addToNoNoCompanies}
                 >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Add to NO NO
+                  <Trash2 className="h-3 w-3" />
+                  &nbsp; Company
                 </Button>
               </div>
             </div>

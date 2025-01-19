@@ -1,5 +1,3 @@
-'use client';
-
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Building2, MapPin, Clock, Briefcase, Plus } from "lucide-react";
@@ -22,6 +20,22 @@ function formatDate(dateString: string) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function getMethodAbbreviation(method: string) {
+  switch (method) {
+    case 'Manual': return 'M';
+    case 'EasyApply': return 'EA';
+    default: return method;
+  }
+}
+
+function getTypeAbbreviation(type: string) {
+  switch (type) {
+    case 'FullTime': return 'FT';
+    case 'Contract': return 'C';
+    default: return type;
+  }
 }
 
 export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
@@ -54,7 +68,6 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
 
   const handleDragEnd = () => {
     if (Math.abs(currentX) >= SWIPE_THRESHOLD) {
-      // Trigger swipe action
       const direction = currentX > 0 ? 'right' : 'left';
       onSwipe(direction);
     }
@@ -67,7 +80,6 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
       const result = await addToSettings(job.companyName, 'NoCompany');
       if (result.success) {
         toast.success(`Added ${job.companyName} to NO NO Companies`);
-        // After adding to NO NO list, automatically reject the job
         onSwipe('left');
       } else {
         throw new Error('Failed to add company');
@@ -75,9 +87,27 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
     } catch (error) {
       console.error('Error adding company:', error);
       toast.error('Failed to add company to NO NO list');
-      // Even if adding to NO NO list fails, still reject the job
       onSwipe('left');
     }
+  };
+
+  const getAppliedStatusColor = () => {
+    const status = job.applied;
+    if (!status || status === "0" || status === "NO") {
+      return "text-gray-400 bg-gray-500/10 border-gray-500/20";
+    }
+    if (status === "YES" || status === "1") {
+      return "text-green-400 bg-green-500/10 border-green-500/20";
+    }
+    return "text-blue-400 bg-blue-500/10 border-blue-500/20";
+  };
+
+  const getAppliedStatusText = () => {
+    const status = job.applied;
+    if (!status || status === "0") return "Not Applied";
+    if (status === "NO") return "Not Applied";
+    if (status === "YES" || status === "1") return "Applied";
+    return status;
   };
 
   useEffect(() => {
@@ -94,7 +124,6 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
   const rotation = currentX * 0.1;
   const opacity = Math.max(0, 1 - Math.abs(currentX) / 500);
 
-  // Calculate background color based on swipe direction
   const getSwipeIndicator = () => {
     if (Math.abs(currentX) < SWIPE_THRESHOLD) return '';
     if (currentX > 0) {
@@ -120,36 +149,40 @@ export function SwipeCard({ job, onSwipe }: SwipeCardProps) {
     >
       <div className="p-6 space-y-4 h-full flex flex-col relative">
         <div className="space-y-4">
-          <h2 className="text-xl font-medium text-blue-300 break-words">
-            {job.title}
-          </h2>
-          
+          {/* Top row with status badges and blacklist button */}
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-purple-300/70">
-              <Building2 className="w-4 h-4 shrink-0" />
-              <span className="text-base break-words">{job.companyName}</span>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border ${getAppliedStatusColor()}`}>
+                {getAppliedStatusText()}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full border border-blue-500/20 bg-blue-500/10 text-blue-300">
+                {getMethodAbbreviation(job.method)}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full border border-purple-500/20 bg-purple-500/10 text-purple-300">
+                {getTypeAbbreviation(job.jobType)}
+              </span>
             </div>
             <Button
               variant="outline"
               size="sm"
-              className="text-red-400 border-red-500/20 hover:bg-red-500/10"
+              className="h-6 text-[10px] text-red-400 border-red-500/20 hover:bg-red-500/10"
               onClick={(e) => {
                 e.stopPropagation();
                 addToNoNoCompanies();
               }}
             >
-              <Plus className="mr-1.5 h-3.5 w-3.5" />
-              Add to NO NO
+              <Plus className="h-3.5 w-3.5 mr-1" />
+              BLK List
             </Button>
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            <span className="bg-blue-500/10 text-blue-300 px-3 py-1 rounded-full border border-blue-500/20 text-sm">
-              {job.method}
-            </span>
-            <span className="bg-purple-500/10 text-purple-300 px-3 py-1 rounded-full border border-purple-500/20 text-sm">
-              {job.jobType}
-            </span>
+          
+          <h2 className="text-xl font-medium text-blue-300 break-words">
+            {job.title}
+          </h2>
+          
+          <div className="flex items-center gap-2 text-purple-300/70">
+            <Building2 className="w-4 h-4 shrink-0" />
+            <span className="text-base break-words">{job.companyName}</span>
           </div>
 
           <div className="flex flex-wrap gap-4 text-sm text-gray-400">

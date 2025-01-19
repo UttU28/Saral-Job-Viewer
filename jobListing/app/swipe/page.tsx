@@ -4,13 +4,19 @@ import { useEffect, useState } from "react";
 import { Job } from "@/types/job";
 import { SwipeCard } from "@/components/swipe-card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, LayoutGrid, Settings } from "lucide-react";
-import Link from "next/link";
+import { Check, X } from "lucide-react";
 import { toast } from "react-toastify";
 import { ConnectionStatusIndicator } from "@/components/connection-status";
 import { ConnectionStatus } from "@/lib/api";
 import { Progress } from "@/components/ui/progress";
-import { fetchJobs, applyJob, rejectJob } from "@/lib/api";
+import { fetchJobs, applyJob, rejectJob, getSettings } from "@/lib/api";
+
+interface Keyword {
+  id: number;
+  name: string;
+  type: 'NoCompany' | 'SearchList';
+  created_at: string;
+}
 
 export default function SwipePage() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -21,22 +27,38 @@ export default function SwipePage() {
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set(['EasyApply', 'Manual']));
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [isUsingSampleData, setIsUsingSampleData] = useState(false);
+  const [noNoCompanies, setNoNoCompanies] = useState<string[]>([]);
 
   useEffect(() => {
-    const loadJobs = async () => {
+    const loadData = async () => {
       try {
         setConnectionStatus('connecting');
         await new Promise(resolve => setTimeout(resolve, 1000));
         
+        // First fetch the keywords to get the No No companies list
         setConnectionStatus('fetching');
-        const { data, isUsingSampleData: usingSample } = await fetchJobs();
+        const { data: keywordsData } = await getSettings();
+        const noNoList = keywordsData
+          .filter((kw: Keyword) => kw.type === 'NoCompany')
+          .map((kw: Keyword) => kw.name.toLowerCase());
+        setNoNoCompanies(noNoList);
+
+        // Then fetch the jobs
+        const { data: jobsData, isUsingSampleData: usingSample } = await fetchJobs();
         
-        setJobs(data);
-        setFilteredJobs(data.filter(job => activeFilters.has(job.method)));
+        // Filter out jobs where applied is not 0 or "NO" and from No No companies
+        const unappliedJobs = jobsData.filter(job => {
+          const isUnapplied = job.applied === 0 || job.applied === "0" || job.applied === "NO" || !job.applied;
+          const isNotNoNoCompany = !noNoList.includes(job.companyName.toLowerCase());
+          return isUnapplied && isNotNoNoCompany;
+        });
+        
+        setJobs(unappliedJobs);
+        setFilteredJobs(unappliedJobs.filter(job => activeFilters.has(job.method)));
         setIsUsingSampleData(usingSample);
         setConnectionStatus(usingSample ? 'error' : 'connected');
       } catch (error) {
-        console.error('Error loading jobs:', error);
+        console.error('Error loading data:', error);
         setConnectionStatus('error');
         setIsUsingSampleData(true);
       } finally {
@@ -44,15 +66,19 @@ export default function SwipePage() {
       }
     };
 
-    loadJobs();
+    loadData();
   }, []);
 
   useEffect(() => {
-    // Filter jobs based on active filters
-    const filtered = jobs.filter(job => activeFilters.has(job.method));
+    // Filter jobs based on active filters and No No companies
+    const filtered = jobs.filter(job => {
+      const matchesFilter = activeFilters.has(job.method);
+      const isNotNoNoCompany = !noNoCompanies.includes(job.companyName.toLowerCase());
+      return matchesFilter && isNotNoNoCompany;
+    });
     setFilteredJobs(filtered);
     setCurrentIndex(0); // Reset index when filters change
-  }, [jobs, activeFilters]);
+  }, [jobs, activeFilters, noNoCompanies]);
 
   const handleSwipe = async (direction: 'left' | 'right') => {
     if (currentIndex < filteredJobs.length) {
@@ -98,43 +124,40 @@ export default function SwipePage() {
   const progress = filteredJobs.length > 0 ? (currentIndex / filteredJobs.length) * 100 : 0;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] relative">
-      <div className="container mx-auto px-4 py-4 max-w-2xl">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="outline" size="icon" className="text-gray-400 border-gray-800 hover:bg-gray-800/50">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Saral Swiper
-            </h1>
+    <div className="min-h-screen bg-[#0a0a0a]">
+      <main className="container mx-auto px-4 py-4 max-w-3xl">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className={`border-blue-500/20 transition-colors ${
+                activeFilters.has('EasyApply')
+                  ? 'bg-blue-500/10 text-blue-300'
+                  : 'bg-transparent text-gray-500 hover:text-blue-300 hover:bg-blue-500/5'
+              }`}
+              onClick={() => toggleFilter('EasyApply')}
+            >
+              EG Aply
+            </Button>
+            <Button
+              variant="outline"
+              className={`border-purple-500/20 transition-colors ${
+                activeFilters.has('Manual')
+                  ? 'bg-purple-500/10 text-purple-300'
+                  : 'bg-transparent text-gray-500 hover:text-purple-300 hover:bg-purple-500/5'
+              }`}
+              onClick={() => toggleFilter('Manual')}
+            >
+              Manual
+            </Button>
           </div>
-          <div className="flex items-center gap-3">
-            <ConnectionStatusIndicator 
-              status={connectionStatus}
-              isUsingSampleData={isUsingSampleData}
-            />
-            <Link href="/settings">
-              <Button
-                variant="outline"
-                size="icon"
-                className="text-blue-300 border-blue-500/20 hover:bg-blue-500/10"
-              >
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link href="/">
-              <Button variant="outline" className="text-purple-300 border-purple-500/20 hover:bg-purple-500/10">
-                <LayoutGrid className="mr-2 h-4 w-4" />
-                Grid View
-              </Button>
-            </Link>
-          </div>
+          <ConnectionStatusIndicator 
+            status={connectionStatus}
+            isUsingSampleData={isUsingSampleData}
+          />
         </div>
 
-        {/* Progress bar moved below header */}
+        {/* Progress bar */}
         <div className="relative mb-6">
           <Progress 
             value={progress} 
@@ -146,31 +169,6 @@ export default function SwipePage() {
               {currentIndex} / {filteredJobs.length} jobs
             </div>
           )}
-        </div>
-
-        <div className="flex justify-center gap-3 mb-6">
-          <Button
-            variant="outline"
-            className={`border-blue-500/20 transition-colors ${
-              activeFilters.has('EasyApply')
-                ? 'bg-blue-500/10 text-blue-300'
-                : 'bg-transparent text-gray-500 hover:text-blue-300 hover:bg-blue-500/5'
-            }`}
-            onClick={() => toggleFilter('EasyApply')}
-          >
-            Easy Apply
-          </Button>
-          <Button
-            variant="outline"
-            className={`border-purple-500/20 transition-colors ${
-              activeFilters.has('Manual')
-                ? 'bg-purple-500/10 text-purple-300'
-                : 'bg-transparent text-gray-500 hover:text-purple-300 hover:bg-purple-500/5'
-            }`}
-            onClick={() => toggleFilter('Manual')}
-          >
-            Manual Apply
-          </Button>
         </div>
 
         {loading ? (
@@ -193,7 +191,7 @@ export default function SwipePage() {
                 className="w-24 bg-red-500/10 text-red-400 border-red-500/20 hover:bg-red-500/20"
                 onClick={() => handleSwipe('left')}
               >
-                <ArrowLeft className="mr-2 h-4 w-4" />
+                <X className="mr-2 h-4 w-4" />
                 Pass
               </Button>
               <Button
@@ -202,8 +200,8 @@ export default function SwipePage() {
                 className="w-24 bg-green-500/10 text-green-400 border-green-500/20 hover:bg-green-500/20"
                 onClick={() => handleSwipe('right')}
               >
+                <Check className="mr-2 h-4 w-4" />
                 Apply
-                <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
           </div>
@@ -220,7 +218,7 @@ export default function SwipePage() {
             </div>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 }

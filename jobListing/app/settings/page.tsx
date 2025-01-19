@@ -3,8 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Plus, X } from "lucide-react";
-import Link from "next/link";
+import { Plus, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "react-toastify";
@@ -39,7 +38,7 @@ export default function SettingsPage() {
       const { data, isUsingSampleData: usingSample } = await getSettings();
       
       setKeywords(data);
-      setConnectionStatus('connected');
+      setConnectionStatus(usingSample ? 'error' : 'connected');
       setIsUsingSampleData(usingSample);
     } catch (error) {
       console.error('Error fetching keywords:', error);
@@ -95,17 +94,7 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
       <main className="container mx-auto px-4 py-4 max-w-3xl">
-        <div className="flex items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button variant="outline" size="icon" className="text-gray-400 border-gray-800 hover:bg-gray-800/50">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-              Settings
-            </h1>
-          </div>
+        <div className="flex items-center justify-end mb-8">
           <ConnectionStatusIndicator 
             status={connectionStatus}
             isUsingSampleData={isUsingSampleData}
