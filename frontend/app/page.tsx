@@ -322,71 +322,7 @@ export default function Home() {
           </div>
         </div>
         
-        <div className="mt-6 space-y-8">
-          {loading ? (
-            <div className="text-gray-400 text-center py-4">Loading jobs...</div>
-          ) : filteredJobs.length > 0 ? (
-            <>
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-blue-300 border-b border-blue-900/20 pb-2">
-                  Dekh le jo pasand aaye wo
-                  <span className="text-sm font-normal text-gray-400 ml-2">
-                    ({availableJobs.length} jobs)
-                  </span>
-                </h2>
-                <div className="grid gap-4">
-                  {availableJobs.map((job) => (
-                    <JobCard 
-                      key={job.id} 
-                      job={job} 
-                      showIfBlacklisted={showBlacklisted}
-                      easyApplyEnabled={easyApplyEnabled}
-                      onJobUpdate={handleJobUpdate}
-                      noNoCompanies={noNoCompanies}
-                      onBlacklistUpdate={handleBlacklistUpdate}
-                    />
-                  ))}
-                </div>
-                {availableJobs.length === 0 && (
-                  <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
-                    No available jobs match your filters
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <h2 className="text-xl font-semibold text-purple-300 border-b border-purple-900/20 pb-2">
-                  Ye ho gaya ab
-                  <span className="text-sm font-normal text-gray-400 ml-2">
-                    ({processedJobs.length} jobs)
-                  </span>
-                </h2>
-                <div className="grid gap-4">
-                  {processedJobs.map((job) => (
-                    <JobCard 
-                      key={job.id} 
-                      job={job} 
-                      showIfBlacklisted={showBlacklisted}
-                      easyApplyEnabled={easyApplyEnabled}
-                      onJobUpdate={handleJobUpdate}
-                      noNoCompanies={noNoCompanies}
-                      onBlacklistUpdate={handleBlacklistUpdate}
-                    />
-                  ))}
-                </div>
-                {processedJobs.length === 0 && (
-                  <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
-                    No processed jobs match your filters
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="text-gray-400 text-center py-4 bg-[#111111] rounded-lg p-4">
-              No jobs match your filters
-            </div>
-          )}
-        </div>
+        
       </main>
     </div>
   );
