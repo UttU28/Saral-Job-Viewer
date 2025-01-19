@@ -1,22 +1,22 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text
+from sqlalchemy import create_engine, Column, String, Text, Enum, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 import os
 from dotenv import load_dotenv
 
-
 load_dotenv()
 
 # Configure logging to show only errors
 logging.basicConfig(level=logging.ERROR)
-logging.getLogger('sqlalchemy.engine').setLevel(logging.ERROR)
+logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
 # Use declarative base
 Base = declarative_base()
 
-# Define the JobPosting model
+
+# Define the JobPosting and Keyword models
 class JobPosting(Base):
     __tablename__ = "allJobData"
 
@@ -32,7 +32,15 @@ class JobPosting(Base):
     applied = Column(Text)
 
 
-# Connect to the MySQL database
+class Keyword(Base):
+    __tablename__ = "searchKeywords"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+
+
+# Connect to the database
 DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL, echo=False)  # Disable SQLAlchemy echo
 
@@ -43,38 +51,40 @@ Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 
 
-def addTheJob(
+def get_session():
+    """Get a new session."""
+    return Session()
+
+
+def add_the_job(
     id: str,
-    jobLink: str,
-    jobTitle: str,
-    companyName: str,
-    jobLocation: str,
-    jobMethod: str,
-    timeStamp: str,
-    jobType: str,
-    jobDescription: str,
+    job_link: str,
+    job_title: str,
+    company_name: str,
+    job_location: str,
+    job_method: str,
+    time_stamp: str,
+    job_type: str,
+    job_description: str,
     applied: str,
 ):
-    """
-    Adds a job posting to the database if it doesn't already exist.
-    """
-    session = Session()
+    """Adds a job posting to the database if it doesn't already exist."""
+    session = get_session()
     try:
         # Check if the entry exists
         existing_entry = session.query(JobPosting).filter_by(id=id).first()
-
         if existing_entry is None:
             # Create a new entry
             new_entry = JobPosting(
                 id=id,
-                link=jobLink,
-                title=jobTitle,
-                companyName=companyName,
-                location=jobLocation,
-                method=jobMethod,
-                timeStamp=timeStamp,
-                jobType=jobType,
-                jobDescription=jobDescription,
+                link=job_link,
+                title=job_title,
+                companyName=company_name,
+                location=job_location,
+                method=job_method,
+                timeStamp=time_stamp,
+                jobType=job_type,
+                jobDescription=job_description,
                 applied=applied,
             )
             session.add(new_entry)
@@ -92,13 +102,81 @@ def addTheJob(
         session.close()
 
 
-def checkTheJob(id: str) -> bool:
-    """
-    Checks if a job posting with the given ID exists in the database.
-    """
-    session = Session()
+def check_the_job(id: str) -> bool:
+    """Checks if a job posting with the given ID exists in the database."""
+    session = get_session()
     try:
         existing_entry = session.query(JobPosting).filter_by(id=id).first()
         return existing_entry is None
+    finally:
+        session.close()
+
+
+def get_all_jobs():
+    """Fetches all job postings."""
+    session = get_session()
+    try:
+        return session.query(JobPosting).all()
+    finally:
+        session.close()
+
+
+def get_all_keywords():
+    """Fetches all keywords."""
+    session = get_session()
+    try:
+        return session.query(Keyword).all()
+    finally:
+        session.close()
+
+
+def add_keyword(name: str, type: str):
+    """Adds a new keyword to the database."""
+    session = get_session()
+    try:
+        new_keyword = Keyword(name=name, type=type)
+        session.add(new_keyword)
+        session.commit()
+        session.refresh(new_keyword)
+        return new_keyword
+    except Exception as e:
+        session.rollback()
+        print(f"Error: Could not add keyword. Reason: {e}")
+    finally:
+        session.close()
+
+
+def remove_keyword(keyword_id: int):
+    """Removes a keyword from the database by ID."""
+    session = get_session()
+    try:
+        keyword = session.query(Keyword).filter(Keyword.id == keyword_id).first()
+        if keyword:
+            session.delete(keyword)
+            session.commit()
+            return keyword
+        else:
+            return None
+    except Exception as e:
+        session.rollback()
+        print(f"Error: Could not remove keyword. Reason: {e}")
+    finally:
+        session.close()
+
+
+def update_job_status(job_id: str, applied_status: str):
+    """Updates the applied status of a job posting."""
+    session = get_session()
+    try:
+        job = session.query(JobPosting).filter(JobPosting.id == job_id).first()
+        if job:
+            job.applied = applied_status
+            session.commit()
+            return job
+        else:
+            return None
+    except Exception as e:
+        session.rollback()
+        print(f"Error: Could not update job status. Reason: {e}")
     finally:
         session.close()

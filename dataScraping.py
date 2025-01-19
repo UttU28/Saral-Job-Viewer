@@ -42,8 +42,7 @@ def readingBhawishyawaniPage(driver1):
             location = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__caption ").text.strip()
             applyMethod = None
 
-
-            if checkTheJob(id) and companyName not in notMyCompany:
+            if check_the_job(id) and companyName not in notMyCompany:
                 posting.click()
                 sleep(1)
                 try:
@@ -57,7 +56,7 @@ def readingBhawishyawaniPage(driver1):
                     applyMethod = 'CHECK'
                 # jobType = driver.find_element(By.CSS_SELECTOR, 'li.job-details-jobs-unified-top-card__job-insight').text
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
-                addTheJob(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "no")
+                add_the_job(id, link, title, companyName, location, applyMethod, time.time(), 'FullTime', jobDescription, "no")
 
         except Exception as e:
             print(f"Error in readingBhawishyawaniPage: {e}")
@@ -116,10 +115,10 @@ if __name__ == "__main__":
     driver = webdriver.Chrome(options=options)
 
     # Job Keywords List
-    myList = ["flask", "python auotmation", "python developer"]
+    myList = ["flask", "python automation", "python developer"]
     for eachElement in myList:
         currentPage = 0
-        searchText = build_linkedin_url(eachElement.strip().replace(" ", "%20"))
+        searchText = build_linkedin_url(eachElement.strip())
         print(searchText)
         # pageURL = f"https://www.linkedin.com/jobs/search/?&distance=25.0&f_JT=F%2CC&f_T=25764%2C30006%2C6483%2C22848%2C25165&f_TPR=r86400&geoId=103644278&keywords={searchText}&origin=JOB_SEARCH_PAGE_SEARCH_BUTTON&refresh=true&sortBy=DD&spellCorrectionEnabled=true&start="
         driver.get(searchText)
