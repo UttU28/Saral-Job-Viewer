@@ -9,7 +9,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://10.0.0.65:5000/:path*',
+        destination: 'https://lucky-adjusted-possum.ngrok-free.app/:path*',
       },
     ];
   },
