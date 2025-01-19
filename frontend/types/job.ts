@@ -8,4 +8,5 @@ export interface Job {
   timeStamp: string;
   jobType: string;
   jobDescription: string;
+  applied?: string; // Make this optional if not all jobs have this property
 }
