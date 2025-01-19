@@ -15,11 +15,6 @@ else
     exit 1
 fi
 
-# Validate that necessary environment variables are set
-if [[ -z "$DATABASE_URL" ]]; then
-    echo "Error: The DATABASE_URL environment variable is missing in the .env file."
-    exit 1
-fi
 
 # Function to create and activate the virtual environment if not present
 setup_venv() {
