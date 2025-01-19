@@ -8,44 +8,60 @@ This guide explains how to set up and manage a FastAPI application as a systemd 
 
 ### Step 1: Create or Edit the Service File
 
-1. Open the systemd service file for editing:
+1.  Open the systemd service file for editing:
 
     ```bash
     sudo nano /etc/systemd/system/runFastAPI.service
     ```
 
-2. Add or update the following content in the file:
+2.  Add or update the following content in the file:
 
-    ```ini
+        ```ini
+        [Unit]
+        Description=FastAPI Application Service
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/runFastAPI.sh
+        WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
+        Restart=always
+        RestartSec=5
+        User=robada
+
+        [Install]
+        WantedBy=multi-user.target
+
+        ```
+
+            ```ini
+
     [Unit]
-    Description=FastAPI Application Service
+    Description=Data Scraping Service
     After=network.target
 
-    [Service]
-    Type=simple
-    ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/runFastAPI.sh
-    WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
-    Restart=always
-    RestartSec=5
-    User=robada
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/runDataScraping.sh
+WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
+EnvironmentFile=/home/robada/Desktop/LinkedIn-Saral-Apply/.env
+Restart=always
+RestartSec=5
 
-    [Install]
-    WantedBy=multi-user.target
+# Allow the service to access the display
 
-    ```
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/robada/.Xauthority
 
-3. Save and exit:
-    - Press `CTRL+O` to save.
-    - Press `CTRL+X` to exit the editor.
+# Run the service as the robada user
 
----
+User=robada
+Group=robada
 
-### Step 2: Reload Systemd Daemon
+[Install]
+WantedBy=multi-user.target
+```
 
-Ensure the `runFastAPI.sh` script is executable:
-
-```bash
-chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/runFastAPI.sh
 ```
 
 ---

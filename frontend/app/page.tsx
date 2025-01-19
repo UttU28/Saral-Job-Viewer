@@ -2,9 +2,9 @@
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { JobCard } from "@/components/job-card";
-import { fetchJobs, ConnectionStatus } from "@/lib/api";
+import { fetchJobs, ConnectionStatus, getSettings } from "@/lib/api";
 import { Job } from "@/types/job";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Search, SlidersHorizontal, Briefcase, CheckCircle2, XCircle, Clock, EyeOff, Zap } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,13 @@ import { TECH_KEYWORDS } from "@/lib/utils";
 import { ConnectionStatusIndicator } from "@/components/connection-status";
 import { AnimatedStat } from "@/components/animated-stat";
 import { Switch } from "@/components/ui/switch";
+
+interface Keyword {
+  id: number;
+  name: string;
+  type: 'NoCompany' | 'SearchList';
+  created_at: string;
+}
 
 export default function Home() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -27,12 +34,27 @@ export default function Home() {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [isUsingSampleData, setIsUsingSampleData] = useState(false);
   const [easyApplyEnabled, setEasyApplyEnabled] = useState(false);
+  const [noNoCompanies, setNoNoCompanies] = useState<string[]>([]);
+
+  const loadKeywords = useCallback(async () => {
+    try {
+      const { data } = await getSettings();
+      const noNoList = data
+        .filter((kw: Keyword) => kw.type === 'NoCompany')
+        .map((kw: Keyword) => kw.name.toLowerCase());
+      setNoNoCompanies(noNoList);
+    } catch (error) {
+      console.error('Error loading keywords:', error);
+    }
+  }, []);
 
   useEffect(() => {
     const getJobs = async () => {
       try {
         setConnectionStatus('connecting');
         await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        await loadKeywords();
         
         setConnectionStatus('fetching');
         const { data, isUsingSampleData: usingSample } = await fetchJobs();
@@ -51,22 +73,19 @@ export default function Home() {
     };
 
     getJobs();
-  }, []);
+  }, [loadKeywords]);
 
   useEffect(() => {
     let filtered = [...jobs];
 
-    // Apply method filter
     if (methodFilter !== "all") {
       filtered = filtered.filter(job => job.method === methodFilter);
     }
 
-    // Apply type filter
     if (typeFilter !== "all") {
       filtered = filtered.filter(job => job.jobType === typeFilter);
     }
 
-    // Apply applied status filter
     if (appliedFilter !== "all") {
       filtered = filtered.filter(job => {
         if (appliedFilter === "applied") {
@@ -78,7 +97,6 @@ export default function Home() {
       });
     }
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const keywords = searchQuery.toLowerCase().split(',')
         .map(k => k.trim())
@@ -108,17 +126,38 @@ export default function Home() {
     setFilteredJobs(filtered);
   }, [jobs, methodFilter, typeFilter, appliedFilter, searchQuery]);
 
-  // Get unique methods and types for filters
+  const handleJobUpdate = useCallback((updatedJob: Job) => {
+    setJobs(prevJobs => 
+      prevJobs.map(job => job.id === updatedJob.id ? updatedJob : job)
+    );
+  }, []);
+
+  const handleBlacklistUpdate = useCallback(() => {
+    loadKeywords();
+  }, [loadKeywords]);
+
+  // Calculate statistics using useMemo to avoid unnecessary recalculations
+  const stats = useMemo(() => {
+    const totalJobs = jobs.length;
+    const appliedJobs = jobs.filter(job => 
+      job.applied === "YES" || job.applied === "1"
+    ).length;
+    const notAppliedJobs = jobs.filter(job => 
+      !job.applied || job.applied === "0" || job.applied === "NO"
+    ).length;
+    const pendingJobs = totalJobs - appliedJobs - notAppliedJobs;
+
+    return {
+      total: totalJobs,
+      applied: appliedJobs,
+      notApplied: notAppliedJobs,
+      pending: pendingJobs
+    };
+  }, [jobs]); // Only recalculate when jobs array changes
+
   const methods = ["all", ...new Set(jobs.map(job => job.method))];
   const types = ["all", ...new Set(jobs.map(job => job.jobType))];
 
-  // Calculate statistics
-  const totalJobs = jobs.length;
-  const appliedJobs = jobs.filter(job => job.applied === "YES" || job.applied === "1").length;
-  const notAppliedJobs = jobs.filter(job => !job.applied || job.applied === "0" || job.applied === "NO").length;
-  const pendingJobs = totalJobs - appliedJobs - notAppliedJobs;
-
-  // Separate jobs into two sections
   const availableJobs = filteredJobs.filter(job => 
     !job.applied || job.applied === "0" || job.applied === "NO"
   );
@@ -130,7 +169,6 @@ export default function Home() {
     <div className="min-h-screen bg-[#0a0a0a]">
       <main className="container mx-auto px-4 py-4 max-w-5xl">
         <div className="flex flex-col space-y-4">
-          {/* Connection Status */}
           <div className="flex justify-end">
             <ConnectionStatusIndicator 
               status={connectionStatus}
@@ -138,31 +176,30 @@ export default function Home() {
             />
           </div>
 
-          {/* Stats Dashboard */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <AnimatedStat
-              value={totalJobs}
+              value={stats.total}
               label="Total Jobs"
               icon={Briefcase}
               iconColor="text-blue-400"
               valueColor="text-gray-300"
             />
             <AnimatedStat
-              value={appliedJobs}
+              value={stats.applied}
               label="Applied"
               icon={CheckCircle2}
               iconColor="text-green-400"
               valueColor="text-green-400"
             />
             <AnimatedStat
-              value={notAppliedJobs}
+              value={stats.notApplied}
               label="Not Applied"
               icon={XCircle}
               iconColor="text-red-400"
               valueColor="text-red-400"
             />
             <AnimatedStat
-              value={pendingJobs}
+              value={stats.pending}
               label="Pending"
               icon={Clock}
               iconColor="text-yellow-400"
@@ -170,7 +207,6 @@ export default function Home() {
             />
           </div>
 
-          {/* Filters Section */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button
@@ -291,7 +327,6 @@ export default function Home() {
             <div className="text-gray-400 text-center py-4">Loading jobs...</div>
           ) : filteredJobs.length > 0 ? (
             <>
-              {/* Available Jobs Section */}
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold text-blue-300 border-b border-blue-900/20 pb-2">
                   Dekh le jo pasand aaye wo
@@ -306,6 +341,9 @@ export default function Home() {
                       job={job} 
                       showIfBlacklisted={showBlacklisted}
                       easyApplyEnabled={easyApplyEnabled}
+                      onJobUpdate={handleJobUpdate}
+                      noNoCompanies={noNoCompanies}
+                      onBlacklistUpdate={handleBlacklistUpdate}
                     />
                   ))}
                 </div>
@@ -316,7 +354,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Processed Jobs Section */}
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold text-purple-300 border-b border-purple-900/20 pb-2">
                   Ye ho gaya ab
@@ -331,6 +368,9 @@ export default function Home() {
                       job={job} 
                       showIfBlacklisted={showBlacklisted}
                       easyApplyEnabled={easyApplyEnabled}
+                      onJobUpdate={handleJobUpdate}
+                      noNoCompanies={noNoCompanies}
+                      onBlacklistUpdate={handleBlacklistUpdate}
                     />
                   ))}
                 </div>
