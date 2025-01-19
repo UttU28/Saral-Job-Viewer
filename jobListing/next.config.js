@@ -9,7 +9,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://94fa-73-206-193-141.ngrok-free.app/:path*',
+        destination: 'https://2a12-73-206-193-141.ngrok-free.app/:path*',
       },
     ];
   },

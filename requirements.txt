@@ -1,5 +1,3 @@
-Flask
-pyautogui
 selenium
 python-dotenv
 sqlalchemy
@@ -7,3 +5,4 @@ uvicorn
 fastapi
 cryptography
 pymysql
+fastapi[all]
