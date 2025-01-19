@@ -2,7 +2,7 @@ import { sampleJobs } from "@/data/sample-jobs";
 
 export type ConnectionStatus = 'connecting' | 'fetching' | 'connected' | 'error';
 
-const API_BASE_URL = 'https://2a12-73-206-193-141.ngrok-free.app';
+const API_BASE_URL = 'http://10.0.0.65:5000';
 
 async function handleApiResponse(response: Response) {
   if (!response.ok) {
