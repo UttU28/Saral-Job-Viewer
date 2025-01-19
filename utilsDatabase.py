@@ -127,6 +127,13 @@ def getAllJobs():
     finally:
         session.close()
 
+def getNotAppliedJobs():
+    session = getSession()
+    try:
+        return session.query(JobPosting).filter(JobPosting.applied == "NO").all()
+    finally:
+        session.close()
+
 # Fetch all keywords
 def getAllKeywords():
     session = getSession()

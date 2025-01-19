@@ -5,9 +5,13 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
-  env: {
-    // Default to localhost in development
-    API_URL: process.env.API_URL || 'https://lucky-adjusted-possum.ngrok-free.app',
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://10.0.0.65:5000/:path*',
+      },
+    ];
   },
 };
 

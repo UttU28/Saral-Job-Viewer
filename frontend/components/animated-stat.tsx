@@ -1,15 +1,21 @@
 import { useCountAnimation } from "@/hooks/use-count-animation";
-import { DivideIcon as LucideIcon } from "lucide-react";
+import { LucideIcon, LucideProps } from "lucide-react"; // Import icon types
 
 interface AnimatedStatProps {
   value: number;
   label: string;
-  icon: LucideIcon;
+  icon: LucideIcon; // LucideIcon type directly matches lucide-react icons
   iconColor: string;
   valueColor: string;
 }
 
-export function AnimatedStat({ value, label, icon: Icon, iconColor, valueColor }: AnimatedStatProps) {
+export function AnimatedStat({
+  value,
+  label,
+  icon: Icon,
+  iconColor,
+  valueColor,
+}: AnimatedStatProps) {
   const animatedValue = useCountAnimation(value);
 
   return (

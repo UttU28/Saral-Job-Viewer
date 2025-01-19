@@ -5,6 +5,7 @@ from utilsDatabase import (
     getAllJobs,
     getAllKeywords,
     addKeyword,
+    getNotAppliedJobs,
     removeKeyword,
     updateJobStatus,
     addToEasyApply,
@@ -82,7 +83,8 @@ def helloWorld():
 @app.get("/getData", response_model=list[JobPostingModel])
 def getData():
     """Fetch all job postings."""
-    records = getAllJobs()
+    # records = getAllJobs()
+    records = getNotAppliedJobs()
     if not records:
         raise HTTPException(status_code=404, detail="No data found.")
     return records

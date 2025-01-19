@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Settings, FlipHorizontal as SwipeHorizontal, LayoutGrid } from "lucide-react";
+import { Settings, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function NavBar() {
@@ -31,20 +31,6 @@ export function NavBar() {
               >
                 <LayoutGrid className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Grid View</span>
-              </Button>
-            </Link>
-            
-            <Link href="/swipe">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  "text-gray-400 hover:text-purple-300 hover:bg-purple-500/10",
-                  isActive('/swipe') && "text-purple-300 bg-purple-500/10"
-                )}
-              >
-                <SwipeHorizontal className="w-4 h-4 sm:mr-2" />
-                <span className="hidden sm:inline">Saral Swiper</span>
               </Button>
             </Link>
             

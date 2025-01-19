@@ -64,25 +64,53 @@ export const TECH_KEYWORDS = [
 ];
 
 export function highlightKeywords(text: string) {
-  // Sort keywords by length (longest first) to handle overlapping matches
-  const sortedKeywords = [...TECH_KEYWORDS].sort((a, b) => b.length - a.length);
-  
-  // Create a regex pattern that matches any of the keywords (case-insensitive)
-  const pattern = new RegExp(`(${sortedKeywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
-  
-  // Split the text into segments (matches and non-matches)
-  const segments = text.split(pattern);
-  
-  return segments.map((segment, index) => {
-    const isKeyword = sortedKeywords.some(keyword => 
-      segment.toLowerCase() === keyword.toLowerCase()
+  // Create a regex pattern that matches whole words only for each keyword
+  const keywordPatterns = TECH_KEYWORDS.map(keyword => ({
+    pattern: new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'),
+    keyword
+  }));
+
+  // Split text into paragraphs
+  const paragraphs = text.split(/\n+/);
+
+  return paragraphs.map((paragraph, pIndex) => {
+    let segments: { text: string; isKeyword: boolean }[] = [{ text: paragraph, isKeyword: false }];
+
+    // Apply each keyword pattern
+    keywordPatterns.forEach(({ pattern, keyword }) => {
+      segments = segments.flatMap(segment => {
+        if (segment.isKeyword) return [segment];
+
+        const parts = segment.text.split(pattern);
+        if (parts.length === 1) return [segment];
+
+        return parts.reduce((acc: typeof segments, part, i) => {
+          if (i !== 0) {
+            acc.push({ text: keyword, isKeyword: true });
+          }
+          if (part) {
+            acc.push({ text: part, isKeyword: false });
+          }
+          return acc;
+        }, []);
+      });
+    });
+
+    // Create paragraph with highlighted segments
+    return React.createElement(
+      'p',
+      {
+        key: pIndex,
+        className: pIndex > 0 ? 'mt-4' : undefined
+      },
+      segments.map((segment, i) =>
+        segment.isKeyword ?
+          React.createElement('span', {
+            key: i,
+            className: 'bg-blue-500/10 text-blue-300 px-1 rounded'
+          }, segment.text) :
+          segment.text
+      )
     );
-    
-    return isKeyword ? 
-      React.createElement('span', {
-        key: index,
-        className: 'bg-blue-500/10 text-blue-300 px-1 rounded'
-      }, segment) :
-      React.createElement('span', { key: index }, segment);
   });
 }
