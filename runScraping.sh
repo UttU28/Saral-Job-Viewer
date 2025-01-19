@@ -9,8 +9,30 @@ if [[ -z "$CHROME_DRIVER_PATH" || -z "$CHROME_APP_PATH" || -z "$CHROME_USER_DATA
     exit 1
 fi
 
-# Path to your Python script
+# Path to your Python script and environment
 PYTHON_SCRIPT="/home/robada/Desktop/LinkedIn-Saral-Apply/dataScraping.py"
+VENV_DIR="./env"
+REQUIREMENTS_FILE="./requirements.txt"
+
+# Create and activate virtual environment if not present
+setup_venv() {
+    if [ ! -d "$VENV_DIR" ]; then
+        echo "Virtual environment not found. Creating one..."
+        python3 -m venv "$VENV_DIR"
+        echo "Virtual environment created at $VENV_DIR."
+    fi
+    echo "Activating virtual environment..."
+    source "$VENV_DIR/bin/activate"
+    echo "Virtual environment activated."
+    
+    if [ -f "$REQUIREMENTS_FILE" ]; then
+        echo "Installing dependencies from $REQUIREMENTS_FILE..."
+        pip install -r "$REQUIREMENTS_FILE"
+        echo "Dependencies installed."
+    else
+        echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation."
+    fi
+}
 
 # Check and kill Chrome instances running on the configured port
 kill_chrome_on_port() {
@@ -47,6 +69,7 @@ run_script() {
 
 # Main execution
 echo "Starting job..."
+setup_venv
 kill_chrome_on_port
 terminate_previous_session
 run_script
