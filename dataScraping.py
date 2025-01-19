@@ -22,12 +22,14 @@ debuggingPort = os.getenv('DEBUGGING_PORT')
 
 
 def waitForPageLoad(driver):
+    """Wait for the job listings page to load."""
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, "job-card-container--clickable"))
     )
 
 
 def readJobListingsPage(driver):
+    """Scrape job postings from the current page."""
     excludedCompanies = ["Dice", "Epic", "Jobot", "ClickJobs.io"]
 
     currentPageData = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
@@ -49,10 +51,7 @@ def readJobListingsPage(driver):
                 try:
                     applyButton = driver.find_element(By.CLASS_NAME, "jobs-apply-button")
                     buttonText = applyButton.find_element(By.CLASS_NAME, "artdeco-button__text").text
-                    if 'easy' in buttonText.lower():
-                        applyMethod = 'EasyApply'
-                    else:
-                        applyMethod = 'Manual'
+                    applyMethod = 'EasyApply' if 'easy' in buttonText.lower() else 'Manual'
                 except NoSuchElementException:
                     applyMethod = 'CHECK'
 
@@ -79,11 +78,7 @@ params = {
 
 
 def buildLinkedinUrl(searchText):
-    """
-    Dynamically constructs a LinkedIn job search URL with pagination support.
-    :param searchText: The job keywords to search for.
-    :return: The complete LinkedIn job search URL.
-    """
+    """Construct a LinkedIn job search URL."""
     params["keywords"] = searchText
     baseUrl = "https://www.linkedin.com/jobs/search/"
     queryString = urlencode(params)
@@ -91,13 +86,15 @@ def buildLinkedinUrl(searchText):
 
 
 if __name__ == "__main__":
-    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
+    # Prepare Chrome user data directory
+    chromeDataDir = os.path.join(os.getcwd(), 'chrome-user-data')
     if not os.path.exists(chromeDataDir):
         os.makedirs(chromeDataDir)
         print(f"'{chromeDataDir}' directory was created.")
     else:
         print(f"'{chromeDataDir}' directory already exists.")
 
+    # Launch Chrome with remote debugging
     chromeApp = subprocess.Popen([
         chromeAppPath,
         f'--remote-debugging-port={debuggingPort}',
@@ -115,7 +112,6 @@ if __name__ == "__main__":
     # Job Keywords List
     jobKeywords = ["flask", "python automation", "python developer"]
     for keyword in jobKeywords:
-        currentPage = 0
         searchUrl = buildLinkedinUrl(keyword.strip())
         print(searchUrl)
         driver.get(searchUrl)
@@ -131,7 +127,6 @@ if __name__ == "__main__":
                 print(f"Error: {error}")
 
             try:
-                currentPage += 1
                 nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
                 nextButton.click()
             except:

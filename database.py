@@ -7,17 +7,17 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime
 
+# Load environment variables from .env file
 load_dotenv()
 
-# Configure logging to show only errors
+# Configure logging
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
-# Use declarative base
+# Initialize the SQLAlchemy declarative base
 Base = declarative_base()
 
-
-# Define the JobPosting and Keyword models
+# Define JobPosting model
 class JobPosting(Base):
     __tablename__ = "allJobData"
 
@@ -32,7 +32,7 @@ class JobPosting(Base):
     jobDescription = Column(Text)
     applied = Column(Text)
 
-
+# Define Keyword model
 class Keyword(Base):
     __tablename__ = "searchKeywords"
 
@@ -40,7 +40,7 @@ class Keyword(Base):
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
 
-
+# Define EasyApply model
 class EasyApply(Base):
     __tablename__ = "easyApplyData"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -49,23 +49,25 @@ class EasyApply(Base):
     status = Column(String(50), nullable=False)
     createdAt = Column(DateTime, default=datetime.utcnow)
 
-
-# Connect to the database
+# Database connection URL from environment variables
 databaseUrl = os.getenv("DATABASE_URL")
-engine = create_engine(databaseUrl, echo=False)  # Disable SQLAlchemy echo
+if not databaseUrl:
+    raise ValueError("DATABASE_URL is not set in the .env file!")
 
-# Create tables if they don't exist
+# Initialize the SQLAlchemy engine
+engine = create_engine(databaseUrl, echo=False)
+
+# Create all tables in the database if they don't already exist
 Base.metadata.create_all(engine)
 
-# Configure session maker
+# Create a session maker
 Session = sessionmaker(bind=engine)
 
-
+# Function to get a new session
 def getSession():
-    """Get a new session."""
     return Session()
 
-
+# Add a new job posting
 def addJob(
     jobId: str,
     jobLink: str,
@@ -78,11 +80,10 @@ def addJob(
     jobDescription: str,
     applied: str,
 ):
-    """Adds a job posting to the database if it doesn't already exist."""
     session = getSession()
     try:
         existingEntry = session.query(JobPosting).filter_by(id=jobId).first()
-        if existingEntry is None:
+        if not existingEntry:
             newEntry = JobPosting(
                 id=jobId,
                 link=jobLink,
@@ -99,7 +100,7 @@ def addJob(
             session.commit()
             print(f"Entry with ID {jobId} added.")
         else:
-            print(f"Entry with ID {jobId} already exists. Ignoring the new entry.")
+            print(f"Entry with ID {jobId} already exists. Ignoring.")
     except IntegrityError as e:
         session.rollback()
         print(f"IntegrityError: Could not add job with ID {jobId}. Reason: {e}")
@@ -109,9 +110,8 @@ def addJob(
     finally:
         session.close()
 
-
+# Check if a job exists by ID
 def checkJob(jobId: str) -> bool:
-    """Checks if a job posting with the given ID exists in the database."""
     session = getSession()
     try:
         existingEntry = session.query(JobPosting).filter_by(id=jobId).first()
@@ -119,27 +119,24 @@ def checkJob(jobId: str) -> bool:
     finally:
         session.close()
 
-
+# Fetch all job postings
 def getAllJobs():
-    """Fetches all job postings."""
     session = getSession()
     try:
         return session.query(JobPosting).all()
     finally:
         session.close()
 
-
+# Fetch all keywords
 def getAllKeywords():
-    """Fetches all keywords."""
     session = getSession()
     try:
         return session.query(Keyword).all()
     finally:
         session.close()
 
-
+# Add a new keyword
 def addKeyword(name: str, keywordType: str):
-    """Adds a new keyword to the database."""
     session = getSession()
     try:
         newKeyword = Keyword(name=name, type=keywordType)
@@ -153,9 +150,8 @@ def addKeyword(name: str, keywordType: str):
     finally:
         session.close()
 
-
+# Remove a keyword by ID
 def removeKeyword(keywordId: int):
-    """Removes a keyword from the database by ID."""
     session = getSession()
     try:
         keyword = session.query(Keyword).filter(Keyword.id == keywordId).first()
@@ -163,17 +159,15 @@ def removeKeyword(keywordId: int):
             session.delete(keyword)
             session.commit()
             return keyword
-        else:
-            return None
+        return None
     except Exception as e:
         session.rollback()
         print(f"Error: Could not remove keyword. Reason: {e}")
     finally:
         session.close()
 
-
+# Update job applied status
 def updateJobStatus(jobId: str, appliedStatus: str):
-    """Updates the applied status of a job posting."""
     session = getSession()
     try:
         job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
@@ -181,17 +175,15 @@ def updateJobStatus(jobId: str, appliedStatus: str):
             job.applied = appliedStatus
             session.commit()
             return job
-        else:
-            return None
+        return None
     except Exception as e:
         session.rollback()
         print(f"Error: Could not update job status. Reason: {e}")
     finally:
         session.close()
 
-
+# Add a job to EasyApply table
 def addToEasyApply(jobId: int, userName: str, status: str):
-    """Adds a new entry to EasyApply table."""
     session = getSession()
     try:
         newEntry = EasyApply(jobID=jobId, userName=userName, status=status)
@@ -205,9 +197,8 @@ def addToEasyApply(jobId: int, userName: str, status: str):
     finally:
         session.close()
 
-
+# Fetch all EasyApply entries
 def getAllEasyApply():
-    """Fetches all EasyApply entries."""
     session = getSession()
     try:
         return session.query(EasyApply).all()

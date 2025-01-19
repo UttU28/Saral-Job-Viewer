@@ -1,8 +1,8 @@
-selenium
-python-dotenv
-sqlalchemy
-uvicorn
 fastapi
-cryptography
-pymysql
-fastapi[all]
+uvicorn
+pydantic
+python-dotenv
+SQLAlchemy
+psycopg2-binary
+PyMySQL
+selenium

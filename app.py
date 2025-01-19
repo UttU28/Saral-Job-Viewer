@@ -1,18 +1,18 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from database import (
-    get_all_jobs,
-    get_all_keywords,
-    add_keyword,
-    remove_keyword,
-    update_job_status,
-    add_to_easy_apply,
+    getAllJobs,
+    getAllKeywords,
+    addKeyword,
+    removeKeyword,
+    updateJobStatus,
+    addToEasyApply,
 )
 
 app = FastAPI()
 
+# Add CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,7 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# Pydantic Models
 class JobPostingModel(BaseModel):
     id: str
     link: str
@@ -72,14 +72,17 @@ class AddToEasyApplyRequest(BaseModel):
     status: str
 
 
+# API Endpoints
 @app.get("/")
-def helwld():
-    return "Hello Duniya"
+def helloWorld():
+    """Welcome endpoint."""
+    return {"message": "Hello Duniya"}
 
 
 @app.get("/getData", response_model=list[JobPostingModel])
 def getData():
-    records = get_all_jobs()
+    """Fetch all job postings."""
+    records = getAllJobs()
     if not records:
         raise HTTPException(status_code=404, detail="No data found.")
     return records
@@ -87,33 +90,37 @@ def getData():
 
 @app.get("/getKeywords", response_model=list[KeywordModel])
 def getKeywords():
-    keywords = get_all_keywords()
+    """Fetch all keywords."""
+    keywords = getAllKeywords()
     if not keywords:
         raise HTTPException(status_code=404, detail="No keywords found.")
     return keywords
 
 
 @app.post("/addKeyword")
-def addKeyword(request: AddKeywordRequest):
-    new_keyword = add_keyword(request.name, request.type)
-    if new_keyword:
-        return {"message": "Keyword added successfully", "id": new_keyword.id}
-    raise HTTPException(status_code=500, detail="Failed to add keyword")
+def addKeywordEndpoint(request: AddKeywordRequest):
+    """Add a new keyword."""
+    newKeyword = addKeyword(request.name, request.type)
+    if newKeyword:
+        return {"message": "Keyword added successfully", "id": newKeyword.id}
+    raise HTTPException(status_code=500, detail="Failed to add keyword.")
 
 
 @app.post("/removeKeyword")
-def removeKeyword(request: RemoveKeywordRequest):
-    keyword = remove_keyword(request.id)
+def removeKeywordEndpoint(request: RemoveKeywordRequest):
+    """Remove a keyword."""
+    keyword = removeKeyword(request.id)
     if keyword:
-        return {"message": "Keyword removed successfully"}
+        return {"message": "Keyword removed successfully."}
     raise HTTPException(
         status_code=404, detail=f"No keyword found with ID {request.id}."
     )
 
 
 @app.post("/applyThis")
-def applyThis(request: ApplyRequestModel):
-    job = update_job_status(request.jobID, "YES")
+def applyJob(request: ApplyRequestModel):
+    """Mark a job as applied."""
+    job = updateJobStatus(request.jobID, "YES")
     if job:
         return {
             "message": "Application submitted successfully.",
@@ -127,8 +134,9 @@ def applyThis(request: ApplyRequestModel):
 
 
 @app.post("/rejectThis")
-def rejectThis(request: RejectRequestModel):
-    job = update_job_status(request.jobID, "NEVER")
+def rejectJob(request: RejectRequestModel):
+    """Reject a job posting."""
+    job = updateJobStatus(request.jobID, "NEVER")
     if job:
         return {"message": "Rejection recorded successfully.", "jobID": request.jobID}
     raise HTTPException(
@@ -137,18 +145,18 @@ def rejectThis(request: RejectRequestModel):
 
 
 @app.post("/addToEasyApply")
-def addToEasyApply(request: AddToEasyApplyRequest):
-    easy_apply_entry = add_to_easy_apply(request.jobID, request.userName, request.status)
-    if easy_apply_entry:
+def addToEasyApplyEndpoint(request: AddToEasyApplyRequest):
+    """Add a job to Easy Apply."""
+    easyApplyEntry = addToEasyApply(request.jobID, request.userName, request.status)
+    if easyApplyEntry:
         return {
-            "message": "Added to Easy Apply successfully",
-            "entryID": easy_apply_entry.id,
+            "message": "Added to Easy Apply successfully.",
+            "entryID": easyApplyEntry.id,
         }
-    raise HTTPException(
-        status_code=500, detail="Failed to add to Easy Apply"
-    )
+    raise HTTPException(status_code=500, detail="Failed to add to Easy Apply.")
 
 
+# Run the application
 if __name__ == "__main__":
     import uvicorn
 
