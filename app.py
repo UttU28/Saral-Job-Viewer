@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from database import (
+from utilsDatabase import (
     getAllJobs,
     getAllKeywords,
     addKeyword,

@@ -4,7 +4,7 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from database import *
+from utilsDataScraping import checkJob, addJob, getSearchKeywords
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
@@ -28,10 +28,8 @@ def waitForPageLoad(driver):
     )
 
 
-def readJobListingsPage(driver):
+def readJobListingsPage(driver, excludedCompanies):
     """Scrape job postings from the current page."""
-    excludedCompanies = ["Dice", "Epic", "Jobot", "ClickJobs.io"]
-
     currentPageData = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
     jobPostings = currentPageData.find_elements(By.CLASS_NAME, "job-card-container--clickable")
 
@@ -66,7 +64,7 @@ from urllib.parse import urlencode
 
 params = {
     "distance": "25.0",
-    "f_JT": "F",  # Fulltime
+    "f_JT": "F",
     "f_TPR": "r86400",
     "geoId": "103644278",
     "keywords": "{searchText}",
@@ -86,15 +84,17 @@ def buildLinkedinUrl(searchText):
 
 
 if __name__ == "__main__":
-    # Prepare Chrome user data directory
-    chromeDataDir = os.path.join(os.getcwd(), 'chrome-user-data')
+    keywordsData = getSearchKeywords()
+    excludedCompanies = keywordsData["noCompany"]
+    jobKeywords = keywordsData["searchList"]
+
+    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
     if not os.path.exists(chromeDataDir):
         os.makedirs(chromeDataDir)
         print(f"'{chromeDataDir}' directory was created.")
     else:
         print(f"'{chromeDataDir}' directory already exists.")
 
-    # Launch Chrome with remote debugging
     chromeApp = subprocess.Popen([
         chromeAppPath,
         f'--remote-debugging-port={debuggingPort}',
@@ -102,15 +102,12 @@ if __name__ == "__main__":
     ])
     sleep(2)
 
-    # Configure WebDriver
     options = Options()
     options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
     options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
     options.add_argument("--disable-notifications")
     driver = webdriver.Chrome(options=options)
 
-    # Job Keywords List
-    jobKeywords = ["flask", "python automation", "python developer"]
     for keyword in jobKeywords:
         searchUrl = buildLinkedinUrl(keyword.strip())
         print(searchUrl)
@@ -122,7 +119,7 @@ if __name__ == "__main__":
                 print("All Jobs have been scraped")
                 break
             except NoSuchElementException:
-                readJobListingsPage(driver)
+                readJobListingsPage(driver, excludedCompanies)
             except Exception as error:
                 print(f"Error: {error}")
 
@@ -132,5 +129,6 @@ if __name__ == "__main__":
             except:
                 print("No more pages to scrape")
                 break
+
     chromeApp.terminate()
     driver.quit()
