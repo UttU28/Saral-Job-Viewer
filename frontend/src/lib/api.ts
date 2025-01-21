@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://10.0.0.17:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://10.0.0.65:5000';
 
 interface ApplyRequest {
   jobID: string;
@@ -46,7 +46,6 @@ async function handleResponse(response: Response) {
   return response.json();
 }
 
-// Add retry logic for API calls
 async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
   try {
     return await fetch(url, options);

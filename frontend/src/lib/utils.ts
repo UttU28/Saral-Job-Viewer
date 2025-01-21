@@ -8,14 +8,10 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatTimestamp(timestamp: string): string {
   try {
-    // Convert the timestamp string to a number
     const timestampNum = parseFloat(timestamp);
-    // Convert to milliseconds (if in seconds)
     const date = new Date(timestampNum * 1000);
-    
     return formatDistanceToNow(date, { addSuffix: true });
-  } catch (error) {
-    console.error('Error formatting timestamp:', error);
+  } catch {
     return timestamp;
   }
 }

@@ -12,6 +12,19 @@ check_frontend_dir() {
     fi
 }
 
+# Function to load environment variables from a .env file
+load_env_file() {
+    ENV_FILE="$FRONTEND_DIR/.env"
+
+    if [ -f "$ENV_FILE" ]; then
+        echo "Loading environment variables from $ENV_FILE..."
+        export $(grep -v '^#' "$ENV_FILE" | xargs)
+        echo "Environment variables loaded successfully."
+    else
+        echo "Warning: No .env file found in $FRONTEND_DIR. Proceeding without it."
+    fi
+}
+
 # Function to install npm dependencies (only if not already installed)
 install_npm_dependencies() {
     echo "Navigating to frontend directory..."
@@ -27,19 +40,33 @@ install_npm_dependencies() {
     fi
 }
 
-# Function to run the app in development mode
-run_dev_frontend() {
-    echo "Running the frontend application in development mode on port 3000..."
-    npm run dev -- --port 3000 --host 0.0.0.0
+# Function to build the project for production
+build_frontend() {
+    echo "Building the frontend application for production..."
+    npm run build
     if [ $? -ne 0 ]; then
-        echo "Error: Failed to start the frontend application in development mode."
+        echo "Error: Frontend build failed."
         exit 1
     fi
-    echo "Frontend application is running in development mode on port 3000."
+    echo "Frontend application built successfully."
+}
+
+# Function to serve the built project
+serve_frontend() {
+    echo "Serving the frontend application in production mode..."
+    npm install -g serve
+    serve -s build -l 0.0.0.0:3000 &
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to serve the frontend application."
+        exit 1
+    fi
+    echo "Frontend application is now accessible on the network at port 3000."
 }
 
 # Main execution
 echo "Starting frontend setup..."
 check_frontend_dir
+load_env_file
 install_npm_dependencies
-run_dev_frontend
+build_frontend
+serve_frontend

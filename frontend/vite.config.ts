@@ -15,7 +15,14 @@ export default defineConfig({
     terserOptions: {
       compress: {
         drop_console: true,
-        drop_debugger: true
+        drop_debugger: true,
+        pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.trace']
+      },
+      mangle: {
+        safari10: true
+      },
+      format: {
+        comments: false
       }
     },
     sourcemap: false,
@@ -59,5 +66,10 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['lucide-react']
+  },
+  server: {
+    port: 3000,
+    strictPort: true,
+    host: true
   }
 });
