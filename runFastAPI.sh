@@ -99,9 +99,9 @@ trap cleanup EXIT
 echo "Starting the application..."
 setup_venv
 terminate_previous_session
-terminate_previous_ngrok
+# terminate_previous_ngrok
 run_app
-run_ngrok
+# run_ngrok
 echo "Application and ngrok are running. Press Ctrl+C to stop."
 
 # Wait for background processes to finish
