@@ -22,21 +22,22 @@ function App() {
   const [useBot, setUseBot] = useState(false);
   const [applicationMethod, setApplicationMethod] = useState<ApplicationMethod>('all');
 
-  // Calculate stats
-  const totalJobs = jobs.length;
-  const appliedJobs = jobs.filter(job => job.applied === 'YES').length;
-  const rejectedJobs = jobs.filter(job => job.applied === 'NEVER').length;
-  const pendingJobs = jobs.filter(job => job.applied === 'NO').length;
-
-  // Check if a company is blacklisted
+  // Define isCompanyBlacklisted function first
   const isCompanyBlacklisted = (companyName: string) => {
     return noCompanyKeywords.some(keyword => 
       companyName.toLowerCase().includes(keyword.name.toLowerCase())
     );
   };
 
-  // Filter jobs based on search query, application method, and blacklisted companies
-  const filteredJobs = jobs.filter(job => {
+  // Calculate stats for non-blacklisted jobs only
+  const filteredJobs = jobs.filter(job => !isCompanyBlacklisted(job.companyName));
+  const totalJobs = filteredJobs.length;
+  const appliedJobs = filteredJobs.filter(job => job.applied === 'YES').length;
+  const rejectedJobs = filteredJobs.filter(job => job.applied === 'NEVER').length;
+  const pendingJobs = filteredJobs.filter(job => job.applied === 'NO').length;
+
+  // Filter jobs based on search query, application method, and exclude blacklisted companies
+  const displayedJobs = filteredJobs.filter(job => {
     const matchesSearch = !searchQuery || 
       job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       job.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -75,7 +76,7 @@ function App() {
             setUseBot={setUseBot}
           />
           <Dashboard
-            jobs={filteredJobs}
+            jobs={displayedJobs}
             isLoading={jobsLoading}
             error={jobsError}
             searchQuery={searchQuery}
