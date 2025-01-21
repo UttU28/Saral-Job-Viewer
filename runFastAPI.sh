@@ -9,7 +9,9 @@ ENV_FILE="$APP_DIR/.env"
 
 # Load environment variables from the .env file
 if [ -f "$ENV_FILE" ]; then
+    echo "Loading environment variables from $ENV_FILE..."
     export $(grep -v '^#' "$ENV_FILE" | xargs)
+    echo "Environment variables loaded successfully."
 else
     echo "Error: .env file not found at $ENV_FILE"
     exit 1
@@ -36,19 +38,6 @@ setup_venv() {
     fi
 }
 
-# Function to terminate any previous ngrok processes
-terminate_previous_ngrok() {
-    echo "Checking for previous ngrok sessions..."
-    ngrok_pid=$(pgrep -f "ngrok.*http.*lucky-adjusted-possum.ngrok-free.app")
-    if [ -n "$ngrok_pid" ]; then
-        echo "Terminating previous ngrok session with PID $ngrok_pid..."
-        kill -9 "$ngrok_pid"
-        echo "Previous ngrok session terminated."
-    else
-        echo "No previous ngrok sessions found."
-    fi
-}
-
 # Function to terminate the last session of the app if it's already running
 terminate_previous_session() {
     echo "Checking for previous application sessions..."
@@ -71,24 +60,12 @@ run_app() {
     echo "FastAPI application started on http://0.0.0.0:5000 with PID $APP_PID"
 }
 
-# Function to run ngrok
-run_ngrok() {
-    echo "Starting ngrok to expose the FastAPI application..."
-    ngrok http --hostname=lucky-adjusted-possum.ngrok-free.app 5000 &
-    NGROK_PID=$! # Store the PID of ngrok
-    echo "ngrok started exposing http://lucky-adjusted-possum.ngrok-free.app with PID $NGROK_PID"
-}
-
 # Function to handle cleanup on script exit
 cleanup() {
-    echo "Stopping application and ngrok..."
+    echo "Stopping application..."
     if [ -n "$APP_PID" ]; then
         kill -9 "$APP_PID" 2>/dev/null
         echo "FastAPI application stopped."
-    fi
-    if [ -n "$NGROK_PID" ]; then
-        kill -9 "$NGROK_PID" 2>/dev/null
-        echo "ngrok stopped."
     fi
 }
 
@@ -99,10 +76,8 @@ trap cleanup EXIT
 echo "Starting the application..."
 setup_venv
 terminate_previous_session
-# terminate_previous_ngrok
 run_app
-# run_ngrok
-echo "Application and ngrok are running. Press Ctrl+C to stop."
+echo "Application is running. Press Ctrl+C to stop."
 
 # Wait for background processes to finish
 wait
