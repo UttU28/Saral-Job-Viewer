@@ -12,24 +12,25 @@ check_frontend_dir() {
     fi
 }
 
-# Function to install npm dependencies
+# Function to install npm dependencies (only if not already installed)
 install_npm_dependencies() {
     echo "Navigating to frontend directory..."
     cd "$FRONTEND_DIR" || exit
 
-    echo "Installing npm dependencies..."
-    if ! command -v npm &>/dev/null; then
-        echo "Error: npm is not installed. Please install Node.js and npm before proceeding."
-        exit 1
+    echo "Checking for existing npm dependencies..."
+    if [ ! -d "node_modules" ]; then
+        echo "Installing npm dependencies..."
+        npm install
+        echo "npm dependencies installed successfully."
+    else
+        echo "npm dependencies already installed. Skipping installation."
     fi
-    npm install
-    echo "npm dependencies installed successfully."
 }
 
 # Function to run the app in development mode
 run_dev_frontend() {
     echo "Running the frontend application in development mode on port 3000..."
-    npm run dev -- --port 3000 --host 0.0.0.0 &
+    npm run dev -- --port 3000 --host 0.0.0.0
     if [ $? -ne 0 ]; then
         echo "Error: Failed to start the frontend application in development mode."
         exit 1
@@ -42,4 +43,3 @@ echo "Starting frontend setup..."
 check_frontend_dir
 install_npm_dependencies
 run_dev_frontend
-echo "Frontend setup completed successfully. Access the application on your network."
