@@ -1,23 +1,33 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime
+from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timedelta
+import time
 
-# Load environment variables from .env file
+# Load environment variables
 load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 
-# Initialize the SQLAlchemy declarative base
+# Initialize SQLAlchemy base
 Base = declarative_base()
 
-# Define JobPosting model
+# Database connection URL from environment variables
+databaseUrl = os.getenv("DATABASE_URL")
+if not databaseUrl:
+    raise ValueError("DATABASE_URL is not set in the .env file!")
+
+# Initialize SQLAlchemy engine and session maker
+engine = create_engine(databaseUrl, echo=False)
+Session = sessionmaker(bind=engine)
+
+# Models
 class JobPosting(Base):
     __tablename__ = "allJobData"
 
@@ -27,12 +37,11 @@ class JobPosting(Base):
     companyName = Column(Text)
     location = Column(Text)
     method = Column(Text)
-    timeStamp = Column(Text)
+    timeStamp = Column(String)  # Assuming timeStamp is stored as a string
     jobType = Column(Text)
     jobDescription = Column(Text)
     applied = Column(Text)
 
-# Define Keyword model
 class Keyword(Base):
     __tablename__ = "searchKeywords"
 
@@ -40,34 +49,22 @@ class Keyword(Base):
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
 
-# Define EasyApply model
 class EasyApply(Base):
     __tablename__ = "easyApplyData"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     jobID = Column(Integer, nullable=False)
-    userName = Column(String(255), nullable=False)
     status = Column(String(50), nullable=False)
     createdAt = Column(DateTime, default=datetime.utcnow)
 
-# Database connection URL from environment variables
-databaseUrl = os.getenv("DATABASE_URL")
-if not databaseUrl:
-    raise ValueError("DATABASE_URL is not set in the .env file!")
-
-# Initialize the SQLAlchemy engine
-engine = create_engine(databaseUrl, echo=False)
-
-# Create all tables in the database if they don't already exist
+# Create all tables if they don't already exist
 Base.metadata.create_all(engine)
 
-# Create a session maker
-Session = sessionmaker(bind=engine)
-
-# Function to get a new session
+# Utility function to get a new session
 def getSession():
     return Session()
 
-# Add a new job posting
+# CRUD Functions
 def addJob(
     jobId: str,
     jobLink: str,
@@ -78,7 +75,7 @@ def addJob(
     timeStamp: str,
     jobType: str,
     jobDescription: str,
-    applied: str,
+    applied: str
 ):
     session = getSession()
     try:
@@ -98,51 +95,69 @@ def addJob(
             )
             session.add(newEntry)
             session.commit()
-            print(f"Entry with ID {jobId} added.")
+            logging.info(f"Job with ID {jobId} added.")
         else:
-            print(f"Entry with ID {jobId} already exists. Ignoring.")
+            logging.info(f"Job with ID {jobId} already exists.")
     except IntegrityError as e:
         session.rollback()
-        print(f"IntegrityError: Could not add job with ID {jobId}. Reason: {e}")
+        logging.error(f"IntegrityError: {e}")
     except Exception as e:
         session.rollback()
-        print(f"Error: Could not add job with ID {jobId}. Reason: {e}")
+        logging.error(f"Error: {e}")
     finally:
         session.close()
 
-# Check if a job exists by ID
-def checkJob(jobId: str) -> bool:
+def getCountForAcceptDeny():
     session = getSession()
     try:
-        existingEntry = session.query(JobPosting).filter_by(id=jobId).first()
-        return existingEntry is None
-    finally:
-        session.close()
-
-# Fetch all job postings
-def getAllJobs():
-    session = getSession()
-    try:
-        return session.query(JobPosting).all()
+        countAccepted = session.query(JobPosting).filter(JobPosting.applied == "YES").count()
+        countRejected = session.query(JobPosting).filter(JobPosting.applied == "NEVER").count()
+        return {
+            "countAccepted": countAccepted,
+            "countRejected": countRejected
+        }
+    except Exception as e:
+        logging.error(f"Error fetching counts: {e}")
+        return {"countAccepted": 0, "countRejected": 0}
     finally:
         session.close()
 
 def getNotAppliedJobs():
     session = getSession()
     try:
-        return session.query(JobPosting).filter(JobPosting.applied == "NO").all()
+        currentTimestamp = time.time()
+        fortyEightHoursAgo = currentTimestamp - (48 * 60 * 60)
+        return session.query(JobPosting).filter(
+            JobPosting.applied == "NO",
+            JobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
+        ).all()
+    except Exception as e:
+        logging.error(f"Error fetching not applied jobs: {e}")
+        return []
     finally:
         session.close()
 
-# Fetch all keywords
+def getAllJobs():
+    session = getSession()
+    try:
+        return session.query(JobPosting).all()
+    except Exception as e:
+        logging.error(f"Error fetching all jobs: {e}")
+        return []
+    finally:
+        session.close()
+
 def getAllKeywords():
     session = getSession()
     try:
         return session.query(Keyword).all()
+    except Exception as e:
+        logging.error(f"Error fetching all keywords: {e}")
+        return []
     finally:
         session.close()
 
-# Add a new keyword
+
 def addKeyword(name: str, keywordType: str):
     session = getSession()
     try:
@@ -151,13 +166,15 @@ def addKeyword(name: str, keywordType: str):
         session.commit()
         session.refresh(newKeyword)
         return newKeyword
+    except IntegrityError as e:
+        session.rollback()
+        logging.error(f"IntegrityError adding keyword: {e}")
     except Exception as e:
         session.rollback()
-        print(f"Error: Could not add keyword. Reason: {e}")
+        logging.error(f"Error adding keyword: {e}")
     finally:
         session.close()
 
-# Remove a keyword by ID
 def removeKeyword(keywordId: int):
     session = getSession()
     try:
@@ -169,11 +186,11 @@ def removeKeyword(keywordId: int):
         return None
     except Exception as e:
         session.rollback()
-        print(f"Error: Could not remove keyword. Reason: {e}")
+        logging.error(f"Error removing keyword: {e}")
+        return None
     finally:
         session.close()
 
-# Update job applied status
 def updateJobStatus(jobId: str, appliedStatus: str):
     session = getSession()
     try:
@@ -185,29 +202,36 @@ def updateJobStatus(jobId: str, appliedStatus: str):
         return None
     except Exception as e:
         session.rollback()
-        print(f"Error: Could not update job status. Reason: {e}")
+        logging.error(f"Error updating job status: {e}")
+        return None
     finally:
         session.close()
 
-# Add a job to EasyApply table
-def addToEasyApply(jobId: int, userName: str, status: str):
+def addToEasyApply(jobId: int, status: str):
     session = getSession()
     try:
-        newEntry = EasyApply(jobID=jobId, userName=userName, status=status)
+        newEntry = EasyApply(jobID=jobId, status=status)
         session.add(newEntry)
         session.commit()
         session.refresh(newEntry)
+
+        # Update job status to "YES"
+        updateJobStatus(jobId=str(jobId), appliedStatus="YES")
+
         return newEntry
     except Exception as e:
         session.rollback()
-        print(f"Error: Could not add to Easy Apply. Reason: {e}")
+        logging.error(f"Error adding to Easy Apply: {e}")
+        return None
     finally:
         session.close()
 
-# Fetch all EasyApply entries
 def getAllEasyApply():
     session = getSession()
     try:
         return session.query(EasyApply).all()
+    except Exception as e:
+        logging.error(f"Error fetching Easy Apply entries: {e}")
+        return []
     finally:
         session.close()

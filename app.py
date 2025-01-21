@@ -9,6 +9,7 @@ from utilsDatabase import (
     removeKeyword,
     updateJobStatus,
     addToEasyApply,
+    getCountForAcceptDeny,
 )
 
 app = FastAPI()
@@ -61,6 +62,7 @@ class ApplyRequestModel(BaseModel):
     jobID: str
     applyMethod: str
     link: str
+    useBot: bool
 
 
 class RejectRequestModel(BaseModel):
@@ -69,7 +71,6 @@ class RejectRequestModel(BaseModel):
 
 class AddToEasyApplyRequest(BaseModel):
     jobID: int
-    userName: str
     status: str
 
 
@@ -88,6 +89,20 @@ def getData():
     if not records:
         raise HTTPException(status_code=404, detail="No data found.")
     return records
+
+@app.get("/getCountForAcceptDeny")
+def countAcceptDeny():
+    """
+    Fetch the counts of accepted and rejected job applications.
+    """
+    try:
+        counts = getCountForAcceptDeny()
+        return {
+            "message": "Counts fetched successfully.",
+            "data": counts
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching counts: {str(e)}")
 
 
 @app.get("/getKeywords", response_model=list[KeywordModel])
@@ -121,18 +136,35 @@ def removeKeywordEndpoint(request: RemoveKeywordRequest):
 
 @app.post("/applyThis")
 def applyJob(request: ApplyRequestModel):
-    """Mark a job as applied."""
-    job = updateJobStatus(request.jobID, "YES")
-    if job:
-        return {
-            "message": "Application submitted successfully.",
-            "jobID": request.jobID,
-            "applyMethod": request.applyMethod,
-            "link": request.link,
-        }
-    raise HTTPException(
-        status_code=404, detail=f"No record found with ID {request.jobID}."
-    )
+    """Mark a job as applied or add it to Easy Apply."""
+    print(request.useBot)
+    if request.useBot:
+        # If useBot is True, add to Easy Apply
+        easyApplyEntry = addToEasyApply(request.jobID, 'PENDING')
+        if easyApplyEntry:
+            return {
+                "message": "Application added to Easy Apply successfully.",
+                "jobID": request.jobID,
+                "applyMethod": request.applyMethod,
+                "link": request.link,
+                "useBot": request.useBot,
+                "entryID": easyApplyEntry.id,
+            }
+        raise HTTPException(status_code=500, detail="Failed to add to Easy Apply.")
+    else:
+        # If useBot is False, just update the job status to "YES"
+        job = updateJobStatus(request.jobID, "YES")
+        if job:
+            return {
+                "message": "Application submitted successfully.",
+                "jobID": request.jobID,
+                "applyMethod": request.applyMethod,
+                "link": request.link,
+                "useBot": request.useBot,
+            }
+        raise HTTPException(
+            status_code=404, detail=f"No record found with ID {request.jobID}."
+        )
 
 
 @app.post("/rejectThis")
@@ -144,18 +176,6 @@ def rejectJob(request: RejectRequestModel):
     raise HTTPException(
         status_code=404, detail=f"No record found with ID {request.jobID}."
     )
-
-
-@app.post("/addToEasyApply")
-def addToEasyApplyEndpoint(request: AddToEasyApplyRequest):
-    """Add a job to Easy Apply."""
-    easyApplyEntry = addToEasyApply(request.jobID, request.userName, request.status)
-    if easyApplyEntry:
-        return {
-            "message": "Added to Easy Apply successfully.",
-            "entryID": easyApplyEntry.id,
-        }
-    raise HTTPException(status_code=500, detail="Failed to add to Easy Apply.")
 
 
 # Run the application

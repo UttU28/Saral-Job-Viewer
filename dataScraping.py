@@ -10,6 +10,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 from dotenv import load_dotenv
 import os
+from urllib.parse import urlencode
+
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +28,6 @@ def waitForPageLoad(driver):
     WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.CLASS_NAME, "job-card-container--clickable"))
     )
-
 
 def readJobListingsPage(driver, excludedCompanies):
     """Scrape job postings from the current page."""
@@ -60,8 +61,6 @@ def readJobListingsPage(driver, excludedCompanies):
             print(f"Error in readJobListingsPage: {e}")
 
 
-from urllib.parse import urlencode
-
 params = {
     "distance": "25.0",
     "f_JT": "F",
@@ -72,6 +71,7 @@ params = {
     "refresh": "true",
     "sortBy": "DD",
     "spellCorrectionEnabled": "true",
+    "f_E": "2,3,4",
 }
 
 
@@ -95,6 +95,7 @@ if __name__ == "__main__":
     else:
         print(f"'{chromeDataDir}' directory already exists.")
 
+    print(chromeAppPath, debuggingPort, chromeUserDataDir)
     chromeApp = subprocess.Popen([
         chromeAppPath,
         f'--remote-debugging-port={debuggingPort}',

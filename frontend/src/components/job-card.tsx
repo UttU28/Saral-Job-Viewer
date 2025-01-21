@@ -10,6 +10,7 @@ import {
   XIcon,
   CheckIcon,
   BanIcon,
+  BriefcaseIcon,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -26,6 +27,7 @@ interface JobCardProps {
   isBlacklisted: boolean;
   onUpdateStatus: (jobId: string, status: 'YES' | 'NEVER') => void;
   onAddKeyword?: (name: string, type: string) => Promise<void>;
+  useBot?: boolean;
 }
 
 export function JobCard({
@@ -42,18 +44,23 @@ export function JobCard({
   isBlacklisted,
   onUpdateStatus,
   onAddKeyword,
+  useBot = false,
 }: JobCardProps) {
   const formattedTime = formatTimestamp(timeStamp);
+  const isEasyApply = method.toLowerCase() === 'easyapply';
 
   const handleApply = async () => {
     try {
-      // Open the job link in a new tab
-      window.open(link, '_blank');
+      // Only open in new tab if not using bot or not EasyApply
+      if (!useBot || !isEasyApply) {
+        window.open(link, '_blank');
+      }
 
       await api.applyJob({
         jobID: id,
         applyMethod: method,
         link: link,
+        useBot: useBot,
       });
 
       toast.success('Successfully applied for the job!', {
@@ -128,9 +135,15 @@ export function JobCard({
               <MapPinIcon className="h-4 w-4 text-accent/70" />
               <span>{location}</span>
             </div>
-            <span className="px-2 py-1 bg-primary/10 text-primary rounded-full text-xs border border-primary/20">
-              {jobType}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-1 bg-primary/10 text-primary rounded-full text-xs border border-primary/20 flex items-center gap-1">
+                <BriefcaseIcon className="h-3 w-3" />
+                {jobType}
+              </span>
+              <span className="px-2 py-1 bg-accent/10 text-accent rounded-full text-xs border border-accent/20">
+                {method}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">

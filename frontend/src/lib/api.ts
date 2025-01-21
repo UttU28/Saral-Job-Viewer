@@ -1,9 +1,10 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://lucky-adjusted-possum.ngrok-free.app';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://0.0.0.0:5000';
 
 interface ApplyRequest {
   jobID: string;
   applyMethod: string;
   link: string;
+  useBot: boolean;
 }
 
 interface RejectRequest {
@@ -17,6 +18,11 @@ interface AddKeywordRequest {
 
 interface RemoveKeywordRequest {
   id: number;
+}
+
+interface AcceptDenyCount {
+  countAccepted: number;
+  countRejected: number;
 }
 
 type KeywordType = {
@@ -63,13 +69,23 @@ export const api = {
     return handleResponse(response);
   },
 
-  async applyJob({ jobID, applyMethod, link }: ApplyRequest) {
+  async getAcceptDenyCounts(): Promise<AcceptDenyCount> {
+    const response = await fetchWithRetry(`${API_BASE_URL}/getCountForAcceptDeny`, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    }, 3);
+    const data = await handleResponse(response);
+    return data.data;
+  },
+
+  async applyJob({ jobID, applyMethod, link, useBot }: ApplyRequest) {
     const response = await fetchWithRetry(`${API_BASE_URL}/applyThis`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ jobID, applyMethod, link }),
+      body: JSON.stringify({ jobID, applyMethod, link, useBot }),
     }, 3);
     return handleResponse(response);
   },

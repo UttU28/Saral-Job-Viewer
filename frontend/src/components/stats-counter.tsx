@@ -10,6 +10,8 @@ interface StatsCounterProps {
   appliedJobs: number;
   rejectedJobs: number;
   pendingJobs: number;
+  totalAccepted?: number;
+  totalRejected?: number;
 }
 
 export function StatsCounter({
@@ -17,6 +19,8 @@ export function StatsCounter({
   appliedJobs,
   rejectedJobs,
   pendingJobs,
+  totalAccepted = 0,
+  totalRejected = 0,
 }: StatsCounterProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -33,7 +37,7 @@ export function StatsCounter({
       <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Applied</p>
-          <p className="text-2xl font-bold">{appliedJobs}</p>
+          <p className="text-2xl font-bold text-accent">{appliedJobs + totalAccepted}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center">
           <CheckCircleIcon className="h-6 w-6 text-accent" />
@@ -43,7 +47,7 @@ export function StatsCounter({
       <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Rejected</p>
-          <p className="text-2xl font-bold">{rejectedJobs}</p>
+          <p className="text-2xl font-bold text-destructive">{rejectedJobs + totalRejected}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
           <XCircleIcon className="h-6 w-6 text-destructive" />

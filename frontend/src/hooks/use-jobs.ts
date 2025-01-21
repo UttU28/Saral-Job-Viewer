@@ -19,14 +19,25 @@ export function useJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [acceptDenyCounts, setAcceptDenyCounts] = useState<{
+    countAccepted: number;
+    countRejected: number;
+  }>({
+    countAccepted: 0,
+    countRejected: 0,
+  });
 
   const fetchJobs = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const data = await api.getJobs();
-      const sortedJobs = sortJobs(data);
+      const [jobsData, countsData] = await Promise.all([
+        api.getJobs(),
+        api.getAcceptDenyCounts(),
+      ]);
+      const sortedJobs = sortJobs(jobsData);
       setJobs(sortedJobs);
+      setAcceptDenyCounts(countsData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch jobs');
       console.error('Error fetching jobs:', err);
@@ -48,5 +59,11 @@ export function useJobs() {
     fetchJobs();
   }, [fetchJobs]);
 
-  return { jobs, isLoading, error, updateJobStatus };
+  return { 
+    jobs, 
+    isLoading, 
+    error, 
+    updateJobStatus,
+    acceptDenyCounts,
+  };
 }
