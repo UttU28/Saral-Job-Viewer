@@ -15,9 +15,7 @@ from config import (
     DEBUGGING_PORT,
 )
 from database import addTheJob, checkTheJob, getSearchKeywords
-
-
-load_dotenv()
+from app import app
 
 chromeDriverPath = CHROME_DRIVER_PATH
 chromeAppPath = CHROME_APP_PATH
@@ -45,8 +43,9 @@ def readJobListingsPage(driver, excludedCompanies):
             companyName = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__subtitle ").text.strip()
             jobLocation = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__caption ").text.strip()
             applyMethod = None
-
-            if checktheJob(jobId) and companyName not in excludedCompanies:
+            print(f"Here:{jobId} & {checkTheJob(jobId)}")
+            if not checkTheJob(jobId) and companyName not in excludedCompanies:
+                print("Not here")
                 posting.click()
                 sleep(1)
                 try:
@@ -57,7 +56,7 @@ def readJobListingsPage(driver, excludedCompanies):
                     applyMethod = 'CHECK'
 
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
-                addtheJob(jobId, jobLink, jobTitle, companyName, jobLocation, applyMethod, time.time(), 'FullTime', jobDescription, "NO")
+                addTheJob(jobId, jobLink, jobTitle, companyName, jobLocation, applyMethod, time.time(), 'FullTime', jobDescription, "NO")
 
         except Exception as e:
             print(f"Error in readJobListingsPage: {e}")
@@ -86,52 +85,54 @@ def buildLinkedinUrl(searchText):
 
 
 if __name__ == "__main__":
-    keywordsData = getSearchKeywords()
-    excludedCompanies = keywordsData["noCompany"]
-    jobKeywords = keywordsData["searchList"]
+    with app.app_context():
+        keywordsData = getSearchKeywords()
+        excludedCompanies = keywordsData["noCompany"]
+        jobKeywords = keywordsData["searchList"]
+        for kk in excludedCompanies:
+            print(kk)    
+        chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
+        if not os.path.exists(chromeDataDir):
+            os.makedirs(chromeDataDir)
+            print(f"'{chromeDataDir}' directory was created.")
+        else:
+            print(f"'{chromeDataDir}' directory already exists.")
 
-    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
-    if not os.path.exists(chromeDataDir):
-        os.makedirs(chromeDataDir)
-        print(f"'{chromeDataDir}' directory was created.")
-    else:
-        print(f"'{chromeDataDir}' directory already exists.")
+        print(chromeAppPath, debuggingPort, chromeUserDataDir)
+        chromeApp = subprocess.Popen([
+            chromeAppPath,
+            f'--remote-debugging-port={debuggingPort}',
+            f'--user-data-dir={chromeUserDataDir}'
+        ])
+        sleep(2)
 
-    print(chromeAppPath, debuggingPort, chromeUserDataDir)
-    chromeApp = subprocess.Popen([
-        chromeAppPath,
-        f'--remote-debugging-port={debuggingPort}',
-        f'--user-data-dir={chromeUserDataDir}'
-    ])
-    sleep(2)
+        options = Options()
+        options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
+        options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
+        options.add_argument("--disable-notifications")
+        driver = webdriver.Chrome(options=options)
 
-    options = Options()
-    options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
-    options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
-    options.add_argument("--disable-notifications")
-    driver = webdriver.Chrome(options=options)
+        for keyword in jobKeywords:
+            searchUrl = buildLinkedinUrl(keyword.strip())
+            print(searchUrl)
+            driver.get(searchUrl)
+            while True:
+                sleep(4)
+                try:
+                    driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
+                    print("All Jobs have been scraped")
+                    break
+                except NoSuchElementException:
+                    readJobListingsPage(driver, excludedCompanies)
+                except Exception as error:
+                    print(f"Error: {error}")
 
-    for keyword in jobKeywords:
-        searchUrl = buildLinkedinUrl(keyword.strip())
-        print(searchUrl)
-        driver.get(searchUrl)
-        while True:
-            sleep(4)
-            try:
-                driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
-                print("All Jobs have been scraped")
-                break
-            except NoSuchElementException:
-                readJobListingsPage(driver, excludedCompanies)
-            except Exception as error:
-                print(f"Error: {error}")
+                try:
+                    nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
+                    nextButton.click()
+                except:
+                    print("No more pages to scrape")
+                    break
 
-            try:
-                nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
-                nextButton.click()
-            except:
-                print("No more pages to scrape")
-                break
-
-    chromeApp.terminate()
-    driver.quit()
+        chromeApp.terminate()
+        driver.quit()

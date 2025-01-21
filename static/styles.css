@@ -1,46 +1,50 @@
+/* styles.css */
 body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 0;
+    font-family: 'Roboto', sans-serif;
     background-color: #f4f4f9;
 }
 
 .navbar {
-    background-color: #333;
-    color: white;
-    padding: 1rem;
-    text-align: center;
+    background-color: #1e88e5; /* Materialize primary color */
 }
 
 .content {
-    padding: 2rem;
-    max-width: 900px;
-    margin: 0 auto;
-    background-color: #fff;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    border-radius: 5px;
-}
-
-h2 {
-    text-align: center;
-    margin-bottom: 1rem;
+    margin-top: 20px;
 }
 
 table {
     width: 100%;
-    border-collapse: collapse;
-    margin-top: 1rem;
+    margin-top: 20px;
 }
 
-table, th, td {
-    border: 1px solid #ddd;
+td, th {
+    padding: 10px;
 }
 
-th, td {
-    padding: 0.5rem;
-    text-align: center;
+.collapse-content {
+    display: none;
 }
 
-th {
-    background-color: #f2f2f2;
+.show-more {
+    cursor: pointer;
+    color: #1e88e5;
+    text-decoration: underline;
+}
+
+.pagination {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.pagination a {
+    margin: 0 10px;
+}
+
+.pagination span {
+    margin: 0 10px;
+}
+
+.bubule_spacing {
+    padding-top: 2rem;
 }

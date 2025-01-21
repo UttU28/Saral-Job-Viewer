@@ -1,8 +1,9 @@
 {% extends "base.html" %}
-
 {% block content %}
 <h2>Job Listings</h2>
-<table>
+<button id="getNewJobsBtn" class="waves-effect waves-light btn">Get New Jobs</button>
+<div id="scrapingStatus"></div>
+<table class="striped">
     <thead>
         <tr>
             <th>ID</th>
@@ -11,8 +12,8 @@
             <th>Location</th>
             <th>Job Type</th>
             <th>Description</th>
-            <th>Applied</th>
             <th>Timestamp</th>
+            <th>Applied</th>
         </tr>
     </thead>
     <tbody>
@@ -23,11 +24,85 @@
             <td>{{ job.companyName }}</td>
             <td>{{ job.location }}</td>
             <td>{{ job.jobType }}</td>
-            <td>{{ job.jobDescription }}</td>
-            <td>{{ job.applied }}</td>
-            <td>{{ job.timeStamp }}</td>
+            <td>
+                <span class="collapse-toggle show-more" onclick="toggleDescription('{{ job.id }}')">Show more</span>
+                <div id="job-desc-{{ job.id }}" class="collapse-content">
+                    <p>{{ job.jobDescription }}</p>
+                </div>
+            </td>
+            <td>{{ job.timeStamp | unix_to_datetime }}</td>
+            <td>
+                <label>
+                    <input type="checkbox" class="filled-in" {% if job.applied == "Yes" %}checked{% endif %} 
+                        onchange="updateAppliedStatus('{{ job.id }}', this.checked)">
+                    <span></span>
+                </label>
+            </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+
+<div class="pagination">
+    {% if pagination.has_prev %}
+        <a href="{{ url_for('index', page=pagination.prev_num) }}">Previous</a>
+    {% endif %}
+    <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+    {% if pagination.has_next %}
+        <a href="{{ url_for('index', page=pagination.next_num) }}">Next</a>
+    {% endif %}
+</div>
+
+<script>
+    function toggleDescription(jobId) {
+        var description = document.getElementById('job-desc-' + jobId);
+        var toggleButton = document.querySelector('.collapse-toggle');
+
+        if (description.style.display === "none") {
+            description.style.display = "block";
+            toggleButton.textContent = "Show less";
+        } else {
+            description.style.display = "none";
+            toggleButton.textContent = "Show more";
+        }
+    }
+
+    // Function to update the 'applied' status when the checkbox is toggled
+    function updateAppliedStatus(jobId, isChecked) {
+        var url = "/update-applied-status/" + jobId + "/" + (isChecked ? "Yes" : "No");
+        fetch(url, {
+            method: "POST",
+        }).then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  console.log("Applied status updated successfully.");
+              } else {
+                  console.error("Failed to update applied status.");
+              }
+          });
+    }
+    // Add this new function
+    document.getElementById('getNewJobsBtn').addEventListener('click', function() {
+        this.disabled = true;
+        document.getElementById('scrapingStatus').textContent = 'Scraping in progress...';
+        
+        fetch('/run-scraper', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('scrapingStatus').textContent = 'Scraping completed successfully!';
+                    setTimeout(() => location.reload(), 2000);  // Reload the page after 2 seconds
+                } else {
+                    document.getElementById('scrapingStatus').textContent = 'Scraping failed. Please try again.';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                document.getElementById('scrapingStatus').textContent = 'An error occurred. Please try again.';
+            })
+            .finally(() => {
+                this.disabled = false;
+            });
+    });
+</script>
 {% endblock %}

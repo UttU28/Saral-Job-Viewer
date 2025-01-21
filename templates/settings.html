@@ -1,25 +1,32 @@
-<!-- settings.html -->
 {% extends "base.html" %}
 
 {% block content %}
-    <h2>Settings</h2>
-    <form method="POST">
+<h2 class="center-align">Settings</h2>
+<form method="POST">
+    <div class="input-field">
         <label for="chrome_driver_path">Chrome Driver Path:</label>
-        <input type="text" id="chrome_driver_path" name="CHROME_DRIVER_PATH" value="{{ config['CHROME_DRIVER_PATH'] }}"><br><br>
+        <input type="text" id="chrome_driver_path" name="CHROME_DRIVER_PATH" value="{{ config['CHROME_DRIVER_PATH'] }}">
+    </div>
 
+    <div class="input-field">
         <label for="chrome_app_path">Chrome App Path:</label>
-        <input type="text" id="chrome_app_path" name="CHROME_APP_PATH" value="{{ config['CHROME_APP_PATH'] }}"><br><br>
+        <input type="text" id="chrome_app_path" name="CHROME_APP_PATH" value="{{ config['CHROME_APP_PATH'] }}">
+    </div>
 
+    <div class="input-field">
         <label for="chrome_user_data_dir">Chrome User Data Directory:</label>
-        <input type="text" id="chrome_user_data_dir" name="CHROME_USER_DATA_DIR" value="{{ config['CHROME_USER_DATA_DIR'] }}"><br><br>
+        <input type="text" id="chrome_user_data_dir" name="CHROME_USER_DATA_DIR" value="{{ config['CHROME_USER_DATA_DIR'] }}">
+    </div>
 
+    <div class="input-field">
         <label for="debugging_port">Debugging Port:</label>
-        <input type="text" id="debugging_port" name="DEBUGGING_PORT" value="{{ config['DEBUGGING_PORT'] }}"><br><br>
+        <input type="text" id="debugging_port" name="DEBUGGING_PORT" value="{{ config['DEBUGGING_PORT'] }}">
+    </div>
 
-        <button type="submit">Save Settings</button>
-    </form>
+    <button type="submit" class="btn waves-effect waves-light">Save Settings</button>
+</form>
 
-    {% if success %}
-        <p style="color: green;">Settings saved successfully!</p>
-    {% endif %}
+{% if success %}
+    <p class="green-text">Settings saved successfully!</p>
+{% endif %}
 {% endblock %}

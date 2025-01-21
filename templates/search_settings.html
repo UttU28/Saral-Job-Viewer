@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Search Settings</h2>
+
+<div class="row">
+    <div class="col s12 m6">
+        <h3>Excluded Companies</h3>
+        <form method="POST">
+            <div class="input-field">
+                <input type="text" id="excluded-company-input" name="keyword" required>
+                <label for="excluded-company-input">Add Excluded Company</label>
+            </div>
+            <input type="hidden" name="category" value="noCompany">
+            <button class="btn waves-effect waves-light" type="submit">Add</button>
+        </form>
+        <div class="bubule_spacing" id="excluded-companies-list">
+            {% for company in keywords.noCompany %}
+                <div class="chip">
+                    {{ company }}
+                    <i class="close material-icons">X</i>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+    
+    <div class="col s12 m6">
+        <h3>Search Keywords</h3>
+        <form method="POST">
+            <div class="input-field">
+                <input type="text" id="search-keyword-input" name="keyword" required>
+                <label for="search-keyword-input">Add Search Keyword</label>
+            </div>
+            <input type="hidden" name="category" value="searchList">
+            <button class="btn waves-effect waves-light" type="submit">Add</button>
+        </form>
+        <div class="bubule_spacing" id="search-keywords-list">
+            {% for keyword in keywords.searchList %}
+                <div class="chip">
+                    {{ keyword }}
+                    <i class="close material-icons">X</i>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.chip .close').forEach(function(closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            const chip = this.parentElement;
+            const keyword = chip.textContent.trim().replace('X', '').trim();
+            const category = chip.closest('.col').querySelector('input[name="category"]').value;
+            
+            fetch('/remove-keyword', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ category: category, keyword: keyword }),
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    chip.remove();
+                } else {
+                    console.error('Failed to remove keyword');
+                }
+            });
+        });
+    });
+});
+</script>
+{% endblock %}

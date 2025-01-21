@@ -26,7 +26,7 @@ class Keyword(db.Model):
 
 
 # Function to add a new job to the database
-def addTheJob(job_data):
+def addTheJob(jobId, jobLink, jobTitle, companyName, jobLocation, applyMethod, timeStamp, jobType, jobDescription, applied):
     """
     Adds a new job to the database if it doesn't already exist.
 
@@ -34,25 +34,25 @@ def addTheJob(job_data):
                      - id, link, title, companyName, location,
                        method, timeStamp, jobType, jobDescription, applied
     """
-    existing_job = Job.query.get(job_data["id"])
+    existing_job = Job.query.get(jobId)
     if not existing_job:
         new_job = Job(
-            id=job_data["id"],
-            link=job_data["link"],
-            title=job_data["title"],
-            companyName=job_data["companyName"],
-            location=job_data["location"],
-            method=job_data["method"],
-            timeStamp=job_data["timeStamp"],
-            jobType=job_data["jobType"],
-            jobDescription=job_data["jobDescription"],
-            applied=job_data["applied"],
+            id=jobId,
+            link=jobLink,
+            title=jobTitle,
+            companyName=companyName,
+            location=jobLocation,
+            method=applyMethod,
+            timeStamp=timeStamp,
+            jobType=jobType,
+            jobDescription=jobDescription,
+            applied=applied,
         )
         db.session.add(new_job)
         db.session.commit()
-        print(f"Job '{job_data['title']}' added to the database.")
+        print(f"Job '{jobTitle}' added to the database.")
     else:
-        print(f"Job '{job_data['title']}' already exists in the database.")
+        print(f"Job '{jobTitle}' already exists in the database.")
 
 
 # Function to check if a job exists in the database

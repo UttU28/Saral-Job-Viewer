@@ -1,19 +1,33 @@
+<!-- base.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Materialize CSS CDN -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     <title>Job Listings</title>
 </head>
 <body>
-    <nav class="navbar">
-        <h1>Job Portal</h1>
-        <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('settings') }}">Settings</a> <!-- Link to settings page -->
+    <nav class="navbar blue">
+        <div class="nav-wrapper container">
+            <!-- Logo (Centered) -->
+            <a href="#" class="brand-logo center">Job Portal</a>
+            <!-- Navbar links (aligned left) -->
+            <ul class="left hide-on-med-and-down">
+                <li><a href="{{ url_for('index') }}">Home</a></li>
+                <li><a href="{{ url_for('search_settings') }}">Search Settings</a></li>
+                <li><a href="{{ url_for('settings') }}">Settings</a></li>
+            </ul>
+        </div>
     </nav>
-    <div class="content">
+
+    <div class="container">
         {% block content %}{% endblock %}
     </div>
+
+    <!-- Materialize JS CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
 </body>
 </html>
