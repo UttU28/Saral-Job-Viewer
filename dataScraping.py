@@ -1,26 +1,28 @@
 import subprocess
 from time import sleep
-import time
+import time, os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from utilsDataScraping import checkJob, addJob, getSearchKeywords
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
-from dotenv import load_dotenv
-import os
 from urllib.parse import urlencode
+from config import (
+    CHROME_DRIVER_PATH,
+    CHROME_APP_PATH,
+    CHROME_USER_DATA_DIR,
+    DEBUGGING_PORT,
+)
+from database import addTheJob, checkTheJob, getSearchKeywords
 
 
-# Load environment variables
 load_dotenv()
 
-# Environment Variables
-chromeDriverPath = os.getenv('CHROME_DRIVER_PATH')
-chromeAppPath = os.getenv('CHROME_APP_PATH')
-chromeUserDataDir = os.getenv('CHROME_USER_DATA_DIR')
-debuggingPort = os.getenv('DEBUGGING_PORT')
+chromeDriverPath = CHROME_DRIVER_PATH
+chromeAppPath = CHROME_APP_PATH
+chromeUserDataDir = CHROME_USER_DATA_DIR
+debuggingPort = DEBUGGING_PORT
 
 
 def waitForPageLoad(driver):
@@ -44,7 +46,7 @@ def readJobListingsPage(driver, excludedCompanies):
             jobLocation = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__caption ").text.strip()
             applyMethod = None
 
-            if checkJob(jobId) and companyName not in excludedCompanies:
+            if checktheJob(jobId) and companyName not in excludedCompanies:
                 posting.click()
                 sleep(1)
                 try:
@@ -55,7 +57,7 @@ def readJobListingsPage(driver, excludedCompanies):
                     applyMethod = 'CHECK'
 
                 jobDescription = driver.find_element(By.CLASS_NAME, "jobs-description__container").text
-                addJob(jobId, jobLink, jobTitle, companyName, jobLocation, applyMethod, time.time(), 'FullTime', jobDescription, "NO")
+                addtheJob(jobId, jobLink, jobTitle, companyName, jobLocation, applyMethod, time.time(), 'FullTime', jobDescription, "NO")
 
         except Exception as e:
             print(f"Error in readJobListingsPage: {e}")

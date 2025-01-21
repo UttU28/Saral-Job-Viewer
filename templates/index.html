@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Job Listings</h2>
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Title</th>
+            <th>Company Name</th>
+            <th>Location</th>
+            <th>Job Type</th>
+            <th>Description</th>
+            <th>Applied</th>
+            <th>Timestamp</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for job in jobs %}
+        <tr>
+            <td>{{ job.id }}</td>
+            <td><a href="{{ job.link }}">{{ job.title }}</a></td>
+            <td>{{ job.companyName }}</td>
+            <td>{{ job.location }}</td>
+            <td>{{ job.jobType }}</td>
+            <td>{{ job.jobDescription }}</td>
+            <td>{{ job.applied }}</td>
+            <td>{{ job.timeStamp }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
