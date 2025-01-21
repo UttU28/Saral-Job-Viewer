@@ -26,33 +26,20 @@ install_npm_dependencies() {
     echo "npm dependencies installed successfully."
 }
 
-# Function to build the frontend
-build_frontend() {
-    echo "Building the frontend application..."
-    npm run build
+# Function to run the app in development mode
+run_dev_frontend() {
+    echo "Running the frontend application in development mode on port 3000..."
+    npm run dev -- --port 3000 --host 0.0.0.0 &
     if [ $? -ne 0 ]; then
-        echo "Error: Frontend build failed."
+        echo "Error: Failed to start the frontend application in development mode."
         exit 1
     fi
-    echo "Frontend application built successfully."
-}
-
-# Function to start hosting the frontend
-host_frontend() {
-    echo "Hosting the frontend on the network..."
-    npm install -g serve
-    serve -s build -l 0.0.0.0:3000 &
-    if [ $? -ne 0 ]; then
-        echo "Error: Failed to host the frontend application."
-        exit 1
-    fi
-    echo "Frontend application hosted successfully on the network at port 3000."
+    echo "Frontend application is running in development mode on port 3000."
 }
 
 # Main execution
 echo "Starting frontend setup..."
 check_frontend_dir
 install_npm_dependencies
-build_frontend
-host_frontend
+run_dev_frontend
 echo "Frontend setup completed successfully. Access the application on your network."
