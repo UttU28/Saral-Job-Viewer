@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { KeywordManager } from '@/components/keyword-manager';
-import { FilterIcon, BriefcaseIcon } from 'lucide-react';
+import { FilterIcon, BriefcaseIcon, ArrowUpDownIcon } from 'lucide-react';
 
 interface SidebarProps {
   applicationMethod: 'all' | 'easyapply' | 'manual';
@@ -13,6 +13,8 @@ interface SidebarProps {
   keywordsLoading: boolean;
   useBot: boolean;
   setUseBot: (value: boolean) => void;
+  companySort: 'none' | 'asc';
+  setCompanySort: (sort: 'none' | 'asc') => void;
 }
 
 export function Sidebar({
@@ -25,7 +27,13 @@ export function Sidebar({
   keywordsLoading,
   useBot,
   setUseBot,
+  companySort,
+  setCompanySort,
 }: SidebarProps) {
+  const handleCompanySort = () => {
+    setCompanySort(companySort === 'none' ? 'asc' : 'none');
+  };
+
   return (
     <aside className="w-64 border-r border-border/10 p-4 hidden md:block">
       <div className="space-y-4">
@@ -63,6 +71,19 @@ export function Sidebar({
               </Button>
             </div>
           </div>
+
+          <div className="space-y-2 mb-4">
+            <label className="text-sm font-medium">Sort by Company</label>
+            <Button
+              variant={companySort === 'asc' ? "default" : "outline"}
+              className="w-full justify-start"
+              onClick={handleCompanySort}
+            >
+              <ArrowUpDownIcon className="h-4 w-4 mr-2" />
+              {companySort === 'none' ? 'Sort Companies A-Z' : 'Get Default Sort'}
+            </Button>
+          </div>
+
           <KeywordManager
             noCompanyKeywords={noCompanyKeywords}
             searchListKeywords={searchListKeywords}

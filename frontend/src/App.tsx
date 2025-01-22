@@ -8,6 +8,7 @@ import { LinkedinIcon } from 'lucide-react';
 import { useState } from 'react';
 
 type ApplicationMethod = 'all' | 'easyapply' | 'manual';
+type CompanySort = 'none' | 'asc';
 
 function App() {
   const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts } = useJobs();
@@ -21,6 +22,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [useBot, setUseBot] = useState(false);
   const [applicationMethod, setApplicationMethod] = useState<ApplicationMethod>('all');
+  const [companySort, setCompanySort] = useState<CompanySort>('none');
 
   // Define isCompanyBlacklisted function first
   const isCompanyBlacklisted = (companyName: string) => {
@@ -36,20 +38,27 @@ function App() {
   const rejectedJobs = filteredJobs.filter(job => job.applied === 'NEVER').length;
   const pendingJobs = filteredJobs.filter(job => job.applied === 'NO').length;
 
-  // Filter jobs based on search query, application method, and exclude blacklisted companies
-  const displayedJobs = filteredJobs.filter(job => {
-    const matchesSearch = !searchQuery || 
-      job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      job.jobDescription.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter and sort jobs based on all criteria
+  const displayedJobs = filteredJobs
+    .filter(job => {
+      const matchesSearch = !searchQuery || 
+        job.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        job.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        job.jobDescription.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesMethod = 
-      applicationMethod === 'all' ||
-      (applicationMethod === 'easyapply' && job.method.toLowerCase() === 'easyapply') ||
-      (applicationMethod === 'manual' && job.method.toLowerCase() === 'manual');
+      const matchesMethod = 
+        applicationMethod === 'all' ||
+        (applicationMethod === 'easyapply' && job.method.toLowerCase() === 'easyapply') ||
+        (applicationMethod === 'manual' && job.method.toLowerCase() === 'manual');
 
-    return matchesSearch && matchesMethod;
-  });
+      return matchesSearch && matchesMethod;
+    })
+    .sort((a, b) => {
+      if (companySort === 'none') return 0;
+      const companyA = a.companyName.toLowerCase();
+      const companyB = b.companyName.toLowerCase();
+      return companyA.localeCompare(companyB);
+    });
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -74,6 +83,8 @@ function App() {
             keywordsLoading={keywordsLoading}
             useBot={useBot}
             setUseBot={setUseBot}
+            companySort={companySort}
+            setCompanySort={setCompanySort}
           />
           <Dashboard
             jobs={displayedJobs}
