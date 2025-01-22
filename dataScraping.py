@@ -71,7 +71,7 @@ params = {
     "refresh": "true",
     "sortBy": "DD",
     "spellCorrectionEnabled": "true",
-    "f_E": "2,3,4",
+    "f_E": "2,3",
 }
 
 
