@@ -72,8 +72,8 @@ terminate_previous_session() {
 run_script() {
     echo "Starting the Python script..."
     source "$VENV_DIR/bin/activate"
-    python3 "$PYTHON_SCRIPT" &
-    echo "Python script started."
+    python3 "$PYTHON_SCRIPT"
+    echo "Python script execution completed."
 }
 
 # Main execution
@@ -82,8 +82,4 @@ setup_venv
 kill_chrome_on_port
 terminate_previous_session
 run_script
-echo "Job completed. Waiting 6 hours for the next run."
-
-# Wait 6 hours before re-running the script
-sleep 6h
-exec "$0"
+echo "Job completed."

@@ -12,6 +12,7 @@ from utilsDatabase import (
     addToEasyApply,
     getCountForAcceptDeny,
 )
+import os
 import subprocess
 
 
@@ -98,19 +99,33 @@ def getData():
 
 @app.get("/scrapeNewData")
 def scrapeNewData():
+    """Run the data scraping script with display environment variables."""
     try:
-        subprocess.run(["bash", "dataScraping.sh"], check=True)
+        # Set environment variables
+        env = os.environ.copy()
+        env["DISPLAY"] = ":0"
+        env["XAUTHORITY"] = "/home/robada/.Xauthority"
+
+        # Run the shell script with the specified environment variables
+        subprocess.run(
+            ["bash", "/home/robada/Desktop/LinkedIn-Saral-Apply/runDataScraping.sh"],
+            check=True,
+            env=env
+        )
         return {"success": True, "message": "Data scraping initiated successfully."}
     except subprocess.CalledProcessError as e:
+        # Handle errors if the script fails
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred while running the script: {str(e)}"
         )
     except Exception as e:
+        # Handle other exceptions
         raise HTTPException(
             status_code=500,
             detail=f"An unexpected error occurred: {str(e)}"
         )
+
 
 @app.get("/getCountForAcceptDeny")
 def countAcceptDeny():

@@ -1,6 +1,6 @@
 
+/etc/systemd/system/runFastAPI.service  
 ```ini
-
 [Unit]
 Description=FastAPI Application Service
 After=network.target
@@ -18,9 +18,27 @@ WantedBy=multi-user.target
 
 ```
 
-
+/etc/systemd/system/runFrontend.service  
 ```ini
+[Unit]
+Description=Frontend Development Hosting Service
+After=network.target
 
+[Service]
+Type=simple
+WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply/frontend
+ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/runFrontend.sh
+Restart=always
+User=robada
+Environment=NODE_ENV=development
+
+[Install]
+WantedBy=multi-user.target
+```
+
+
+/etc/systemd/system/runDataScraping.service  
+```ini
 [Unit]
 Description=Data Scraping Service
 After=network.target
@@ -46,21 +64,38 @@ Group=robada
 [Install]
 WantedBy=multi-user.target
 ```
-
-
+OLD  
+NEW  
 ```ini
 [Unit]
-Description=Frontend Hosting Service
+Description=Data Scraping Service
 After=network.target
 
 [Service]
-ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/frontendSetup.sh
-WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply/frontend
-Restart=always
+Type=simple
+ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/runDataScraping.sh
+WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
+EnvironmentFile=/home/robada/Desktop/LinkedIn-Saral-Apply/.env
+
+# Allow the service to access the display
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/robada/.Xauthority
+
+# Run the service as the robada user
 User=robada
-Environment=NODE_ENV=production
+Group=robada
+```
+
+/etc/systemd/system/runDataScraping.timer  
+```ini
+[Unit]
+Description=Timer to run Data Scraping Service every 6 hours
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=6h
+Persistent=true
 
 [Install]
-WantedBy=multi-user.target
-
+WantedBy=timers.target
 ```
