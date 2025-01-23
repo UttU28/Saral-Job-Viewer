@@ -68,6 +68,27 @@ export const api = {
     return handleResponse(response);
   },
 
+  async getJobsByHours(hours: number) {
+    const response = await fetchWithRetry(`${API_BASE_URL}/getHoursOfData`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      body: JSON.stringify({ hours })
+    }, 3);
+    return handleResponse(response);
+  },
+
+  async scrapeNewData() {
+    const response = await fetchWithRetry(`${API_BASE_URL}/scrapeNewData`, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    }, 3);
+    return handleResponse(response);
+  },
+
   async getAcceptDenyCounts(): Promise<AcceptDenyCount> {
     const response = await fetchWithRetry(`${API_BASE_URL}/getCountForAcceptDeny`, {
       headers: {

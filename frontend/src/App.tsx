@@ -11,7 +11,7 @@ type ApplicationMethod = 'all' | 'easyapply' | 'manual';
 type CompanySort = 'none' | 'asc';
 
 function App() {
-  const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts } = useJobs();
+  const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts, fetchJobs } = useJobs();
   const {
     noCompanyKeywords,
     searchListKeywords,
@@ -54,11 +54,31 @@ function App() {
       return matchesSearch && matchesMethod;
     })
     .sort((a, b) => {
-      if (companySort === 'none') return 0;
-      const companyA = a.companyName.toLowerCase();
-      const companyB = b.companyName.toLowerCase();
-      return companyA.localeCompare(companyB);
+      // First, sort by applied status (NO first, others last)
+      if (a.applied === 'NO' && b.applied !== 'NO') return -1;
+      if (a.applied !== 'NO' && b.applied === 'NO') return 1;
+
+      // If both are applied/rejected, sort by timestamp
+      if (a.applied !== 'NO' && b.applied !== 'NO') {
+        const timestampA = parseFloat(a.timeStamp);
+        const timestampB = parseFloat(b.timeStamp);
+        return timestampB - timestampA;
+      }
+
+      // If both are active (NO) and company sort is enabled
+      if (companySort === 'asc' && a.applied === 'NO' && b.applied === 'NO') {
+        return a.companyName.toLowerCase().localeCompare(b.companyName.toLowerCase());
+      }
+
+      // Default to timestamp sort for remaining cases
+      const timestampA = parseFloat(a.timeStamp);
+      const timestampB = parseFloat(b.timeStamp);
+      return timestampB - timestampA;
     });
+
+  const handleHoursChange = async (hours: number) => {
+    await fetchJobs(hours);
+  };
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
@@ -85,6 +105,7 @@ function App() {
             setUseBot={setUseBot}
             companySort={companySort}
             setCompanySort={setCompanySort}
+            onHoursChange={handleHoursChange}
           />
           <Dashboard
             jobs={displayedJobs}

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from utilsDatabase import (
     getAllJobs,
     getAllKeywords,
+    getHoursOfData,
     addKeyword,
     getNotAppliedJobs,
     removeKeyword,
@@ -11,6 +12,8 @@ from utilsDatabase import (
     addToEasyApply,
     getCountForAcceptDeny,
 )
+import subprocess
+
 
 app = FastAPI()
 
@@ -73,6 +76,8 @@ class AddToEasyApplyRequest(BaseModel):
     jobID: int
     status: str
 
+class HoursRequest(BaseModel):
+    hours: int
 
 # API Endpoints
 @app.get("/")
@@ -90,6 +95,23 @@ def getData():
         raise HTTPException(status_code=404, detail="No data found.")
     return records
 
+
+@app.get("/scrapeNewData")
+def scrapeNewData():
+    try:
+        subprocess.run(["bash", "dataScraping.sh"], check=True)
+        return {"success": True, "message": "Data scraping initiated successfully."}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred while running the script: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred: {str(e)}"
+        )
+
 @app.get("/getCountForAcceptDeny")
 def countAcceptDeny():
     """
@@ -104,6 +126,17 @@ def countAcceptDeny():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching counts: {str(e)}")
 
+@app.post("/getHoursOfData", response_model=list[JobPostingModel])
+def get_hours_of_data(request: HoursRequest):
+    """Fetch job postings from the last specified hours."""
+    try:
+        print(request.hours)
+        timedRecords = getHoursOfData(request.hours)
+        if not timedRecords:
+            raise HTTPException(status_code=404, detail="No job postings found for the given hours.")
+        return timedRecords
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 @app.get("/getKeywords", response_model=list[KeywordModel])
 def getKeywords():
@@ -182,4 +215,4 @@ def rejectJob(request: RejectRequestModel):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=5002)

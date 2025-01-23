@@ -137,6 +137,21 @@ def getNotAppliedJobs():
     finally:
         session.close()
 
+def getHoursOfData(hours: int):
+    session = getSession()
+    try:
+        currentTimestamp = time.time()
+        fortyEightHoursAgo = currentTimestamp - (hours * 60 * 60)
+        return session.query(JobPosting).filter(
+            JobPosting.applied == "NO",
+            JobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
+        ).all()
+    except Exception as e:
+        logging.error(f"Error fetching not applied jobs: {e}")
+        return []
+    finally:
+        session.close()
+
 def getAllJobs():
     session = getSession()
     try:

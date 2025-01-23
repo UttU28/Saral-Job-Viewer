@@ -27,12 +27,12 @@ export function useJobs() {
     countRejected: 0,
   });
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (hours?: number) => {
     try {
       setIsLoading(true);
       setError(null);
       const [jobsData, countsData] = await Promise.all([
-        api.getJobs(),
+        hours ? api.getJobsByHours(hours) : api.getJobs(),
         api.getAcceptDenyCounts(),
       ]);
       const sortedJobs = sortJobs(jobsData);
@@ -65,5 +65,6 @@ export function useJobs() {
     error, 
     updateJobStatus,
     acceptDenyCounts,
+    fetchJobs,
   };
 }

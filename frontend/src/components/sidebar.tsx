@@ -1,7 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { KeywordManager } from '@/components/keyword-manager';
-import { FilterIcon, BriefcaseIcon, ArrowUpDownIcon } from 'lucide-react';
+import { FilterIcon, BriefcaseIcon, ArrowUpDownIcon, ClockIcon, RefreshCwIcon } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { useState } from 'react';
+import { api } from '@/lib/api';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   applicationMethod: 'all' | 'easyapply' | 'manual';
@@ -15,6 +19,7 @@ interface SidebarProps {
   setUseBot: (value: boolean) => void;
   companySort: 'none' | 'asc';
   setCompanySort: (sort: 'none' | 'asc') => void;
+  onHoursChange: (hours: number) => Promise<void>;
 }
 
 export function Sidebar({
@@ -29,9 +34,33 @@ export function Sidebar({
   setUseBot,
   companySort,
   setCompanySort,
+  onHoursChange,
 }: SidebarProps) {
+  const [hours, setHours] = useState<number>(6);
+  const [isScrapingData, setIsScrapingData] = useState(false);
+
   const handleCompanySort = () => {
     setCompanySort(companySort === 'none' ? 'asc' : 'none');
+  };
+
+  const handleHoursSubmit = async () => {
+    await onHoursChange(hours);
+  };
+
+  const handleScrapeNewData = async () => {
+    try {
+      setIsScrapingData(true);
+      const response = await api.scrapeNewData();
+      if (response.success) {
+        toast.success(response.message || 'Data scraping initiated successfully');
+      }
+    } catch (error) {
+      toast.error('Failed to start data scraping', {
+        description: error instanceof Error ? error.message : 'Please try again later'
+      });
+    } finally {
+      setIsScrapingData(false);
+    }
   };
 
   return (
@@ -42,6 +71,38 @@ export function Sidebar({
             <FilterIcon className="h-4 w-4" /> Filters
           </h3>
           <Separator className="my-2" />
+
+          <Button
+            variant="outline"
+            className="w-full justify-start mb-4"
+            onClick={handleScrapeNewData}
+            disabled={isScrapingData}
+          >
+            <RefreshCwIcon className={`h-4 w-4 mr-2 ${isScrapingData ? 'animate-spin' : ''}`} />
+            Fetch New Jobs
+          </Button>
+          
+          <div className="space-y-2 mb-4">
+            <label className="text-sm font-medium">Hours of Data</label>
+            <div className="flex gap-2">
+              <Input
+                type="number"
+                min="1"
+                value={hours}
+                onChange={(e) => setHours(parseInt(e.target.value) || 6)}
+                className="w-24"
+              />
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={handleHoursSubmit}
+              >
+                <ClockIcon className="h-4 w-4 mr-2" />
+                Update
+              </Button>
+            </div>
+          </div>
+
           <div className="space-y-2 mb-4">
             <label className="text-sm font-medium">Application Method</label>
             <div className="grid grid-cols-1 gap-2">
