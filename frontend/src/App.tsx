@@ -80,6 +80,10 @@ function App() {
     await fetchJobs(hours);
   };
 
+  const handleRetry = () => {
+    fetchJobs();
+  };
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <div className="min-h-screen bg-background flex flex-col">
@@ -122,6 +126,7 @@ function App() {
             addKeyword={addKeyword}
             isCompanyBlacklisted={isCompanyBlacklisted}
             useBot={useBot}
+            onRetry={handleRetry}
           />
         </div>
       </div>

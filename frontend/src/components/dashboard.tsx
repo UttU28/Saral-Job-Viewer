@@ -3,6 +3,8 @@ import { StatsCounter } from '@/components/stats-counter';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SearchIcon, Loader2Icon } from 'lucide-react';
+import { EmptyState } from '@/components/empty-state';
+import { ErrorState } from '@/components/error-state';
 import type { Job } from '@/data/sample-jobs';
 
 interface DashboardProps {
@@ -23,6 +25,7 @@ interface DashboardProps {
   addKeyword: (name: string, type: string) => Promise<void>;
   isCompanyBlacklisted: (companyName: string) => boolean;
   useBot: boolean;
+  onRetry?: () => void;
 }
 
 export function Dashboard({
@@ -40,6 +43,7 @@ export function Dashboard({
   addKeyword,
   isCompanyBlacklisted,
   useBot,
+  onRetry,
 }: DashboardProps) {
   return (
     <main className="flex-1 p-4">
@@ -84,13 +88,9 @@ export function Dashboard({
               <Loader2Icon className="h-8 w-8 animate-spin text-accent" />
             </div>
           ) : error ? (
-            <div className="text-center py-8 text-destructive">
-              <p>{error}</p>
-            </div>
+            <ErrorState error={error} onRetry={onRetry} />
           ) : jobs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No jobs found</p>
-            </div>
+            <EmptyState />
           ) : (
             jobs.map((job) => (
               <JobCard

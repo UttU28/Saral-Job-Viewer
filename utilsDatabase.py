@@ -126,7 +126,7 @@ def getNotAppliedJobs():
     session = getSession()
     try:
         currentTimestamp = time.time()
-        fortyEightHoursAgo = currentTimestamp - (48 * 60 * 60)
+        fortyEightHoursAgo = currentTimestamp - (6 * 60 * 60)
         return session.query(JobPosting).filter(
             JobPosting.applied == "NO",
             JobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
