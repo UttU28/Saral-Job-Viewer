@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { formatTimestamp } from '@/lib/utils';
+import { formatTimestamp, highlightKeywords } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -194,7 +194,7 @@ export function JobCard({
       
       <div className="bg-black/60 border border-border/10 rounded-lg p-4 max-h-48 overflow-y-auto scrollbar">
         <p className="text-sm text-foreground/90 whitespace-pre-wrap">
-          {jobDescription}
+          {highlightKeywords(jobDescription)}
         </p>
       </div>
       
