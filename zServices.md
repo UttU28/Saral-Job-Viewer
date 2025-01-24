@@ -69,21 +69,23 @@ NEW
 ```ini
 [Unit]
 Description=Data Scraping Service
-After=network.target
+After=network.target graphical.target
 
 [Service]
 Type=simple
+User=robada
+Group=robada
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/robada/.Xauthority
+Environment=HOME=/home/robada
 ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/runDataScraping.sh
 WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
 EnvironmentFile=/home/robada/Desktop/LinkedIn-Saral-Apply/.env
+Restart=always
+RestartSec=5
 
-# Allow the service to access the display
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/robada/.Xauthority
-
-# Run the service as the robada user
-User=robada
-Group=robada
+[Install]
+WantedBy=multi-user.target
 ```
 
 /etc/systemd/system/runDataScraping.timer  

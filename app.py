@@ -14,6 +14,7 @@ from utilsDatabase import (
 )
 import os
 import subprocess
+import socket
 
 
 app = FastAPI()
@@ -99,32 +100,25 @@ def getData():
 
 @app.get("/scrapeNewData")
 def scrapeNewData():
-    """Run the data scraping script with display environment variables."""
+    """Trigger the data scraping script via socket listener."""
     try:
-        # Set environment variables
-        env = os.environ.copy()
-        env["DISPLAY"] = ":0"
-        env["XAUTHORITY"] = "/home/robada/.Xauthority"
-
-        # Run the shell script with the specified environment variables
-        subprocess.run(
-            ["bash", "/home/robada/Desktop/LinkedIn-Saral-Apply/runDataScraping.sh"],
-            check=True,
-            env=env
-        )
-        return {"success": True, "message": "Data scraping initiated successfully."}
-    except subprocess.CalledProcessError as e:
-        # Handle errors if the script fails
-        raise HTTPException(
-            status_code=500,
-            detail=f"An error occurred while running the script: {str(e)}"
-        )
+        # Replace with your server's IP address on the local network11
+        HOST = '10.0.0.17' 
+        PORT = 12345
+        
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((HOST, PORT))
+            s.sendall(b'run_scraper\n')
+            # Wait for response
+            response = s.recv(1024)
+            return {"success": True, "message": f"Data scraping initiated: {response.decode()}"}
     except Exception as e:
-        # Handle other exceptions
         raise HTTPException(
             status_code=500,
-            detail=f"An unexpected error occurred: {str(e)}"
+            detail=f"Failed to trigger scraper: {str(e)}"
         )
+    finally:
+        s.close()
 
 
 @app.get("/getCountForAcceptDeny")

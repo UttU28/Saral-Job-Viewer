@@ -10,8 +10,6 @@ ENV_FILE="$APP_DIR/.env"
 # Load environment variables from the .env file
 if [ -f "$ENV_FILE" ]; then
     export $(grep -v '^#' "$ENV_FILE" | xargs)
-    # Set display for X server
-    export DISPLAY=:0
 else
     echo "Error: .env file not found at $ENV_FILE"
     exit 1
@@ -22,6 +20,11 @@ if [[ -z "$CHROME_DRIVER_PATH" || -z "$CHROME_APP_PATH" || -z "$CHROME_USER_DATA
     echo "Error: One or more environment variables are missing in the .env file."
     exit 1
 fi
+
+# Get the current X session user
+X_USER=$(who | grep -m1 '(:0)' | cut -d' ' -f1)
+export DISPLAY=:0
+export XAUTHORITY=/home/$X_USER/.Xauthority
 
 # Function to create and activate the virtual environment if not present
 setup_venv() {
@@ -74,7 +77,14 @@ terminate_previous_session() {
 run_script() {
     echo "Starting the Python script..."
     source "$VENV_DIR/bin/activate"
-    python3 "$PYTHON_SCRIPT" &
+    
+    # Ensure we're running as the correct user for X session access
+    if [ "$(whoami)" = "root" ]; then
+        echo "Running script as $X_USER..."
+        su - $X_USER -c "DISPLAY=:0 XAUTHORITY=/home/$X_USER/.Xauthority python3 '$PYTHON_SCRIPT'"
+    else
+        python3 "$PYTHON_SCRIPT"
+    fi
     echo "Python script started."
 }
 
@@ -107,7 +117,3 @@ echo "Waiting for script to complete..."
 wait
 cleanup
 echo "Job completed."
-
-# Wait 6 hours before re-running the script
-sleep 6h
-exec "$0"
