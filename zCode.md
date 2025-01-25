@@ -14,9 +14,11 @@ sudo systemctl start runFrontend.service
 sudo systemctl stop runFastAPI.service
 sudo systemctl enable runFastAPI.service
 sudo systemctl start runFastAPI.service
+sudo systemctl daemon-reload
 sudo systemctl stop runDataScraping.service
 sudo systemctl enable runDataScraping.service
 sudo systemctl start runDataScraping.service
+journalctl -u runDataScraping.service -f
 
 
 sudo systemctl status runDataScraping.service

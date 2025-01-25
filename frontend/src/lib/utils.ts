@@ -36,11 +36,23 @@ export const technicalKeywords = [
   "Azure API Management", "Secure Transactions", "Gaming APIs", "Unity3D"
 ];
 
+export function countKeywords(text: string): number {
+  const matches = text.match(new RegExp(technicalKeywords.map(keyword => `\\b${keyword}\\b`).join('|'), 'gi'));
+  return matches ? matches.length : 0;
+}
+
 export function highlightKeywords(text: string): React.ReactNode {
   // Create a map of keywords to their regex patterns
   const keywordPatterns = new Map(
     technicalKeywords.map(keyword => {
       // Special cases for single-letter keywords and specific terms
+      if (keyword === 'R') {
+        return [keyword, '\\b[Rr]\\b'];
+      }
+      if (keyword.toLowerCase() === 'api') {
+        return [keyword, '\\b[Aa][Pp][Ii]\\b'];
+      }
+      // Default case: match whole word with case insensitivity
       return [keyword, `\\b${keyword}\\b`];
     })
   );

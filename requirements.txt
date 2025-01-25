@@ -8,3 +8,5 @@ PyMySQL
 selenium
 mysqlclient
 cryptography
+pyautogui
+

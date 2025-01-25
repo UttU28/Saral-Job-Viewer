@@ -103,7 +103,7 @@ def scrapeNewData():
     """Trigger the data scraping script via socket listener."""
     try:
         # Replace with your server's IP address on the local network11
-        HOST = '10.0.0.17' 
+        HOST = '0.0.0.0' 
         PORT = 12345
         
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:

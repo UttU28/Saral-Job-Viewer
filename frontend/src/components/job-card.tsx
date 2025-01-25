@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { formatTimestamp, highlightKeywords } from '@/lib/utils';
+import { formatTimestamp, highlightKeywords, countKeywords } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -11,6 +11,7 @@ import {
   CheckIcon,
   BanIcon,
   BriefcaseIcon,
+  CodeIcon,
 } from 'lucide-react';
 
 interface JobCardProps {
@@ -48,6 +49,7 @@ export function JobCard({
 }: JobCardProps) {
   const formattedTime = formatTimestamp(timeStamp);
   const isEasyApply = method.toLowerCase() === 'easyapply';
+  const keywordCount = countKeywords(jobDescription);
 
   const handleApply = async () => {
     try {
@@ -142,6 +144,10 @@ export function JobCard({
               </span>
               <span className="px-2 py-1 bg-accent/10 text-accent rounded-full text-xs border border-accent/20">
                 {method}
+              </span>
+              <span className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded-full text-xs border border-purple-500/20 flex items-center gap-1">
+                <CodeIcon className="h-3 w-3" />
+                <span className="font-bold">{keywordCount}</span> keywords
               </span>
             </div>
           </div>
