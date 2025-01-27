@@ -50,7 +50,7 @@ export function Dashboard({
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="text-center space-y-4">
           <h2 className="text-4xl font-bold tracking-tight">
-            Find Your Next Opportunity
+            Job got Loda
           </h2>
           <p className="text-muted-foreground">
             Simplified job search and application process

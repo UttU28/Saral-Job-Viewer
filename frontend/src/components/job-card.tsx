@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { formatTimestamp, highlightKeywords, countKeywords } from '@/lib/utils';
+import { formatTimestamp, highlightKeywords, countKeywords, getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -12,7 +12,9 @@ import {
   BanIcon,
   BriefcaseIcon,
   CodeIcon,
+  AlertTriangleIcon,
 } from 'lucide-react';
+import { useRef } from 'react';
 
 interface JobCardProps {
   id: string;
@@ -47,9 +49,46 @@ export function JobCard({
   onAddKeyword,
   useBot = false,
 }: JobCardProps) {
+  const descriptionRef = useRef<HTMLDivElement>(null);
   const formattedTime = formatTimestamp(timeStamp);
   const isEasyApply = method.toLowerCase() === 'easyapply';
   const keywordCount = countKeywords(jobDescription);
+  const matchedKeywords = getMatchedKeywords(jobDescription);
+  const negativeKeywords = getNegativeKeywords(jobDescription);
+
+  const scrollToKeyword = (keyword: string) => {
+    if (descriptionRef.current) {
+      const descriptionText = descriptionRef.current.textContent || '';
+      const keywordIndex = descriptionText.toLowerCase().indexOf(keyword.toLowerCase());
+      
+      if (keywordIndex !== -1) {
+        // Get all text nodes in the description
+        const textNodes = Array.from(descriptionRef.current.querySelectorAll('span'));
+        let currentLength = 0;
+        let targetNode = null;
+        
+        // Find the text node containing our keyword
+        for (const node of textNodes) {
+          const nodeText = node.textContent || '';
+          if (keywordIndex >= currentLength && keywordIndex < currentLength + nodeText.length) {
+            targetNode = node;
+            break;
+          }
+          currentLength += nodeText.length;
+        }
+
+        if (targetNode) {
+          targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add a temporary highlight effect
+          targetNode.style.transition = 'background-color 0.3s ease';
+          targetNode.style.backgroundColor = 'rgba(147, 51, 234, 0.3)'; // Tailwind purple-500 with lower opacity
+          setTimeout(() => {
+            targetNode.style.backgroundColor = '';
+          }, 1500);
+        }
+      }
+    }
+  };
 
   const handleApply = async () => {
     try {
@@ -149,6 +188,16 @@ export function JobCard({
                 <CodeIcon className="h-3 w-3" />
                 <span className="font-bold">{keywordCount}</span> keywords
               </span>
+              <span className="px-2 py-1 bg-gray-500/10 text-gray-400 rounded-full text-xs border border-gray-500/20 flex items-center gap-1">
+                <ClockIcon className="h-3 w-3" />
+                {formattedTime}
+              </span>
+              {negativeKeywords.length > 0 && (
+                <span className="px-2 py-1 bg-red-500/10 text-red-400 rounded-full text-xs border border-red-500/20 flex items-center gap-1">
+                  <AlertTriangleIcon className="h-3 w-3" />
+                  <span className="font-bold">{negativeKeywords.length}</span> restrictions
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -198,16 +247,32 @@ export function JobCard({
         </div>
       </div>
       
-      <div className="bg-black/60 border border-border/10 rounded-lg p-4 max-h-48 overflow-y-auto scrollbar">
+      <div ref={descriptionRef} className="bg-black/60 border border-border/10 rounded-lg p-4 max-h-48 overflow-y-auto scrollbar">
         <p className="text-sm text-foreground/90 whitespace-pre-wrap">
           {highlightKeywords(jobDescription)}
         </p>
       </div>
       
       <div className="mt-4 flex items-center justify-between">
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <ClockIcon className="h-3 w-3 text-accent/70" />
-          <span>{formattedTime}</span>
+        <div className="flex flex-wrap gap-2">
+          {matchedKeywords.map((keyword, index) => (
+            <button
+              key={index}
+              onClick={() => scrollToKeyword(keyword)}
+              className="px-2 py-1 bg-purple-500/10 text-purple-400 rounded-full text-xs border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer"
+            >
+              {keyword}
+            </button>
+          ))}
+          {negativeKeywords.map((keyword, index) => (
+            <button
+              key={`negative-${index}`}
+              onClick={() => scrollToKeyword(keyword)}
+              className="px-2 py-1 bg-red-500/10 text-red-400 rounded-full text-xs border border-red-500/20 hover:bg-red-500/20 transition-colors cursor-pointer"
+            >
+              {keyword}
+            </button>
+          ))}
         </div>
         <div className="flex gap-2">
           <Button
