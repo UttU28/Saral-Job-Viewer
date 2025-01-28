@@ -26,6 +26,7 @@ interface DashboardProps {
   isCompanyBlacklisted: (companyName: string) => boolean;
   useBot: boolean;
   onRetry?: () => void;
+  onHoursChange: (hours: number) => Promise<void>;
 }
 
 export function Dashboard({
@@ -44,13 +45,14 @@ export function Dashboard({
   isCompanyBlacklisted,
   useBot,
   onRetry,
+  onHoursChange,
 }: DashboardProps) {
   return (
     <main className="flex-1 p-4">
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="text-center space-y-4">
           <h2 className="text-4xl font-bold tracking-tight">
-            Job got Loda
+            Find Your Next Opportunity
           </h2>
           <p className="text-muted-foreground">
             Simplified job search and application process
@@ -90,7 +92,7 @@ export function Dashboard({
           ) : error ? (
             <ErrorState error={error} onRetry={onRetry} />
           ) : jobs.length === 0 ? (
-            <EmptyState />
+            <EmptyState onHoursChange={onHoursChange} />
           ) : (
             jobs.map((job) => (
               <JobCard

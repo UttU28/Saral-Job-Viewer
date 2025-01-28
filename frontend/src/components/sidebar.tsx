@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { KeywordManager } from '@/components/keyword-manager';
-import { FilterIcon, BriefcaseIcon, ArrowUpDownIcon, ClockIcon, RefreshCwIcon } from 'lucide-react';
+import { FilterIcon, BriefcaseIcon, ArrowUpDownIcon, ClockIcon, RefreshCwIcon, CodeIcon, AlertTriangleIcon } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { api } from '@/lib/api';
@@ -19,6 +19,8 @@ interface SidebarProps {
   setUseBot: (value: boolean) => void;
   companySort: 'none' | 'asc';
   setCompanySort: (sort: 'none' | 'asc') => void;
+  keywordSort: 'none' | 'positive' | 'negative';
+  setKeywordSort: (sort: 'none' | 'positive' | 'negative') => void;
   onHoursChange: (hours: number) => Promise<void>;
 }
 
@@ -34,13 +36,29 @@ export function Sidebar({
   setUseBot,
   companySort,
   setCompanySort,
+  keywordSort,
+  setKeywordSort,
   onHoursChange,
 }: SidebarProps) {
   const [hours, setHours] = useState<number>(6);
   const [isScrapingData, setIsScrapingData] = useState(false);
 
   const handleCompanySort = () => {
-    setCompanySort(companySort === 'none' ? 'asc' : 'none');
+    if (companySort === 'none') {
+      setCompanySort('asc');
+      setKeywordSort('none');
+    } else {
+      setCompanySort('none');
+    }
+  };
+
+  const handleKeywordSort = (type: 'positive' | 'negative') => {
+    if (keywordSort === type) {
+      setKeywordSort('none');
+    } else {
+      setKeywordSort(type);
+      setCompanySort('none');
+    }
   };
 
   const handleHoursSubmit = async () => {
@@ -134,15 +152,35 @@ export function Sidebar({
           </div>
 
           <div className="space-y-2 mb-4">
-            <label className="text-sm font-medium">Sort by Company</label>
-            <Button
-              variant={companySort === 'asc' ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={handleCompanySort}
-            >
-              <ArrowUpDownIcon className="h-4 w-4 mr-2" />
-              {companySort === 'none' ? 'Sort Companies A-Z' : 'Get Default Sort'}
-            </Button>
+            <label className="text-sm font-medium">Sort Options</label>
+            <div className="grid grid-cols-1 gap-2">
+              <Button
+                variant={companySort === 'asc' ? "default" : "outline"}
+                className="justify-start"
+                onClick={handleCompanySort}
+              >
+                <ArrowUpDownIcon className="h-4 w-4 mr-2" />
+                {companySort === 'none' ? 'Sort Companies A-Z' : 'Reset Company Sort'}
+              </Button>
+
+              <Button
+                variant={keywordSort === 'positive' ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => handleKeywordSort('positive')}
+              >
+                <CodeIcon className="h-4 w-4 mr-2" />
+                {keywordSort === 'positive' ? 'Reset Skills Sort' : 'Most Skills First'}
+              </Button>
+
+              <Button
+                variant={keywordSort === 'negative' ? "default" : "outline"}
+                className="justify-start"
+                onClick={() => handleKeywordSort('negative')}
+              >
+                <AlertTriangleIcon className="h-4 w-4 mr-2" />
+                {keywordSort === 'negative' ? 'Reset Restrictions Sort' : 'Most Restrictions First'}
+              </Button>
+            </div>
           </div>
 
           <KeywordManager

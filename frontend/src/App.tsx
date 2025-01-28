@@ -6,9 +6,11 @@ import { useKeywords } from '@/hooks/use-keywords';
 import { Toaster } from 'sonner';
 import { LinkedinIcon } from 'lucide-react';
 import { useState } from 'react';
+import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 
 type ApplicationMethod = 'all' | 'easyapply' | 'manual';
 type CompanySort = 'none' | 'asc';
+type KeywordSort = 'none' | 'positive' | 'negative';
 
 function App() {
   const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts, fetchJobs } = useJobs();
@@ -23,6 +25,7 @@ function App() {
   const [useBot, setUseBot] = useState(false);
   const [applicationMethod, setApplicationMethod] = useState<ApplicationMethod>('all');
   const [companySort, setCompanySort] = useState<CompanySort>('none');
+  const [keywordSort, setKeywordSort] = useState<KeywordSort>('none');
 
   // Define isCompanyBlacklisted function first
   const isCompanyBlacklisted = (companyName: string) => {
@@ -63,6 +66,19 @@ function App() {
         const timestampA = parseFloat(a.timeStamp);
         const timestampB = parseFloat(b.timeStamp);
         return timestampB - timestampA;
+      }
+
+      // If keyword sort is active and both are active (NO)
+      if (keywordSort !== 'none' && a.applied === 'NO' && b.applied === 'NO') {
+        if (keywordSort === 'positive') {
+          const keywordsA = getMatchedKeywords(a.jobDescription).length;
+          const keywordsB = getMatchedKeywords(b.jobDescription).length;
+          return keywordsB - keywordsA; // Most keywords first
+        } else if (keywordSort === 'negative') {
+          const negativeA = getNegativeKeywords(a.jobDescription).length;
+          const negativeB = getNegativeKeywords(b.jobDescription).length;
+          return negativeB - negativeA; // Most restrictions first
+        }
       }
 
       // If both are active (NO) and company sort is enabled
@@ -110,6 +126,8 @@ function App() {
             companySort={companySort}
             setCompanySort={setCompanySort}
             onHoursChange={handleHoursChange}
+            keywordSort={keywordSort}
+            setKeywordSort={setKeywordSort}
           />
           <Dashboard
             jobs={displayedJobs}
