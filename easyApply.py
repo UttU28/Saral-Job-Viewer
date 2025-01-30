@@ -8,7 +8,7 @@ import os
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 import socket
 from utils.utilsScrapingQuestions import readTheInputsFrom
 import json
@@ -101,31 +101,37 @@ def updateQuestionsFile(newQuestions, existingQuestions):
     
     # print(f"Added {questionsAdded} new questions to the database.")
 
-if __name__ == "__main__":
-    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
-    if not os.path.exists(chromeDataDir):
-        os.makedirs(chromeDataDir)
-    
-    chromeApp = startChrome(debuggingPort, chromeUserDataDir, chromeAppPath)
-    driver = setupChromeDriver(debuggingPort, chromeDriverPath)
-
-    # Get all pending jobs
-    pending_jobs = getPendingEasyApplyJobs()
-    print(pending_jobs)
-    exit()
-    
-    for jobId in pending_jobs:
-        jobURL = f"https://www.linkedin.com/jobs/view/{jobId}/"
-        status = 'STARTED'
+def processJob(driver, jobId, jobURL):
+    """Process a single job application and return its status"""
+    status = 'STARTED'
+    try:
         print(f"Processing job {jobId} with status: {status}")
         driver.get(jobURL)
+        time.sleep(2)  # Wait for page to load
         
+        # First check for "No longer accepting applications" message
         try:
-            topCardDiv = WebDriverWait(driver, 5).until(
+            error_div = driver.find_element(By.CLASS_NAME, "jobs-details-top-card__apply-error")
+            error_message = error_div.find_element(By.CLASS_NAME, "artdeco-inline-feedback__message").text
+            
+            if "No longer accepting applications" in error_message:
+                status = 'FAILED'
+                print(f"Job {jobId} is no longer accepting applications")
+                updateEasyApplyStatus(jobId, status)
+                return status
+                
+        except NoSuchElementException:
+            # No error message found, continue with normal flow
+            pass
+            
+        # Rest of your existing code...
+        existingQuestions = loadExistingQuestions()
+        
+        # Wait for and find the Easy Apply button
+        try:
+            topCardDiv = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "jobs-apply-button--top-card"))
             )
-            
-            existingQuestions = loadExistingQuestions()
             
             easyApplyButton = topCardDiv.find_element(By.CLASS_NAME, "jobs-apply-button")
             easyApplyButton.click()
@@ -144,7 +150,7 @@ if __name__ == "__main__":
                 if currentFormHtml == previousFormHtml:
                     samePageCount += 1
                     if samePageCount >= maxSamePageAttempts:
-                        status = 'FAILED'
+                        status = 'RESUBMIT'
                         print(f"Processing job {jobId} with status: {status}")
                         break
                 else:
@@ -170,7 +176,7 @@ if __name__ == "__main__":
                             except Exception as e:
                                 pass
                             
-                            # submitButton.click()
+                            submitButton.click()
                             status = 'COMPLETED'
                             print(f"Processing job {jobId} with status: {status}")
                             break
@@ -182,23 +188,44 @@ if __name__ == "__main__":
                             nextButton = footer.find_element(By.CSS_SELECTOR, "button[aria-label='Review your application']")
                         nextButton.click()
                 except Exception as e:
-                    status = 'FAILED'
+                    status = 'RESUBMIT'
                     print(f"Processing job {jobId} with status: {status}")
                 
-                if status in ['COMPLETED', 'FAILED']:
-                    # Update the job status in database
-                    updateEasyApplyStatus(jobId, status == 'COMPLETED')
+                if status in ['COMPLETED', 'RESUBMIT']:
+                    updateEasyApplyStatus(jobId, status)
                     print(f"Updated job {jobId} status to: {status}")
                     break
                 
         except TimeoutException:
             status = 'FAILED'
-            updateEasyApplyStatus(jobId, False)
-            print(f"Processing job {jobId} with status: {status}")
-        except Exception as e:
-            status = 'FAILED'
-            updateEasyApplyStatus(jobId, False)
-            print(f"Error processing job {jobId}: {str(e)}")
+            print(f"Could not find apply button")
+            
+    except Exception as e:
+        status = 'FAILED'
+        print(f"Error processing job: {str(e)}")
+    
+    # Update database status
+    updateEasyApplyStatus(jobId, status)
+    print(f"Updated job {jobId} status to: {status}")
+    
+    return status
+
+if __name__ == "__main__":
+    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
+    if not os.path.exists(chromeDataDir):
+        os.makedirs(chromeDataDir)
+    
+    chromeApp = startChrome(debuggingPort, chromeUserDataDir, chromeAppPath)
+    driver = setupChromeDriver(debuggingPort, chromeDriverPath)
+
+    # Get all pending jobs
+    pending_jobs = getPendingEasyApplyJobs()
+    print(pending_jobs)
+    # exit()
+    
+    for jobId in pending_jobs:
+        jobURL = f"https://www.linkedin.com/jobs/view/{jobId}/"
+        processJob(driver, jobId, jobURL)
     
     input("Press Enter to close the browser...")
     cleanupChrome(driver, chromeApp)

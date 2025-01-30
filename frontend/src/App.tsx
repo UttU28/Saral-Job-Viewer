@@ -4,12 +4,13 @@ import { Sidebar } from '@/components/sidebar';
 import { useJobs } from '@/hooks/use-jobs';
 import { useKeywords } from '@/hooks/use-keywords';
 import { Toaster } from 'sonner';
-import { LinkedinIcon, ExternalLinkIcon } from 'lucide-react';
+import { LinkedinIcon, ExternalLinkIcon, MenuIcon } from 'lucide-react';
 import { useState } from 'react';
 import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { LinkedIn } from '@/pages/LinkedIn';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 
 function MainApp() {
   const navigate = useNavigate();
@@ -100,13 +101,48 @@ function MainApp() {
     fetchJobs();
   };
 
+  const sidebarProps = {
+    applicationMethod,
+    setApplicationMethod,
+    noCompanyKeywords,
+    searchListKeywords,
+    addKeyword,
+    removeKeyword,
+    keywordsLoading,
+    useBot,
+    setUseBot,
+    companySort,
+    setCompanySort,
+    onHoursChange: handleHoursChange,
+    keywordSort,
+    setKeywordSort,
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="border-b border-border/10 sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center justify-between h-14 px-4">
-          <div className="flex items-center gap-2">
-            <LinkedinIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-lg font-semibold">Saral Job Apply</h1>
+          <div className="flex items-center gap-4">
+            {/* Mobile Sidebar Toggle */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden"
+                >
+                  <MenuIcon className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-80 p-0">
+                <Sidebar.Content {...sidebarProps} onClose={() => document.querySelector('button[aria-label="Close"]')?.click()} />
+              </SheetContent>
+            </Sheet>
+
+            <div className="flex items-center gap-2">
+              <LinkedinIcon className="h-6 w-6 text-primary" />
+              <h1 className="text-lg font-semibold">Saral Job Apply</h1>
+            </div>
           </div>
           <Button
             variant="outline"
@@ -121,22 +157,7 @@ function MainApp() {
       </header>
 
       <div className="flex-1 flex">
-        <Sidebar
-          applicationMethod={applicationMethod}
-          setApplicationMethod={setApplicationMethod}
-          noCompanyKeywords={noCompanyKeywords}
-          searchListKeywords={searchListKeywords}
-          addKeyword={addKeyword}
-          removeKeyword={removeKeyword}
-          keywordsLoading={keywordsLoading}
-          useBot={useBot}
-          setUseBot={setUseBot}
-          companySort={companySort}
-          setCompanySort={setCompanySort}
-          onHoursChange={handleHoursChange}
-          keywordSort={keywordSort}
-          setKeywordSort={setKeywordSort}
-        />
+        <Sidebar.Desktop {...sidebarProps} />
         <Dashboard
           jobs={displayedJobs}
           isLoading={jobsLoading}

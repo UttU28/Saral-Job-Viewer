@@ -74,7 +74,7 @@
       "Congo (+242)",
       "Cook Islands (+682)",
       "Costa Rica (+506)",
-      "Cote D\u2019Ivoire (Ivory Coast) (+225)",
+      "Cote D\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2Ivoire (Ivory Coast) (+225)",
       "Croatia (+385)",
       "Cuba (+53)",
       "Cyprus (+357)",
@@ -483,6 +483,171 @@
   },
   {
     "question": "Are you comfortable working fully onsite at our office in Dallas, Texas?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Email",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "irangarick@gmail.com"
+    ],
+    "currentAnswer": "irangarick@gmail.com",
+    "verified": true
+  },
+  {
+    "question": "Phone",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "1111111111",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Google Cloud Platform (GCP)?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "4",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Large Language Models (LLM)?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "Are you comfortable working in a hybrid setting?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "How many years of Software Development experience do you currently have?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "How many years of Information Technology experience do you currently have?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "4",
+    "verified": true
+  },
+  {
+    "question": "Are you comfortable commuting to this job's location?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Have you completed the following level of education: High School Diploma?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Oracle Database?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "Are you willing to undergo a background check, in accordance with local law/regulations?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Do you have a valid driver's license?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Do you have the following license or certification: OSHA Certifications?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "No",
+    "verified": true
+  },
+  {
+    "question": "Are you comfortable commuting to Lithia Springs, GA",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "How many years of experience do you have with mechanical systems in a high availability assembly/critical infrastructure environments? (ex: data centers, oil/gas refineries, hospitals, manufacturing)",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "This position is only for US Citizens , Are you a US Citizen ?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "No",
+    "verified": true
+  },
+  {
+    "question": "This is 100% onsite position , the location is Elizabeth city,NC . Would you like to apply ?",
     "type": "Dropdown",
     "required": true,
     "options": [

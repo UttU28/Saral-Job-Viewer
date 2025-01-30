@@ -29,8 +29,9 @@ export function StatsCounter({
   pendingManual,
 }: StatsCounterProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* Total Jobs */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Total Jobs</p>
           <p className="text-2xl font-bold">{totalJobs}</p>
@@ -40,7 +41,8 @@ export function StatsCounter({
         </div>
       </div>
 
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+      {/* Applied */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Applied</p>
           <p className="text-2xl font-bold text-accent">{appliedJobs + totalAccepted}</p>
@@ -50,7 +52,8 @@ export function StatsCounter({
         </div>
       </div>
 
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+      {/* Rejected */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Rejected</p>
           <p className="text-2xl font-bold text-destructive">{rejectedJobs + totalRejected}</p>
@@ -60,7 +63,8 @@ export function StatsCounter({
         </div>
       </div>
 
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+      {/* Pending */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Pending</p>
           <p className="text-2xl font-bold">{pendingJobs}</p>
@@ -70,9 +74,10 @@ export function StatsCounter({
         </div>
       </div>
 
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+      {/* Pending EasyApply */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">EasyApply</p>
+          <p className="text-sm font-medium text-muted-foreground">Pending EasyApply</p>
           <p className="text-2xl font-bold text-blue-400">{pendingEasyApply}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center">
@@ -80,9 +85,10 @@ export function StatsCounter({
         </div>
       </div>
 
-      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+      {/* Pending Manual */}
+      <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Manual</p>
+          <p className="text-sm font-medium text-muted-foreground">Pending Manual</p>
           <p className="text-2xl font-bold text-orange-400">{pendingManual}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-orange-500/10 flex items-center justify-center">

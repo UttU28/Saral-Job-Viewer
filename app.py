@@ -16,6 +16,10 @@ import os
 import subprocess
 import socket
 import json
+from dotenv import load_dotenv
+load_dotenv()
+
+filePath = os.getenv('QUESTIONS_JSON')
 
 
 app = FastAPI()
@@ -236,8 +240,7 @@ def rejectJob(request: RejectRequestModel):
 def get_linkedin_questions():
     """Fetch LinkedIn questions from JSON file."""
     try:
-        file_path = r"/home/robada/Desktop/LinkedIn-Saral-Apply/linkedinQuestions.json"
-        with open(file_path, 'r') as file:
+        with open(filePath, 'r') as file:
             questions_data = json.load(file)
         return {
             "message": "Questions fetched successfully",
@@ -264,13 +267,12 @@ def get_linkedin_questions():
 def update_linkedin_questions(request: UpdateLinkedInQuestionsRequest):
     """Update LinkedIn questions in JSON file."""
     try:
-        file_path = r"/home/robada/Desktop/LinkedIn-Saral-Apply/linkedinQuestions.json"
         
         # Convert the questions to a list of dictionaries
         questions_data = [question.model_dump() for question in request.questions]
         
         # Write the updated questions to the file
-        with open(file_path, 'w') as file:
+        with open(filePath, 'w') as file:
             json.dump(questions_data, file, indent=2)
             
         return {
