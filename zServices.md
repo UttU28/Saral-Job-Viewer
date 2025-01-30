@@ -26,7 +26,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/backend.sh
+ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/services/backend.sh
 WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
 Restart=always
 RestartSec=5
@@ -46,7 +46,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply/frontend
-ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/frontend.sh
+ExecStart=/home/robada/Desktop/LinkedIn-Saral-Apply/services/frontend.sh
 Restart=always
 User=robada
 Environment=NODE_ENV=development
@@ -64,7 +64,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/dataScraping.sh
+ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/services/dataScraping.sh
 WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
 EnvironmentFile=/home/robada/Desktop/LinkedIn-Saral-Apply/.env
 Restart=always
@@ -97,7 +97,7 @@ Group=robada
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/robada/.Xauthority
 Environment=HOME=/home/robada
-ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/dataScraping.sh
+ExecStart=/bin/bash /home/robada/Desktop/LinkedIn-Saral-Apply/services/dataScraping.sh
 WorkingDirectory=/home/robada/Desktop/LinkedIn-Saral-Apply
 EnvironmentFile=/home/robada/Desktop/LinkedIn-Saral-Apply/.env
 Restart=always
