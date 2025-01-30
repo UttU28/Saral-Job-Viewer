@@ -15,6 +15,7 @@ from utilsDatabase import (
 import os
 import subprocess
 import socket
+import json
 
 
 app = FastAPI()
@@ -80,6 +81,17 @@ class AddToEasyApplyRequest(BaseModel):
 
 class HoursRequest(BaseModel):
     hours: int
+
+class LinkedInQuestion(BaseModel):
+    question: str
+    type: str
+    required: bool
+    options: list[str] | None
+    currentAnswer: str | list[str] | None
+    verified: bool
+
+class UpdateLinkedInQuestionsRequest(BaseModel):
+    questions: list[LinkedInQuestion]
 
 # API Endpoints
 @app.get("/")
@@ -218,6 +230,63 @@ def rejectJob(request: RejectRequestModel):
     raise HTTPException(
         status_code=404, detail=f"No record found with ID {request.jobID}."
     )
+
+
+@app.get("/getLinkedInQuestions")
+def get_linkedin_questions():
+    """Fetch LinkedIn questions from JSON file."""
+    try:
+        file_path = r"/home/robada/Desktop/LinkedIn-Saral-Apply/linkedinQuestions.json"
+        with open(file_path, 'r') as file:
+            questions_data = json.load(file)
+        return {
+            "message": "Questions fetched successfully",
+            "data": questions_data
+        }
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Questions file not found"
+        )
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=500,
+            detail="Error parsing questions file"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error reading questions file: {str(e)}"
+        )
+
+
+@app.post("/updateLinkedInQuestions")
+def update_linkedin_questions(request: UpdateLinkedInQuestionsRequest):
+    """Update LinkedIn questions in JSON file."""
+    try:
+        file_path = r"/home/robada/Desktop/LinkedIn-Saral-Apply/linkedinQuestions.json"
+        
+        # Convert the questions to a list of dictionaries
+        questions_data = [question.model_dump() for question in request.questions]
+        
+        # Write the updated questions to the file
+        with open(file_path, 'w') as file:
+            json.dump(questions_data, file, indent=2)
+            
+        return {
+            "message": "Questions updated successfully",
+            "data": questions_data
+        }
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=404,
+            detail="Questions file not found"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error updating questions file: {str(e)}"
+        )
 
 
 # Run the application

@@ -151,4 +151,24 @@ export const api = {
     }, 3);
     return handleResponse(response);
   },
+
+  async getLinkedInQuestions() {
+    const response = await fetchWithRetry(`${API_BASE_URL}/getLinkedInQuestions`, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    }, 3);
+    return handleResponse(response);
+  },
+
+  async updateLinkedInQuestions(questions: any) {
+    const response = await fetchWithRetry(`${API_BASE_URL}/updateLinkedInQuestions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ questions }),
+    }, 3);
+    return handleResponse(response);
+  },
 };

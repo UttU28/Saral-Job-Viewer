@@ -4,15 +4,15 @@ import { Sidebar } from '@/components/sidebar';
 import { useJobs } from '@/hooks/use-jobs';
 import { useKeywords } from '@/hooks/use-keywords';
 import { Toaster } from 'sonner';
-import { LinkedinIcon } from 'lucide-react';
+import { LinkedinIcon, ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
 import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { LinkedIn } from '@/pages/LinkedIn';
 
-type ApplicationMethod = 'all' | 'easyapply' | 'manual';
-type CompanySort = 'none' | 'asc';
-type KeywordSort = 'none' | 'positive' | 'negative';
-
-function App() {
+function MainApp() {
+  const navigate = useNavigate();
   const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts, fetchJobs } = useJobs();
   const {
     noCompanyKeywords,
@@ -101,53 +101,74 @@ function App() {
   };
 
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <div className="min-h-screen bg-background flex flex-col">
-        <header className="border-b border-border/10 sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="flex items-center justify-between h-14 px-4">
-            <div className="flex items-center gap-2">
-              <LinkedinIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-lg font-semibold">LinkedIn Saral Apply</h1>
-            </div>
+    <div className="min-h-screen bg-background flex flex-col">
+      <header className="border-b border-border/10 sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center justify-between h-14 px-4">
+          <div className="flex items-center gap-2">
+            <LinkedinIcon className="h-6 w-6 text-primary" />
+            <h1 className="text-lg font-semibold">Saral Job Apply</h1>
           </div>
-        </header>
-
-        <div className="flex-1 flex">
-          <Sidebar
-            applicationMethod={applicationMethod}
-            setApplicationMethod={setApplicationMethod}
-            noCompanyKeywords={noCompanyKeywords}
-            searchListKeywords={searchListKeywords}
-            addKeyword={addKeyword}
-            removeKeyword={removeKeyword}
-            keywordsLoading={keywordsLoading}
-            useBot={useBot}
-            setUseBot={setUseBot}
-            companySort={companySort}
-            setCompanySort={setCompanySort}
-            onHoursChange={handleHoursChange}
-            keywordSort={keywordSort}
-            setKeywordSort={setKeywordSort}
-          />
-          <Dashboard
-            jobs={displayedJobs}
-            isLoading={jobsLoading}
-            error={jobsError}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            totalJobs={totalJobs}
-            appliedJobs={appliedJobs}
-            rejectedJobs={rejectedJobs}
-            pendingJobs={pendingJobs}
-            acceptDenyCounts={acceptDenyCounts}
-            updateJobStatus={updateJobStatus}
-            addKeyword={addKeyword}
-            isCompanyBlacklisted={isCompanyBlacklisted}
-            useBot={useBot}
-            onRetry={handleRetry}
-          />
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate('/linkedin')}
+          >
+            <LinkedinIcon className="h-4 w-4" />
+            LinkedIn Saral Apply
+            <ExternalLinkIcon className="h-4 w-4" />
+          </Button>
         </div>
+      </header>
+
+      <div className="flex-1 flex">
+        <Sidebar
+          applicationMethod={applicationMethod}
+          setApplicationMethod={setApplicationMethod}
+          noCompanyKeywords={noCompanyKeywords}
+          searchListKeywords={searchListKeywords}
+          addKeyword={addKeyword}
+          removeKeyword={removeKeyword}
+          keywordsLoading={keywordsLoading}
+          useBot={useBot}
+          setUseBot={setUseBot}
+          companySort={companySort}
+          setCompanySort={setCompanySort}
+          onHoursChange={handleHoursChange}
+          keywordSort={keywordSort}
+          setKeywordSort={setKeywordSort}
+        />
+        <Dashboard
+          jobs={displayedJobs}
+          isLoading={jobsLoading}
+          error={jobsError}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          totalJobs={totalJobs}
+          appliedJobs={appliedJobs}
+          rejectedJobs={rejectedJobs}
+          pendingJobs={pendingJobs}
+          acceptDenyCounts={acceptDenyCounts}
+          updateJobStatus={updateJobStatus}
+          addKeyword={addKeyword}
+          isCompanyBlacklisted={isCompanyBlacklisted}
+          useBot={useBot}
+          onRetry={handleRetry}
+          onHoursChange={handleHoursChange}
+        />
       </div>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<MainApp />} />
+          <Route path="/linkedin" element={<LinkedIn />} />
+        </Routes>
+      </BrowserRouter>
       <Toaster />
     </ThemeProvider>
   );
