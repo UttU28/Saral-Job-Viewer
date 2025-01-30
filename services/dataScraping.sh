@@ -8,20 +8,24 @@ REQUIREMENTS_FILE="$APP_DIR/requirements.txt"
 ENV_FILE="$APP_DIR/.env"
 
 # Load environment variables from the .env file
-if [ -f "$ENV_FILE" ]; then
-    export $(grep -v '^#' "$ENV_FILE" | xargs)
-    # Set display for X server
-    export DISPLAY=:0
-else
-    echo "Error: .env file not found at $ENV_FILE"
-    exit 1
-fi
+load_env_file() {
+    if [ -f "$ENV_FILE" ]; then
+        echo "Loading environment variables from $ENV_FILE..."
+        export $(grep -v '^#' "$ENV_FILE" | xargs)
+        echo "Environment variables loaded successfully."
+        # Set display for X server
+        export DISPLAY=:0
+    else
+        echo "Error: .env file not found at $ENV_FILE" >&2
+        exit 1
+    fi
 
-# Validate that necessary environment variables are set
-if [[ -z "$CHROME_DRIVER_PATH" || -z "$CHROME_APP_PATH" || -z "$CHROME_USER_DATA_DIR" || -z "$DEBUGGING_PORT" || -z "$DATABASE_URL" ]]; then
-    echo "Error: One or more environment variables are missing in the .env file."
-    exit 1
-fi
+    # Validate that necessary environment variables are set
+    if [[ -z "$CHROME_DRIVER_PATH" || -z "$CHROME_APP_PATH" || -z "$SCRAPING_CHROME_DIR" || -z "$SCRAPING_PORT" || -z "$DATABASE_URL" ]]; then
+        echo "Error: One or more environment variables are missing in the .env file." >&2
+        exit 1
+    fi
+}
 
 # Function to create and activate the virtual environment if not present
 setup_venv() {
@@ -40,24 +44,24 @@ setup_venv() {
         pip install -r "$REQUIREMENTS_FILE"
         echo "Dependencies installed."
     else
-        echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation."
+        echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation." >&2
     fi
 }
 
 # Function to check and kill Chrome instances running on the configured port
 kill_chrome_on_port() {
-    echo "Checking for Chrome instances on port $DEBUGGING_PORT..."
-    chrome_pids=$(lsof -i :$DEBUGGING_PORT | awk 'NR>1 {print $2}')
+    echo "Checking for Chrome instances on port $SCRAPING_PORT..."
+    chrome_pids=$(lsof -i :$SCRAPING_PORT | awk 'NR>1 {print $2}')
     if [ -n "$chrome_pids" ]; then
-        echo "Killing Chrome instances on port $DEBUGGING_PORT..."
+        echo "Killing Chrome instances on port $SCRAPING_PORT..."
         echo "$chrome_pids" | xargs kill -9
         echo "Chrome instances killed."
     else
-        echo "No Chrome instances found on port $DEBUGGING_PORT."
+        echo "No Chrome instances found on port $SCRAPING_PORT."
     fi
 }
 
-# Function to check and terminate the last session of the script
+# Function to check and terminate the last session
 terminate_previous_session() {
     echo "Checking for previous script sessions..."
     script_pid=$(pgrep -f "$PYTHON_SCRIPT")
@@ -70,7 +74,7 @@ terminate_previous_session() {
     fi
 }
 
-# Function to run the Python script
+# Function to run the script
 run_script() {
     echo "Starting the Python script..."
     source "$VENV_DIR/bin/activate"
@@ -78,27 +82,28 @@ run_script() {
     echo "Python script started."
 }
 
-# Function to cleanup and terminate all processes
+# Function to cleanup processes
 cleanup() {
     echo "Cleaning up processes..."
-    # Kill the Python script if it's running
     if pgrep -f "$PYTHON_SCRIPT" > /dev/null; then
         pkill -f "$PYTHON_SCRIPT"
         echo "Python script terminated."
     fi
     
-    # Kill any Chrome instances on the debugging port
     kill_chrome_on_port
     
-    # Deactivate virtual environment if active
     if [ -n "$VIRTUAL_ENV" ]; then
         deactivate
         echo "Virtual environment deactivated."
     fi
 }
 
+# Trap script termination signals
+trap cleanup EXIT
+
 # Main execution
 echo "Starting job..."
+load_env_file
 setup_venv
 kill_chrome_on_port
 terminate_previous_session
@@ -107,7 +112,4 @@ echo "Waiting for script to complete..."
 wait
 cleanup
 echo "Job completed."
-
-# Wait 6 hours before re-running the script
-sleep 6h
-exec "$0"
+exit 0

@@ -8,14 +8,16 @@ REQUIREMENTS_FILE="$APP_DIR/requirements.txt"
 ENV_FILE="$APP_DIR/.env"
 
 # Load environment variables from the .env file
-if [ -f "$ENV_FILE" ]; then
-    echo "Loading environment variables from $ENV_FILE..."
-    export $(grep -v '^#' "$ENV_FILE" | xargs)
-    echo "Environment variables loaded successfully."
-else
-    echo "Error: .env file not found at $ENV_FILE"
-    exit 1
-fi
+load_env_file() {
+    if [ -f "$ENV_FILE" ]; then
+        echo "Loading environment variables from $ENV_FILE..."
+        export $(grep -v '^#' "$ENV_FILE" | xargs)
+        echo "Environment variables loaded successfully."
+    else
+        echo "Error: .env file not found at $ENV_FILE" >&2
+        exit 1
+    fi
+}
 
 # Function to create and activate the virtual environment if not present
 setup_venv() {
@@ -34,11 +36,11 @@ setup_venv() {
         pip install -r "$REQUIREMENTS_FILE"
         echo "Dependencies installed."
     else
-        echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation."
+        echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation." >&2
     fi
 }
 
-# Function to terminate the last session of the app if it's already running
+# Function to check and terminate the last session
 terminate_previous_session() {
     echo "Checking for previous application sessions..."
     app_pid=$(pgrep -f "uvicorn.*app:app")
@@ -51,16 +53,16 @@ terminate_previous_session() {
     fi
 }
 
-# Function to run the FastAPI application
-run_app() {
+# Function to run the script
+run_script() {
     echo "Starting the FastAPI application..."
     source "$VENV_DIR/bin/activate"
     uvicorn app:app --host 0.0.0.0 --port 5000 --reload &
-    APP_PID=$! # Store the PID of the FastAPI server
+    APP_PID=$!
     echo "FastAPI application started on http://0.0.0.0:5000 with PID $APP_PID"
 }
 
-# Function to handle cleanup on script exit
+# Function to cleanup processes
 cleanup() {
     echo "Stopping application..."
     if [ -n "$APP_PID" ]; then
@@ -69,15 +71,15 @@ cleanup() {
     fi
 }
 
-# Trap script termination signals to ensure cleanup
+# Trap script termination signals
 trap cleanup EXIT
 
 # Main execution
 echo "Starting the application..."
+load_env_file
 setup_venv
 terminate_previous_session
-run_app
+run_script
 echo "Application is running. Press Ctrl+C to stop."
 
-# Wait for background processes to finish
 wait

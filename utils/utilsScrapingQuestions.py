@@ -4,7 +4,7 @@ from datetime import datetime
 from selenium.webdriver.common.by import By
 
 # Define the JSON file path as a constant at the top of the file
-QUESTIONS_JSON_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'linkedinQuestions.json')
+QUESTIONS_JSON_PATH = os.getenv('QUESTIONS_JSON')
 
 def readTheInputsFrom(driver, existingQuestions):
     """

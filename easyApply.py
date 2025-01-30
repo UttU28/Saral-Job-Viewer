@@ -19,8 +19,8 @@ load_dotenv()
 
 chromeDriverPath = os.getenv('CHROME_DRIVER_PATH')
 chromeAppPath = os.getenv('CHROME_APP_PATH')
-chromeUserDataDir = os.getenv('CHROME_USER_DATA_DIR')
-debuggingPort = os.getenv('DEBUGGING_PORT')
+chromeUserDataDir = os.getenv('APPLYING_CHROME_DIR')
+debuggingPort = os.getenv('APPLYING_PORT')
 
 def isPortInUse(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -62,20 +62,21 @@ def cleanupChrome(driver, chromeApp):
             chromeApp.kill()
 
         try:
-            if os.name == 'nt':
-                subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'], 
-                             stdout=subprocess.DEVNULL, 
-                             stderr=subprocess.DEVNULL)
-            else:
+            try:
+                if os.name == 'nt':
+                    subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe'], 
+                                stdout=subprocess.DEVNULL, 
+                                stderr=subprocess.DEVNULL)
+            except:
                 subprocess.run(['pkill', '-f', 'chrome'], 
                              stdout=subprocess.DEVNULL, 
                              stderr=subprocess.DEVNULL)
-        except Exception as e:
-            # print(f"Error cleaning up Chrome processes: {e}")
+        except Exception:
+            # print(f"Error cleaning up Chrome processes: {Exception}")
             pass
 
 def loadExistingQuestions():
-    questionsFile = Path('linkedinQuestions.json')
+    questionsFile = Path('chromeData/linkedinQuestions.json')
     if questionsFile.exists():
         with open(questionsFile, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -88,18 +89,16 @@ def updateQuestionsFile(newQuestions, existingQuestions):
         
     existingSet = {(q.get('question', ''), q.get('type', '')) for q in existingQuestions}
     
-    questionsAdded = 0
     for question in newQuestions:
         questionTuple = (question.get('question', ''), question.get('type', ''))
         if questionTuple not in existingSet:
             existingQuestions.append(question)
-            questionsAdded += 1
             # print(f"Added new question: {question['question']}")
     
-    with open('linkedinQuestions.json', 'w', encoding='utf-8') as f:
+    with open('chromeData/linkedinQuestions.json', 'w', encoding='utf-8') as f:
         json.dump(existingQuestions, f, indent=2, ensure_ascii=False)
     
-    # print(f"Added {questionsAdded} new questions to the database.")
+    # print(f"Added new questions to the database.")
 
 def processJob(driver, jobId, jobURL):
     """Process a single job application and return its status"""

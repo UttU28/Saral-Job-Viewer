@@ -20,8 +20,8 @@ load_dotenv()
 # Environment Variables
 chromeDriverPath = os.getenv('CHROME_DRIVER_PATH')
 chromeAppPath = os.getenv('CHROME_APP_PATH')
-chromeUserDataDir = os.getenv('CHROME_USER_DATA_DIR')
-debuggingPort = os.getenv('DEBUGGING_PORT')
+chromeUserDataDir = os.getenv('SCRAPING_CHROME_DIR')
+debuggingPort = os.getenv('SCRAPING_PORT')
 
 
 def waitForPageLoad(driver):
