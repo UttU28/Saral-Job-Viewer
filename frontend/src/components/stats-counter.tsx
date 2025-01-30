@@ -3,6 +3,8 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   ClockIcon,
+  ZapIcon,
+  PencilIcon,
 } from 'lucide-react';
 
 interface StatsCounterProps {
@@ -12,6 +14,8 @@ interface StatsCounterProps {
   pendingJobs: number;
   totalAccepted?: number;
   totalRejected?: number;
+  pendingEasyApply: number;
+  pendingManual: number;
 }
 
 export function StatsCounter({
@@ -21,9 +25,11 @@ export function StatsCounter({
   pendingJobs,
   totalAccepted = 0,
   totalRejected = 0,
+  pendingEasyApply,
+  pendingManual,
 }: StatsCounterProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
       <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Total Jobs</p>
@@ -61,6 +67,26 @@ export function StatsCounter({
         </div>
         <div className="h-12 w-12 rounded-full bg-yellow-500/10 flex items-center justify-center">
           <ClockIcon className="h-6 w-6 text-yellow-500" />
+        </div>
+      </div>
+
+      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">EasyApply</p>
+          <p className="text-2xl font-bold text-blue-400">{pendingEasyApply}</p>
+        </div>
+        <div className="h-12 w-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+          <ZapIcon className="h-6 w-6 text-blue-400" />
+        </div>
+      </div>
+
+      <div className="bg-black/40 border border-border/20 rounded-lg p-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Manual</p>
+          <p className="text-2xl font-bold text-orange-400">{pendingManual}</p>
+        </div>
+        <div className="h-12 w-12 rounded-full bg-orange-500/10 flex items-center justify-center">
+          <PencilIcon className="h-6 w-6 text-orange-400" />
         </div>
       </div>
     </div>

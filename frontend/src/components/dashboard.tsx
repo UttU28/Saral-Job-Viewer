@@ -47,6 +47,15 @@ export function Dashboard({
   onRetry,
   onHoursChange,
 }: DashboardProps) {
+  // Calculate pending jobs by application method
+  const pendingEasyApply = jobs.filter(
+    job => job.applied === 'NO' && job.method.toLowerCase() === 'easyapply'
+  ).length;
+
+  const pendingManual = jobs.filter(
+    job => job.applied === 'NO' && job.method.toLowerCase() === 'manual'
+  ).length;
+
   return (
     <main className="flex-1 p-4">
       <div className="max-w-5xl mx-auto space-y-6">
@@ -68,6 +77,8 @@ export function Dashboard({
             pendingJobs={pendingJobs}
             totalAccepted={acceptDenyCounts.countAccepted}
             totalRejected={acceptDenyCounts.countRejected}
+            pendingEasyApply={pendingEasyApply}
+            pendingManual={pendingManual}
           />
         )}
 
