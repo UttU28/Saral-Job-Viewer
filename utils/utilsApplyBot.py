@@ -54,7 +54,7 @@ def getPendingEasyApplyJobs():
     session = getSession()
     try:
         pending_jobs = session.query(EasyApply).filter(
-            EasyApply.status == "PENDING"
+            EasyApply.status.in_(["PENDING", "RESUBMIT"])
         ).all()
         return [str(job.jobID) for job in pending_jobs]
     except Exception as e:

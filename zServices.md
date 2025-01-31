@@ -140,6 +140,18 @@ CREATE TABLE allJobData (
     applied TEXT NULL
 );
 
+CREATE TABLE allDiceJobs (
+    id VARCHAR(255) NOT NULL PRIMARY KEY,
+    title TEXT NULL,
+    companyName TEXT NULL,
+    location TEXT NULL,
+    method TEXT NULL,
+    timeStamp TEXT NULL,
+    jobType TEXT NULL,
+    jobDescription TEXT NULL,
+    applied TEXT NULL
+);
+
 -- Create the table
 CREATE TABLE easyApplyData (
     id INT NOT NULL AUTO_INCREMENT,

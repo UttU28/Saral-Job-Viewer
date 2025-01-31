@@ -57,6 +57,19 @@ class EasyApply(Base):
     status = Column(String(50), nullable=False)
     createdAt = Column(DateTime, default=datetime.utcnow)
 
+class DiceJobPosting(Base):
+    __tablename__ = "allDiceJobs"
+
+    id = Column(String, primary_key=True)
+    title = Column(Text)
+    companyName = Column(Text)
+    location = Column(Text)
+    method = Column(Text)
+    timeStamp = Column(Text)
+    jobType = Column(Text)
+    jobDescription = Column(Text)
+    applied = Column(Text)
+
 # Create all tables if they don't already exist
 Base.metadata.create_all(engine)
 
@@ -247,6 +260,56 @@ def getAllEasyApply():
         return session.query(EasyApply).all()
     except Exception as e:
         logging.error(f"Error fetching Easy Apply entries: {e}")
+        return []
+    finally:
+        session.close()
+
+def addDiceJob(
+    jobId: str,
+    jobTitle: str,
+    companyName: str,
+    jobLocation: str,
+    jobMethod: str,
+    timeStamp: str,
+    jobType: str,
+    jobDescription: str,
+    applied: str
+):
+    session = getSession()
+    try:
+        existingEntry = session.query(DiceJobPosting).filter_by(id=jobId).first()
+        if not existingEntry:
+            newEntry = DiceJobPosting(
+                id=jobId,
+                title=jobTitle,
+                companyName=companyName,
+                location=jobLocation,
+                method=jobMethod,
+                timeStamp=timeStamp,
+                jobType=jobType,
+                jobDescription=jobDescription,
+                applied=applied,
+            )
+            session.add(newEntry)
+            session.commit()
+            logging.info(f"Dice job with ID {jobId} added.")
+        else:
+            logging.info(f"Dice job with ID {jobId} already exists.")
+    except IntegrityError as e:
+        session.rollback()
+        logging.error(f"IntegrityError: {e}")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error: {e}")
+    finally:
+        session.close()
+
+def getNotAppliedDiceJobs():
+    session = getSession()
+    try:
+        return session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NO").all()
+    except Exception as e:
+        logging.error(f"Error fetching not applied Dice jobs: {e}")
         return []
     finally:
         session.close()

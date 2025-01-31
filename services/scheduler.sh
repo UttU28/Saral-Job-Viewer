@@ -37,7 +37,7 @@ get_minutes_until_next_scraping() {
     current_time_minutes=$((current_hour * 60 + current_minute))
     
     # Define scraping run times in minutes since midnight
-    run_times=(0 360 720 1080)  # 00:00, 06:00, 12:00, 18:00
+    run_times=(0 360 720 893 1080)  # 00:00, 06:00, 12:00, 18:00
     
     # Find next run time
     for run_time in "${run_times[@]}"; do

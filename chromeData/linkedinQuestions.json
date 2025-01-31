@@ -715,24 +715,24 @@
     "type": "Text Input",
     "required": false,
     "options": null,
-    "currentAnswer": null,
-    "verified": false
+    "currentAnswer": "Sugar Land, Texas, United States",
+    "verified": true
   },
   {
     "question": "How many years of relevant experience do you have?",
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": null,
-    "verified": false
+    "currentAnswer": "3",
+    "verified": true
   },
   {
     "question": "What is the highest level of education that you have completed?",
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": null,
-    "verified": false
+    "currentAnswer": "Master's",
+    "verified": true
   },
   {
     "question": "Cover letter",
@@ -740,7 +740,7 @@
     "required": false,
     "options": null,
     "currentAnswer": null,
-    "verified": false
+    "verified": true
   },
   {
     "question": "Have you completed the following level of education: Bachelor's Degree?",
@@ -751,7 +751,7 @@
       "No"
     ],
     "currentAnswer": "Yes",
-    "verified": false
+    "verified": true
   },
   {
     "question": "Are you comfortable working in an onsite setting?",
@@ -762,6 +762,73 @@
       "No"
     ],
     "currentAnswer": "Yes",
-    "verified": false
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Spring Framework?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "2",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Java?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with React.js?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "3",
+    "verified": true
+  },
+  {
+    "question": "What is your level of proficiency in Chinese?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "None",
+      "Conversational",
+      "Professional",
+      "Native or bilingual"
+    ],
+    "currentAnswer": "None",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Swift (Programming Language)?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "1",
+    "verified": true
+  },
+  {
+    "question": "Are you located in the South Florida Area and willing to be onsite M-F every week?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Do you currently reside in the NYC or Washington DC area?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
   }
 ]
