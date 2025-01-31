@@ -467,7 +467,7 @@
     "type": "Text Input",
     "required": false,
     "options": null,
-    "currentAnswer": "Sugar Land",
+    "currentAnswer": "Sugar Land, Texas, United States",
     "verified": true
   },
   {
@@ -686,7 +686,7 @@
       "No"
     ],
     "currentAnswer": "Yes",
-    "verified": false
+    "verified": true
   },
   {
     "question": "Will you now, or in the future, require sponsorship for employment visa status (e.g. H-1B visa status)?",
@@ -697,10 +697,64 @@
       "No"
     ],
     "currentAnswer": "No",
-    "verified": false
+    "verified": true
   },
   {
     "question": "We must fill this position urgently. Can you start immediately?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Location (city)\nLocation (city)",
+    "type": "Text Input",
+    "required": false,
+    "options": null,
+    "currentAnswer": null,
+    "verified": false
+  },
+  {
+    "question": "How many years of relevant experience do you have?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": null,
+    "verified": false
+  },
+  {
+    "question": "What is the highest level of education that you have completed?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": null,
+    "verified": false
+  },
+  {
+    "question": "Cover letter",
+    "type": "Unknown",
+    "required": false,
+    "options": null,
+    "currentAnswer": null,
+    "verified": false
+  },
+  {
+    "question": "Have you completed the following level of education: Bachelor's Degree?",
+    "type": "Radio Button",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": false
+  },
+  {
+    "question": "Are you comfortable working in an onsite setting?",
     "type": "Radio Button",
     "required": true,
     "options": [

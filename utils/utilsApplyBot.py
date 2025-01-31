@@ -63,7 +63,7 @@ def getPendingEasyApplyJobs():
     finally:
         session.close()
 
-def updateEasyApplyStatus(jobId: str, success: bool):
+def updateEasyApplyStatus(jobId: str, success: str):
     session = getSession()
     try:
         job = session.query(EasyApply).filter(
@@ -71,7 +71,7 @@ def updateEasyApplyStatus(jobId: str, success: bool):
         ).first()
         
         if job:
-            job.status = "COMPLETED" if success else "FAILED"
+            job.status = success if success else "FAILED"
             session.commit()
             logging.info(f"Updated job {jobId} status to {job.status}")
             return True
