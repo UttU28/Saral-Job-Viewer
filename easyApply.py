@@ -76,7 +76,7 @@ def cleanupChrome(driver, chromeApp):
             pass
 
 def loadExistingQuestions():
-    questionsFile = Path('chromeData/linkedinQuestions.json')
+    questionsFile = Path('/home/robada/Desktop/LinkedIn-Saral-Apply/chromeData/linkedinQuestions.json')
     if questionsFile.exists():
         with open(questionsFile, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -95,7 +95,7 @@ def updateQuestionsFile(newQuestions, existingQuestions):
             existingQuestions.append(question)
             # print(f"Added new question: {question['question']}")
     
-    with open('chromeData/linkedinQuestions.json', 'w', encoding='utf-8') as f:
+    with open('/home/robada/Desktop/LinkedIn-Saral-Apply/chromeData/linkedinQuestions.json', 'w', encoding='utf-8') as f:
         json.dump(existingQuestions, f, indent=2, ensure_ascii=False)
     
     # print(f"Added new questions to the database.")
@@ -176,7 +176,17 @@ def processJob(driver, jobId, jobURL):
                                 pass
                             
                             submitButton.click()
-                            status = 'COMPLETED'
+                            # Add wait for success message
+                            try:
+                                success_message = WebDriverWait(driver, 5).until(
+                                    EC.presence_of_element_located((By.CLASS_NAME, "artdeco-modal__content"))
+                                )
+                                if "Your application was sent" in success_message.text:
+                                    status = 'COMPLETED'
+                                else:
+                                    status = 'RESUBMIT'
+                            except TimeoutException:
+                                status = 'RESUBMIT'
                             print(f"Processing job {jobId} with status: {status}")
                             break
                     except:
@@ -190,10 +200,9 @@ def processJob(driver, jobId, jobURL):
                     status = 'RESUBMIT'
                     print(f"Processing job {jobId} with status: {status}")
                 
-                if status in ['COMPLETED', 'RESUBMIT']:
-                    updateEasyApplyStatus(jobId, status)
-                    print(f"Updated job {jobId} status to: {status}")
-                    break
+                updateEasyApplyStatus(jobId, status)
+                print(f"Updated job {jobId} status to: {status}")
+                break
                 
         except TimeoutException:
             status = 'FAILED'
@@ -209,22 +218,43 @@ def processJob(driver, jobId, jobURL):
     
     return status
 
-if __name__ == "__main__":
-    chromeDataDir = os.path.join(os.getcwd(), 'chromeData')
-    if not os.path.exists(chromeDataDir):
-        os.makedirs(chromeDataDir)
-    
-    chromeApp = startChrome(debuggingPort, chromeUserDataDir, chromeAppPath)
-    driver = setupChromeDriver(debuggingPort, chromeDriverPath)
+def setupChromeDataDir():
+    """Create chrome data directory in the current working directory"""
+    try:
+        # Get the current script's directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        chrome_data_dir = os.path.join(current_dir, 'chromeData')
+        
+        # Create directory if it doesn't exist
+        if not os.path.exists(chrome_data_dir):
+            os.makedirs(chrome_data_dir, exist_ok=True)
+        return chrome_data_dir
+    except Exception as e:
+        print(f"Error creating chrome data directory: {str(e)}")
+        raise
 
-    # Get all pending jobs
-    pending_jobs = getPendingEasyApplyJobs()
-    print(pending_jobs)
-    # exit()
-    
-    for jobId in pending_jobs:
-        jobURL = f"https://www.linkedin.com/jobs/view/{jobId}/"
-        processJob(driver, jobId, jobURL)
-    
-    input("Press Enter to close the browser...")
-    cleanupChrome(driver, chromeApp)
+if __name__ == "__main__":
+    try:
+        # Setup chrome data directory
+        chromeDataDir = setupChromeDataDir()
+        
+        # Start chrome and setup driver
+        chromeApp = startChrome(debuggingPort, chromeUserDataDir, chromeAppPath)
+        driver = setupChromeDriver(debuggingPort, chromeDriverPath)
+
+        # Get all pending jobs
+        pending_jobs = getPendingEasyApplyJobs()
+        print(pending_jobs)
+        # exit()
+        
+        for jobId in pending_jobs:
+            jobURL = f"https://www.linkedin.com/jobs/view/{jobId}/"
+            processJob(driver, jobId, jobURL)
+        
+        input("Press Enter to close the browser...")
+
+    except Exception as e:
+        print(f"Error in main execution: {str(e)}")
+    finally:
+        if 'driver' in locals():
+            cleanupChrome(driver, chromeApp)

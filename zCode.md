@@ -14,7 +14,6 @@ sudo systemctl daemon-reload
 sudo systemctl stop runFrontend.service
 sudo systemctl enable runFrontend.service
 sudo systemctl start runFrontend.service
-<<<<<<< HEAD
 journalctl -u runFrontend.service -f
 
 sudo systemctl daemon-reload
@@ -24,11 +23,6 @@ sudo systemctl start runBackend.service
 journalctl -u runBackend.service -f
 
 sudo systemctl daemon-reload
-=======
-sudo systemctl stop runBackend.service
-sudo systemctl enable runBackend.service
-sudo systemctl start runBackend.service
->>>>>>> 3bfa4e9e4849813ffc1c4a991a4d360c5af55400
 sudo systemctl stop runScheduler.service
 sudo systemctl enable runScheduler.service
 sudo systemctl start runScheduler.service

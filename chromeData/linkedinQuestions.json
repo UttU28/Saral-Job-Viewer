@@ -1,18 +1,12 @@
 [
   {
-    "question": "First name",
-    "type": "Text Input",
+    "question": "Email",
+    "type": "Dropdown",
     "required": true,
-    "options": null,
-    "currentAnswer": "Ranga",
-    "verified": true
-  },
-  {
-    "question": "Last name",
-    "type": "Text Input",
-    "required": true,
-    "options": null,
-    "currentAnswer": "Rick",
+    "options": [
+      "utsavmaan28@gmail.com"
+    ],
+    "currentAnswer": "utsavmaan28@gmail.com",
     "verified": true
   },
   {
@@ -74,7 +68,7 @@
       "Congo (+242)",
       "Cook Islands (+682)",
       "Costa Rica (+506)",
-      "Cote DÃ¢â‚¬â„¢Ivoire (Ivory Coast) (+225)",
+      "Cote D’Ivoire (Ivory Coast) (+225)",
       "Croatia (+385)",
       "Cuba (+53)",
       "Cyprus (+357)",
@@ -272,11 +266,11 @@
     "verified": true
   },
   {
-    "question": "Mobile phone number",
+    "question": "Phone",
     "type": "Text Input",
-    "required": false,
+    "required": true,
     "options": null,
-    "currentAnswer": "1111111111",
+    "currentAnswer": "6072969583",
     "verified": true
   },
   {
@@ -284,230 +278,17 @@
     "type": "Dropdown",
     "required": true,
     "options": [
-      "irangarick@gmail.com"
+      "utsavmaan28@gmail.com"
     ],
-    "currentAnswer": "irangarick@gmail.com",
+    "currentAnswer": "utsavmaan28@gmail.com",
     "verified": true
   },
   {
-    "question": "Are you legally authorized to work in the country where the job is located without any restrictions?",
-    "type": "Radio Button",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "Yes",
-    "verified": true
-  },
-  {
-    "question": "Do you need sponsorship now or in the future for employment?",
-    "type": "Radio Button",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "No",
-    "verified": true
-  },
-  {
-    "question": "If this role or future roles require relocation:",
-    "type": "Dropdown",
-    "required": true,
-    "options": [
-      "I am willing to relocate and will self relocate",
-      "I am willing to relocate and will need relocation assistance",
-      "Relocation is not an option for me at this time"
-    ],
-    "currentAnswer": "I am willing to relocate and will self relocate",
-    "verified": true
-  },
-  {
-    "question": "Have you previously worked for Palo Alto Networks?",
-    "type": "Dropdown",
-    "required": true,
-    "options": [
-      "No - I have not worked for Palo Alto Networks",
-      "Yes - Full Time/ Regular Employment",
-      "Yes - Intern Program",
-      "Yes - Contractor /Professional Vended Services",
-      "Yes - Independent Consultant",
-      "I am not sure"
-    ],
-    "currentAnswer": "No - I have not worked for Palo Alto Networks",
-    "verified": true
-  },
-  {
-    "question": "Have you interviewed with Palo Alto Networks in the past?",
-    "type": "Radio Button",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "No",
-    "verified": true
-  },
-  {
-    "question": "Would you like to be considered for future opportunities?",
-    "type": "Radio Button",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "No",
-    "verified": true
-  },
-  {
-    "question": "Select the areas of work that are of interest to you:",
-    "type": "Multiple Select (Checkbox)",
-    "required": true,
-    "options": [
-      "Accounting",
-      "Corp Business Strategy",
-      "Education",
-      "Facilities/Real Estate",
-      "Finance",
-      "Legal",
-      "Manufacturing",
-      "Marketing",
-      "Operations",
-      "People Team/Human Resources",
-      "Information Security",
-      "Information Technology",
-      "Engineering - Software",
-      "Engineering - Hardware",
-      "Engineering Language/Skills",
-      "DevOps / SRE",
-      "Data Informatics",
-      "Data Scientist",
-      "Product Management & TME",
-      "Quality Assurance",
-      "Security Research",
-      "Technical Writing",
-      "Business Development",
-      "Ecosystems",
-      "Sales",
-      "Sales Operations",
-      "Systems Engineering",
-      "Resident Engineer",
-      "Service Account Manager",
-      "Technical Support",
-      "Customer Success"
-    ],
-    "currentAnswer": [
-      "Information Security",
-      "Technical Support",
-      "Legal",
-      "People Team/Human Resources"
-    ],
-    "verified": true
-  },
-  {
-    "question": "How did you hear about us?",
-    "type": "Dropdown",
-    "required": true,
-    "options": [
-      "Palo Alto Networks Careers Site",
-      "Contacted by the Recruiting Team",
-      "Job Board",
-      "Facebook",
-      "Google Search",
-      "Employee Referral",
-      "University Program",
-      "Agency Partner",
-      "Other",
-      "Conference or Event"
-    ],
-    "currentAnswer": "Palo Alto Networks Careers Site",
-    "verified": true
-  },
-  {
-    "question": "If you were referred by a current employee, provide the employee's name.",
-    "type": "Text Input",
-    "required": false,
-    "options": null,
-    "currentAnswer": "",
-    "verified": true
-  },
-  {
-    "question": "I understand that the information I submit as part of my job application will be used in accordance with [Palo Alto Network's Candidate Privacy Notice](https://www.paloaltonetworks.com/legal-notices/privacy/privacy-notice.html). I understand the processing of my information as described in that policy including that, in limited circumstances, Palo Alto Networks may share my contact information with trusted third parties, to assist in certain phases of the hiring process (such as conducting background checks).",
-    "type": "Multiple Select (Checkbox)",
-    "required": true,
-    "options": [
-      "Confirmed"
-    ],
-    "currentAnswer": "Confirmed",
-    "verified": true
-  },
-  {
-    "question": "By checking this box, you will declare that you read and understand the privacy policy of Palo Alto Networks.",
-    "type": "Multiple Select (Checkbox)",
-    "required": true,
-    "options": [
-      "I consent"
-    ],
-    "currentAnswer": [
-      "I consent"
-    ],
-    "verified": true
-  },
-  {
-    "question": "How many years of work experience do you have with Python (Programming Language)?",
+    "question": "Mobile phone number",
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": "4",
-    "verified": true
-  },
-  {
-    "question": "How many years of work experience do you have with React.js?",
-    "type": "Text Input",
-    "required": true,
-    "options": null,
-    "currentAnswer": "3",
-    "verified": true
-  },
-  {
-    "question": "Have you completed the following level of education: Master's Degree?",
-    "type": "Radio Button",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "Yes",
-    "verified": true
-  },
-  {
-    "question": "Are you comfortable working fully onsite at our office in Dallas, Texas?",
-    "type": "Dropdown",
-    "required": true,
-    "options": [
-      "Yes",
-      "No"
-    ],
-    "currentAnswer": "Yes",
-    "verified": true
-  },
-  {
-    "question": "Email",
-    "type": "Dropdown",
-    "required": true,
-    "options": [
-      "irangarick@gmail.com"
-    ],
-    "currentAnswer": "irangarick@gmail.com",
-    "verified": true
-  },
-  {
-    "question": "Phone",
-    "type": "Text Input",
-    "required": true,
-    "options": null,
-    "currentAnswer": "1111111111",
+    "currentAnswer": "6072969583",
     "verified": true
   },
   {
@@ -515,7 +296,15 @@
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": "4",
+    "currentAnswer": "2",
+    "verified": true
+  },
+  {
+    "question": "How many years of work experience do you have with Python (Programming Language)?",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "5",
     "verified": true
   },
   {
@@ -542,7 +331,7 @@
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": "3",
+    "currentAnswer": "4",
     "verified": true
   },
   {
@@ -580,7 +369,7 @@
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": "3",
+    "currentAnswer": "2",
     "verified": true
   },
   {
@@ -632,7 +421,7 @@
     "type": "Text Input",
     "required": true,
     "options": null,
-    "currentAnswer": "3",
+    "currentAnswer": "2",
     "verified": true
   },
   {
@@ -658,6 +447,237 @@
     "verified": true
   },
   {
+    "question": "First name",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "Utsav",
+    "verified": true
+  },
+  {
+    "question": "Last name",
+    "type": "Text Input",
+    "required": true,
+    "options": null,
+    "currentAnswer": "Chaudhary",
+    "verified": true
+  },
+  {
+    "question": "City\nCity",
+    "type": "Text Input",
+    "required": false,
+    "options": null,
+    "currentAnswer": "Sugar Land",
+    "verified": true
+  },
+  {
+    "question": "BY CHECKING THIS BOX, YOU WILL DECLARE THAT YOU READ AND AGREE TO THE SMARTRECRUITERS’ PRIVACY POLICY AND SMARTRECRUITERS  TERMS OF USE.",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "I Agree Terms & Conditions"
+    ],
+    "currentAnswer": [
+      "I Agree Terms & Conditions"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Website",
+    "type": "Text Input",
+    "required": false,
+    "options": null,
+    "currentAnswer": "https://thatinsaneguy.netlify.app/",
+    "verified": true
+  },
+  {
+    "question": "Are you currently authorized to work lawfully in the U.S.?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "Will you now or in the future require employment-based visa sponsorship?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "No",
+    "verified": true
+  },
+  {
+    "question": "What is your preferred working location?",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "San Francisco, CA",
+      "Mountain View, CA",
+      "Los Angeles, CA",
+      "Seattle, WA",
+      "New York, NY",
+      "Chicago, IL",
+      "Pittsburgh, PA",
+      "Toronto, Canada",
+      "Remote (prefer a city not listed here)"
+    ],
+    "currentAnswer": [
+      "New York, NY",
+      "San Francisco, CA",
+      "Chicago, IL",
+      "Mountain View, CA"
+    ],
+    "verified": true
+  },
+  {
+    "question": "How much did content from the DoorDash Eng blog influence your decision to apply for a role at DoorDash?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "5 = Strong",
+      "4 = Moderate",
+      "3 = Neutral",
+      "2 = Somewhat",
+      "1 = None"
+    ],
+    "currentAnswer": "2 = Somewhat",
+    "verified": true
+  },
+  {
+    "question": "Have you worked at DoorDash?",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "I am a previous employee",
+      "I am a previous contractor",
+      "I am a previous DoorDash Dasher",
+      "I am a current contractor",
+      "I am a current DoorDash Dasher",
+      "I am a current DoorDash employee",
+      "I have not worked at DoorDash"
+    ],
+    "currentAnswer": "I have not worked at DoorDash",
+    "verified": true
+  },
+  {
+    "question": "Applicant Privacy Acknowledgement",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "Yes",
+    "verified": true
+  },
+  {
+    "question": "We would like to contact you via SMS or WhatsApp to provide updates on your progress. Mark yes if you agree. If you mark no, we will contact you via the email you provided.",
+    "type": "Dropdown",
+    "required": true,
+    "options": [
+      "Yes",
+      "No"
+    ],
+    "currentAnswer": "No",
+    "verified": true
+  },
+  {
+    "question": "Gender",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "Male",
+      "Female",
+      "Non-binary",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "Male"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Do you identify as transgender?",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "Yes",
+      "No",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "No"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Are you Hispanic or Latinx?",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "Yes",
+      "No",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "No"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Race (*Please select one option that best describes how you identify*)",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "American Indian or Alaska Native",
+      "Asian",
+      "Black or African American",
+      "Hispanic or Latino",
+      "Native Hawaiian or Other Pacific Islander",
+      "Two or more races",
+      "White",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "Asian"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Protected Veteran Status",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "I am one or more of the classifications of protected veterans",
+      "I am not a protected veteran",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "I am not a protected veteran"
+    ],
+    "verified": true
+  },
+  {
+    "question": "Disability Status",
+    "type": "Multiple Select (Checkbox)",
+    "required": true,
+    "options": [
+      "Yes, I have (or have previously had) a disability",
+      "No, I don’t have a disability",
+      "I don't wish to answer"
+    ],
+    "currentAnswer": [
+      "No, I don’t have a disability"
+    ],
+    "verified": true
+  },
+  {
     "question": "Are you legally authorized to work in the United States?",
     "type": "Radio Button",
     "required": true,
@@ -665,7 +685,7 @@
       "Yes",
       "No"
     ],
-    "currentAnswer": null,
+    "currentAnswer": "Yes",
     "verified": false
   },
   {
@@ -676,7 +696,7 @@
       "Yes",
       "No"
     ],
-    "currentAnswer": null,
+    "currentAnswer": "No",
     "verified": false
   },
   {
@@ -687,7 +707,7 @@
       "Yes",
       "No"
     ],
-    "currentAnswer": null,
+    "currentAnswer": "Yes",
     "verified": false
   }
 ]
