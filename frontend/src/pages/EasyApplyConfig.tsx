@@ -1,5 +1,5 @@
 import { Button } from '@/components/ui/button';
-import { HomeIcon, LinkedinIcon, CheckCircleIcon, XCircleIcon, Loader2Icon, SaveIcon, ZapIcon } from 'lucide-react';
+import { HomeIcon, LinkedinIcon, CheckCircleIcon, XCircleIcon, Loader2Icon, SaveIcon, ZapIcon, ArrowLeftIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
@@ -17,7 +17,7 @@ export interface LinkedInQuestion {
   verified: boolean;
 }
 
-export function LinkedIn() {
+export function EasyApplyConfig() {
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<LinkedInQuestion[]>([]);
   const [editedQuestions, setEditedQuestions] = useState<LinkedInQuestion[]>([]);
@@ -135,12 +135,68 @@ export function LinkedIn() {
     }
   };
 
+  const renderHeader = () => (
+    <header className="border-b border-border/10 sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex items-center justify-between h-14 px-4">
+        <div className="flex items-center gap-2">
+          <LinkedinIcon className="h-6 w-6 text-primary" />
+          <h1 className="text-lg font-semibold">LinkedIn Saral Apply</h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleCancel}
+                disabled={isSaving}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="gap-2"
+              >
+                {isSaving ? (
+                  <Loader2Icon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <SaveIcon className="h-4 w-4" />
+                )}
+                Save Changes
+              </Button>
+            </>
+          )}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate('/linkedin')}
+          >
+            <ArrowLeftIcon className="h-4 w-4" />
+            Go Back
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => navigate('/')}
+          >
+            <HomeIcon className="h-4 w-4" />
+            Go Home
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2Icon className="h-8 w-8 animate-spin mx-auto text-accent" />
-          <p className="text-muted-foreground">Loading LinkedIn data...</p>
+      <div className="min-h-screen bg-background flex flex-col">
+        {renderHeader()}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <Loader2Icon className="h-8 w-8 animate-spin mx-auto text-accent" />
+            <p className="text-muted-foreground">Loading LinkedIn data...</p>
+          </div>
         </div>
       </div>
     );
@@ -148,17 +204,20 @@ export function LinkedIn() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-destructive text-xl font-semibold">Error Loading Data</div>
-          <p className="text-muted-foreground">{error}</p>
-          <Button
-            variant="outline"
-            onClick={() => window.location.reload()}
-            className="mx-auto"
-          >
-            Try Again
-          </Button>
+      <div className="min-h-screen bg-background flex flex-col">
+        {renderHeader()}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="text-destructive text-xl font-semibold">Error Loading Data</div>
+            <p className="text-muted-foreground">{error}</p>
+            <Button
+              variant="outline"
+              onClick={() => window.location.reload()}
+              className="mx-auto"
+            >
+              Try Again
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -183,49 +242,7 @@ export function LinkedIn() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border/10 sticky top-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center justify-between h-14 px-4">
-          <div className="flex items-center gap-2">
-            <LinkedinIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-lg font-semibold">LinkedIn Saral Apply</h1>
-          </div>
-          <div className="flex items-center gap-2">
-            {isEditing && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={handleCancel}
-                  disabled={isSaving}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="default"
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="gap-2"
-                >
-                  {isSaving ? (
-                    <Loader2Icon className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SaveIcon className="h-4 w-4" />
-                  )}
-                  Save Changes
-                </Button>
-              </>
-            )}
-            <Button
-              variant="outline"
-              className="gap-2"
-              onClick={() => navigate('/')}
-            >
-              <HomeIcon className="h-4 w-4" />
-              Go to Home
-            </Button>
-          </div>
-        </div>
-      </header>
-
+      {renderHeader()}
       <main className="flex-1 container max-w-4xl mx-auto py-12 px-4">
         <div className="text-center space-y-4 mb-8">
           <h2 className="text-4xl font-bold tracking-tight">

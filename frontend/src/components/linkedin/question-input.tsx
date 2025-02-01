@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { LinkedInQuestion } from '../../pages/LinkedIn';
+import { LinkedInQuestion } from '../../pages/EasyApplyConfig';
 
 interface QuestionInputProps {
   question: LinkedInQuestion;

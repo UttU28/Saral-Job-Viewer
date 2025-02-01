@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { ChevronLeftIcon, ChevronRightIcon, SaveIcon, ZapIcon, Loader2Icon, CheckCircleIcon } from 'lucide-react';
 import { QuestionInput } from './question-input';
 import { useState } from 'react';
-import { LinkedInQuestion } from '../../pages/LinkedIn';
+import { LinkedInQuestion } from '../../pages/EasyApplyConfig';
 
 interface FastModeProps {
   currentQuestion: LinkedInQuestion;
