@@ -8,17 +8,19 @@ import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { useDiceJobs } from '@/hooks/use-dice-jobs';
+import { useDiceKeywords } from '@/hooks/use-dice-keywords';
 
 export function DiceJobs() {
   const navigate = useNavigate();
-  const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts, fetchJobs } = useJobs();
+  const { jobs, isLoading: jobsLoading, error: jobsError, updateJobStatus, acceptDenyCounts, fetchJobs } = useDiceJobs();
   const {
     noCompanyKeywords,
     searchListKeywords,
     isLoading: keywordsLoading,
     addKeyword,
     removeKeyword,
-  } = useKeywords();
+  } = useDiceKeywords();
   const [searchQuery, setSearchQuery] = useState('');
   const [useBot, setUseBot] = useState(false);
   const [applicationMethod, setApplicationMethod] = useState<'all' | 'easyapply' | 'manual'>('all');
