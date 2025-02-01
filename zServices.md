@@ -142,6 +142,7 @@ CREATE TABLE allJobData (
 
 CREATE TABLE allDiceJobs (
     id VARCHAR(255) NOT NULL PRIMARY KEY,
+    link TEXT NULL,
     title TEXT NULL,
     companyName TEXT NULL,
     location TEXT NULL,
@@ -165,6 +166,14 @@ CREATE TABLE easyApplyData (
 
 -- Create the table
 CREATE TABLE searchKeywords (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    created_at DATETIME NOT NULL
+);
+
+-- Create the table
+CREATE TABLE diceSearchKeywords (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     type VARCHAR(50) NOT NULL,

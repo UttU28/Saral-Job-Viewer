@@ -109,7 +109,7 @@ def scrapeTheJobs():
                         return False
                 return True
         return False
-    def writeTheJob(jobID, title, location, company, empType):
+    def writeTheJob(jobID, link, title, location, company, empType):
         if jobID not in rawData:
             currentTime = int(datetime.now(timezone.utc).timestamp())
             rawData[jobID] = currentTime
@@ -122,7 +122,7 @@ def scrapeTheJobs():
                 checkRequirements = checkRequirementMatching(description, contentIn, contentOut)
                 if checkRequirements:
                     jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
-                    return addDiceJob(jobID, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
+                    return addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
         return False
 
     options = Options()
@@ -183,7 +183,8 @@ def scrapeTheJobs():
                                 location = element.select('span.search-result-location')[0].text.strip()
                                 title = element.select('a.card-title-link')[0].text.strip()
                                 company = element.select('[data-cy="search-result-company-name"]')[0].text.strip()
-                                if writeTheJob(jobID, title, location, company, empType):
+                                link = f"https://www.dice.com/job-detail/{jobID}"
+                                if writeTheJob(jobID, link, title, location, company, empType):
                                     passCount += 1
                         except Exception as e:
                             logger.error("Error processing job", exc_info=e)

@@ -49,6 +49,14 @@ class Keyword(Base):
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
 
+class DiceKeyword(Base):
+    __tablename__ = "diceSearchKeywords"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
 class EasyApply(Base):
     __tablename__ = "easyApplyData"
 
@@ -61,6 +69,7 @@ class DiceJobPosting(Base):
     __tablename__ = "allDiceJobs"
 
     id = Column(String, primary_key=True)
+    link = Column(Text)
     title = Column(Text)
     companyName = Column(Text)
     location = Column(Text)
@@ -264,8 +273,10 @@ def getAllEasyApply():
     finally:
         session.close()
 
+
 def addDiceJob(
     jobId: str,
+    jobLink: str,
     jobTitle: str,
     companyName: str,
     jobLocation: str,
@@ -281,6 +292,7 @@ def addDiceJob(
         if not existingEntry:
             newEntry = DiceJobPosting(
                 id=jobId,
+                link=jobLink,
                 title=jobTitle,
                 companyName=companyName,
                 location=jobLocation,
@@ -310,6 +322,99 @@ def getNotAppliedDiceJobs():
         return session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NO").all()
     except Exception as e:
         logging.error(f"Error fetching not applied Dice jobs: {e}")
+        return []
+    finally:
+        session.close()
+
+def getCountForDiceAcceptDeny():
+    session = getSession()
+    try:
+        countAccepted = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "YES").count()
+        countRejected = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NEVER").count()
+        return {
+            "countAccepted": countAccepted,
+            "countRejected": countRejected
+        }
+    except Exception as e:
+        logging.error(f"Error fetching counts: {e}")
+        return {"countAccepted": 0, "countRejected": 0}
+    finally:
+        session.close()
+
+def getHoursOfDiceData(hours: int):
+    session = getSession()
+    try:
+        currentTimestamp = time.time()
+        fortyEightHoursAgo = currentTimestamp - (hours * 60 * 60)
+        return session.query(DiceJobPosting).filter(
+            DiceJobPosting.applied == "NO",
+            DiceJobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
+        ).all()
+    except Exception as e:
+        logging.error(f"Error fetching not applied jobs: {e}")
+        return []
+    finally:
+        session.close()
+
+def addDiceKeyword(name: str, keywordType: str):
+    session = getSession()
+    try:
+        newKeyword = DiceKeyword(
+            name=name, 
+            type=keywordType,
+            created_at=datetime.utcnow()
+        )
+        session.add(newKeyword)
+        session.commit()
+        session.refresh(newKeyword)
+        return newKeyword
+    except IntegrityError as e:
+        session.rollback()
+        logging.error(f"IntegrityError adding keyword: {e}")
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error adding keyword: {e}")
+    finally:
+        session.close()
+
+def removeDiceKeyword(keywordId: int):
+    session = getSession()
+    try:
+        keyword = session.query(DiceKeyword).filter(DiceKeyword.id == keywordId).first()
+        if keyword:
+            session.delete(keyword)
+            session.commit()
+            return keyword
+        return None
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error removing keyword: {e}")
+        return None
+    finally:
+        session.close()
+
+def updateDiceJobStatus(jobId: str, appliedStatus: str):
+    session = getSession()
+    try:
+        job = session.query(DiceJobPosting).filter(DiceJobPosting.id == jobId).first()
+        if job:
+            job.applied = appliedStatus
+            session.commit()
+            return job
+        return None
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error updating job status: {e}")
+        return None
+    finally:
+        session.close()
+
+def getAllDiceKeywords():
+    session = getSession()
+    try:
+        return session.query(DiceKeyword).all()
+    except Exception as e:
+        logging.error(f"Error fetching all dice keywords: {e}")
         return []
     finally:
         session.close()
