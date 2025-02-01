@@ -1,7 +1,6 @@
 **/__pycache__/*
 **/env/*
 **/chromeData/*
-!**/chromeData/linkedinQuestions.json
 *-lock.json
 *.env
 *.db

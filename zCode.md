@@ -8,7 +8,7 @@ chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/services/backend.sh
 chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/services/frontend.sh
 chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/services/dataScraping.sh
 chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/services/easyApply.sh
-
+chmod +x /home/robada/Desktop/LinkedIn-Saral-Apply/services/diceScraping.sh
 
 sudo systemctl daemon-reload
 sudo systemctl stop runFrontend.service

@@ -19,26 +19,24 @@ from utils.utilsDatabase import addDiceJob
 load_dotenv()
 
 # Initialize JSON file paths
-jsonFilePath = "jobsData.json"
-rawFilePath = "rawData.json"
+DATA_DIR = os.getenv('DATA_DIR', 'data')  # Use environment variable with fallback
+rawFilePath = os.path.join(DATA_DIR, "rawData.json")
 
-# Initialize or load existing JSON files
 def initializeJsonFiles():
-    if not os.path.exists(jsonFilePath):
-        with open(jsonFilePath, 'w') as f:
-            json.dump({}, f)
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR)
+        logger.info(f"Created data directory at {DATA_DIR}")
+
     if not os.path.exists(rawFilePath):
         with open(rawFilePath, 'w') as f:
             json.dump({}, f)
+        logger.info(f"Created new rawData.json file at {rawFilePath}")
 
-    with open(jsonFilePath, 'r') as f:
-        jobsData = json.load(f)
     with open(rawFilePath, 'r') as f:
         rawData = json.load(f)
-    return jobsData, rawData
+    return rawData
 
-# Load the JSON data
-jobsData, rawData = initializeJsonFiles()
+rawData = initializeJsonFiles()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -101,7 +99,7 @@ def getJobDescription(jobID):
 
 def scrapeTheJobs():
     # Move these variables to the outer scope so they're accessible
-    global jobsData, rawData
+    global rawData
     
     def checkRequirementMatching(taroText, shouldBe, shouldNot):
         for temp1 in shouldBe:
@@ -114,7 +112,6 @@ def scrapeTheJobs():
     def writeTheJob(jobID, title, location, company, empType):
         if jobID not in rawData:
             currentTime = int(datetime.now(timezone.utc).timestamp())
-            jobsData[jobID] = currentTime
             rawData[jobID] = currentTime
             jdData = getJobDescription(jobID)
             # Save rawData immediately after new job is found
@@ -124,9 +121,6 @@ def scrapeTheJobs():
                 description, datePosted, dateUpdated = jdData
                 checkRequirements = checkRequirementMatching(description, contentIn, contentOut)
                 if checkRequirements:
-                    # Save jobsData only if requirements match
-                    with open(jsonFilePath, 'w', encoding='utf-8') as jsonFile:
-                        json.dump(jobsData, jsonFile, ensure_ascii=False, indent=4)
                     jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
                     return addDiceJob(jobID, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
         return False
