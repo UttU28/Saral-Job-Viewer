@@ -167,6 +167,7 @@ export function LinkedInJobs() {
           isCompanyBlacklisted={isCompanyBlacklisted}
           useBot={useBot}
           onHoursChange={handleHoursChange}
+          source="linkedin"
         />
       </div>
     </div>

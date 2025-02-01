@@ -5,8 +5,8 @@ import { Card } from '@/components/ui/card';
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { QuestionInput } from '@/components/linkedin/question-input';
-import { FastMode } from '@/components/linkedin/fast-mode';
+import { QuestionInput } from '@/components/linkedinConfig/question-input';
+import { FastMode } from '@/components/linkedinConfig/fast-mode';
 
 export interface LinkedInQuestion {
   question: string;

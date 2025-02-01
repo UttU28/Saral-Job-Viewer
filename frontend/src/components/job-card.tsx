@@ -31,6 +31,7 @@ interface JobCardProps {
   onUpdateStatus: (jobId: string, status: 'YES' | 'NEVER') => void;
   onAddKeyword?: (name: string, type: string) => Promise<void>;
   useBot?: boolean;
+  source: 'linkedin' | 'dice';
 }
 
 export function JobCard({
@@ -48,6 +49,7 @@ export function JobCard({
   onUpdateStatus,
   onAddKeyword,
   useBot = false,
+  source,
 }: JobCardProps) {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const formattedTime = formatTimestamp(timeStamp);
@@ -97,12 +99,21 @@ export function JobCard({
         window.open(link, '_blank');
       }
 
-      await api.applyJob({
-        jobID: id,
-        applyMethod: method,
-        link: link,
-        useBot: useBot,
-      });
+      if (source === 'dice') {
+        await api.applyJobDice({
+          jobID: id,
+          applyMethod: method,
+          link: link,
+          useBot: useBot,
+        });
+      } else {
+        await api.applyJob({
+          jobID: id,
+          applyMethod: method,
+          link: link,
+          useBot: useBot,
+        });
+      }
 
       toast.success('Successfully applied for the job!', {
         description: `Application submitted for ${title}`,
@@ -120,7 +131,11 @@ export function JobCard({
 
   const handleReject = async () => {
     try {
-      await api.rejectJob({ jobID: id });
+      if (source === 'dice') {
+        await api.rejectJobDice({ jobID: id });
+      } else {
+        await api.rejectJob({ jobID: id });
+      }
 
       toast.success('Job rejected', {
         description: `You won't see this job in your active listings anymore`,
@@ -144,7 +159,11 @@ export function JobCard({
       }
 
       // Reject this job
-      await api.rejectJob({ jobID: id });
+      if (source === 'dice') {
+        await api.rejectJobDice({ jobID: id });
+      } else {
+        await api.rejectJob({ jobID: id });
+      }
 
       toast.success('Company blacklisted', {
         description: `${companyName} has been added to excluded companies`,

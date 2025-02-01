@@ -1,15 +1,13 @@
 import { Dashboard } from '@/components/dashboard';
 import { Sidebar } from '@/components/sidebar';
-import { useJobs } from '@/hooks/use-jobs';
-import { useKeywords } from '@/hooks/use-keywords';
 import { DicesIcon, ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
 import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { useDiceJobs } from '@/hooks/use-dice-jobs';
-import { useDiceKeywords } from '@/hooks/use-dice-keywords';
+import { useDiceJobs } from '@/hooks/use-jobs';
+import { useDiceKeywords } from '@/hooks/use-keywords';
 
 export function DiceJobs() {
   const navigate = useNavigate();
@@ -169,6 +167,7 @@ export function DiceJobs() {
           isCompanyBlacklisted={isCompanyBlacklisted}
           useBot={useBot}
           onHoursChange={handleHoursChange}
+          source="dice"
         />
       </div>
     </div>

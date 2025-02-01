@@ -68,3 +68,83 @@ export function useJobs() {
     fetchJobs,
   };
 }
+
+export function useDiceJobs() {
+  const [diceJobs, setDiceJobs] = useState<Job[]>([]);
+  const [isDiceLoading, setIsDiceLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [diceAcceptDenyCounts, setDiceAcceptDenyCounts] = useState<{
+    countAccepted: number;
+    countRejected: number;
+  }>({
+    countAccepted: 0,
+    countRejected: 0,
+  });
+
+  const fetchDiceJobs = useCallback(async (hours?: number) => {
+    try {
+      setIsDiceLoading(true);
+      setError(null);
+      const [jobsData, countsData] = await Promise.all([
+        hours ? api.getJobsByHoursDice(hours) : api.getJobsDice(),
+        api.getAcceptDenyCountsDice(),
+      ]);
+      const sortedJobs = sortJobs(jobsData);
+      setDiceJobs(sortedJobs);
+      setDiceAcceptDenyCounts(countsData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch dice jobs');
+      console.error('Error fetching dice jobs:', err);
+    } finally {
+      setIsDiceLoading(false);
+    }
+  }, []);
+
+  const updateDiceJobStatus = useCallback(async (jobId: string, newStatus: 'YES' | 'NEVER') => {
+    try {
+      setError(null);
+      const job = diceJobs.find(j => j.id === jobId);
+      if (!job) {
+        throw new Error('Job not found');
+      }
+
+      if (newStatus === 'YES') {
+        await api.applyJobDice({
+          jobID: jobId,
+          applyMethod: job.method,
+          link: job.link,
+          useBot: false
+        });
+      } else {
+        await api.rejectJobDice({ jobID: jobId });
+      }
+
+      setDiceJobs(prevJobs => {
+        const updatedJobs = prevJobs.map(job => 
+          job.id === jobId ? { ...job, applied: newStatus } : job
+        );
+        return sortJobs(updatedJobs);
+      });
+
+      const newCounts = await api.getAcceptDenyCountsDice();
+      setDiceAcceptDenyCounts(newCounts);
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update job status');
+      console.error('Error updating dice job status:', err);
+    }
+  }, [diceJobs]);
+
+  useEffect(() => {
+    fetchDiceJobs();
+  }, [fetchDiceJobs]);
+
+  return {
+    jobs: diceJobs,
+    isLoading: isDiceLoading,
+    error,
+    updateJobStatus: updateDiceJobStatus,
+    acceptDenyCounts: diceAcceptDenyCounts,
+    fetchJobs: fetchDiceJobs,
+  };
+} 

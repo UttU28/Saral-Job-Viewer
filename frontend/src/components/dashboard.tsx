@@ -27,6 +27,7 @@ interface DashboardProps {
   useBot: boolean;
   onRetry?: () => void;
   onHoursChange: (hours: number) => Promise<void>;
+  source: 'linkedin' | 'dice';
 }
 
 export function Dashboard({
@@ -46,6 +47,7 @@ export function Dashboard({
   useBot,
   onRetry,
   onHoursChange,
+  source,
 }: DashboardProps) {
   // Calculate pending jobs by application method
   const pendingEasyApply = jobs.filter(
@@ -113,6 +115,7 @@ export function Dashboard({
                 onUpdateStatus={updateJobStatus}
                 onAddKeyword={addKeyword}
                 useBot={useBot}
+                source={source}
               />
             ))
           )}
