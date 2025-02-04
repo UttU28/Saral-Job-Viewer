@@ -9,11 +9,8 @@ selenium
 mysqlclient
 cryptography
 pyautogui
-
-
 beautifulsoup4
 tqdm
 requests
 webdriver-manager
-pyyaml
 pytz

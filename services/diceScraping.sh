@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the application directory and related paths
-APP_DIR="/home/robada/Desktop/LinkedIn-Saral-Apply"
+APP_DIR="/home/robada/Desktop/Saral-Job-Apply"
 PYTHON_SCRIPT="$APP_DIR/diceScraping.py"
 VENV_DIR="$APP_DIR/env"
 REQUIREMENTS_FILE="$APP_DIR/requirements.txt"

@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the application directory and script paths
-APP_DIR="/home/robada/Desktop/LinkedIn-Saral-Apply"
-SCRAPING_SCRIPT="$APP_DIR/services/dataScraping.sh"
+APP_DIR="/home/robada/Desktop/Saral-Job-Apply"
+SCRAPING_SCRIPT="$APP_DIR/services/linkedInScraping.sh"
 LOG_FILE="$APP_DIR/scheduler.log"
 
 # Function to log messages to both console and log file
@@ -37,7 +37,7 @@ get_minutes_until_next_scraping() {
     current_time_minutes=$((current_hour * 60 + current_minute))
     
     # Define scraping run times in minutes since midnight
-    run_times=(0 360 720 893 1080)  # 00:00, 06:00, 12:00, 18:00
+    run_times=(0 360 720 1080)  # 00:00, 06:00, 12:00, 18:00
     
     # Find next run time
     for run_time in "${run_times[@]}"; do

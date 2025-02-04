@@ -17,7 +17,7 @@ Base = declarative_base()
 
 # Define JobPosting model
 class JobPosting(Base):
-    __tablename__ = "allJobData"
+    __tablename__ = "allLinkedInJobs"
 
     id = Column(String, primary_key=True)
     link = Column(Text)
@@ -32,7 +32,7 @@ class JobPosting(Base):
 
 # Define SearchKeywords model
 class SearchKeywords(Base):
-    __tablename__ = "searchKeywords"
+    __tablename__ = "linkedInKeywords"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)

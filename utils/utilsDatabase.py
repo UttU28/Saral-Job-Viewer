@@ -29,7 +29,7 @@ Session = sessionmaker(bind=engine)
 
 # Models
 class JobPosting(Base):
-    __tablename__ = "allJobData"
+    __tablename__ = "allLinkedInJobs"
 
     id = Column(String, primary_key=True)
     link = Column(Text)
@@ -43,14 +43,14 @@ class JobPosting(Base):
     applied = Column(Text)
 
 class Keyword(Base):
-    __tablename__ = "searchKeywords"
+    __tablename__ = "linkedInKeywords"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
 
 class DiceKeyword(Base):
-    __tablename__ = "diceSearchKeywords"
+    __tablename__ = "diceKeywords"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
