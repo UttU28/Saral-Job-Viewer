@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the application directory and script paths
-APP_DIR="/home/robada/Desktop/Saral-Job-Apply"
+APP_DIR="/home/robada/Desktop/Saral-Job-Viewer"
 SCRAPING_SCRIPT="$APP_DIR/services/linkedInScraping.sh"
 LOG_FILE="$APP_DIR/scheduler.log"
 

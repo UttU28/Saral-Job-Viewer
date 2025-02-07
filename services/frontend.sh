@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the application directory and frontend directory
-APP_DIR="/home/robada/Desktop/Saral-Job-Apply"
+APP_DIR="/home/robada/Desktop/Saral-Job-Viewer"
 FRONTEND_DIR="$APP_DIR/frontend"
 
 # Function to validate the presence of frontend directory

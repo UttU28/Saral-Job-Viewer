@@ -136,7 +136,7 @@ def getDiceData():
 def scrapeNewData():
     """Trigger the LinkedIn data scraping script asynchronously."""
     try:
-        script_path = "/home/robada/Desktop/Saral-Job-Apply/services/linkedInScraping.sh"
+        script_path = "/home/robada/Desktop/Saral-Job-Viewer/services/linkedInScraping.sh"
         subprocess.Popen([script_path], 
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,

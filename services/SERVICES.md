@@ -15,11 +15,10 @@ After=network.target
 
 [Service]
 Type=simple
-User=yourSystemUser
-ExecStart=/home/yourSystemUser/Desktop/Saral-Job-Apply/services/scheduler.sh
+User=robada
+ExecStart=/home/robada/Desktop/Saral-Job-Viewer/services/scheduler.sh
 Restart=always
 RestartSec=3
-
 
 [Install]
 WantedBy=multi-user.target
@@ -36,11 +35,11 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/home/yourSyste/Desktop/Saral-Job-Apply/services/backend.sh
-WorkingDirectory=/home/yourSyste/Desktop/Saral-Job-Apply
+ExecStart=/home/robada/Desktop/Saral-Job-Viewer/services/backend.sh
+WorkingDirectory=/home/robada/Desktop/Saral-Job-Viewer
 Restart=always
 RestartSec=5
-User=yourSyste
+User=robada
 
 [Install]
 WantedBy=multi-user.target
@@ -57,10 +56,10 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/yourSyste/Desktop/Saral-Job-Apply/frontend
-ExecStart=/home/yourSyste/Desktop/Saral-Job-Apply/services/frontend.sh
+WorkingDirectory=/home/robada/Desktop/Saral-Job-Viewer/frontend
+ExecStart=/home/robada/Desktop/Saral-Job-Viewer/services/frontend.sh
 Restart=always
-User=yourSyste
+User=robada
 Environment=NODE_ENV=development
 
 [Install]
@@ -78,12 +77,11 @@ sudo nano /etc/systemd/system/runFrontend.service
 
 ### 2. **Make Service Scripts Executable**
 ```sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/scheduler.sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/backend.sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/frontend.sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/linkedInScraping.sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/easyApply.sh
-chmod +x /home/yourSyste/Desktop/Saral-Job-Apply/services/diceScraping.sh
+chmod +x /home/robada/Desktop/Saral-Job-Viewer/services/scheduler.sh
+chmod +x /home/robada/Desktop/Saral-Job-Viewer/services/backend.sh
+chmod +x /home/robada/Desktop/Saral-Job-Viewer/services/frontend.sh
+chmod +x /home/robada/Desktop/Saral-Job-Viewer/services/linkedInScraping.sh
+chmod +x /home/robada/Desktop/Saral-Job-Viewer/services/diceScraping.sh
 ```
 
 ### 3. **Reload Systemd Daemon**
