@@ -134,25 +134,21 @@ def getDiceData():
 
 @app.get("/scrapeNewData")
 def scrapeNewData():
-    """Trigger the data scraping script via socket listener."""
+    """Trigger the LinkedIn data scraping script asynchronously."""
     try:
-        # Replace with your server's IP address on the local network11
-        HOST = '0.0.0.0' 
-        PORT = 12345
+        script_path = "/home/robada/Desktop/Saral-Job-Apply/services/linkedInScraping.sh"
+        subprocess.Popen([script_path], 
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True)
         
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.connect((HOST, PORT))
-            s.sendall(b'run_scraper\n')
-            # Wait for response
-            response = s.recv(1024)
-            return {"success": True, "message": f"Data scraping initiated: {response.decode()}"}
+        return {"success": True, "message": "Data scraping initiated"}
+            
     except Exception as e:
         raise HTTPException(
             status_code=500,
             detail=f"Failed to trigger scraper: {str(e)}"
         )
-    finally:
-        s.close()
 
 
 @app.get("/getCountForAcceptDeny")

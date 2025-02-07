@@ -46,25 +46,25 @@ export function KeywordManager({
   return (
     <div className="space-y-6">
       <div>
-        <h4 className="text-sm font-medium mb-2">Excluded Companies</h4>
+        <h4 className="text-sm font-medium mb-2">Search Keywords</h4>
         <div className="flex gap-2 mb-2">
           <Input
-            placeholder="Add company to exclude..."
-            value={noCompanyInput}
-            onChange={(e) => setNoCompanyInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddNoCompany()}
+            placeholder="Add search keyword..."
+            value={searchListInput}
+            onChange={(e) => setSearchListInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSearchList()}
             disabled={isLoading}
           />
           <Button
             size="icon"
-            onClick={handleAddNoCompany}
-            disabled={isLoading || !noCompanyInput.trim()}
+            onClick={handleAddSearchList}
+            disabled={isLoading || !searchListInput.trim()}
           >
             <PlusIcon className="h-4 w-4" />
           </Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {noCompanyKeywords.map((keyword) => (
+          {searchListKeywords.map((keyword) => (
             <Badge
               key={keyword.id}
               variant="secondary"
@@ -87,25 +87,25 @@ export function KeywordManager({
       <Separator />
 
       <div>
-        <h4 className="text-sm font-medium mb-2">Search Keywords</h4>
+        <h4 className="text-sm font-medium mb-2">Excluded Companies</h4>
         <div className="flex gap-2 mb-2">
           <Input
-            placeholder="Add search keyword..."
-            value={searchListInput}
-            onChange={(e) => setSearchListInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleAddSearchList()}
+            placeholder="Add company to exclude..."
+            value={noCompanyInput}
+            onChange={(e) => setNoCompanyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddNoCompany()}
             disabled={isLoading}
           />
           <Button
             size="icon"
-            onClick={handleAddSearchList}
-            disabled={isLoading || !searchListInput.trim()}
+            onClick={handleAddNoCompany}
+            disabled={isLoading || !noCompanyInput.trim()}
           >
             <PlusIcon className="h-4 w-4" />
           </Button>
         </div>
         <div className="flex flex-wrap gap-2">
-          {searchListKeywords.map((keyword) => (
+          {noCompanyKeywords.map((keyword) => (
             <Badge
               key={keyword.id}
               variant="secondary"

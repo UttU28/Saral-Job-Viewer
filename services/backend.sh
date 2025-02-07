@@ -23,6 +23,8 @@ load_env_file() {
 setup_venv() {
     if [ ! -d "$VENV_DIR" ]; then
         echo "Virtual environment not found. Creating one..."
+        # Ensure python3-full is installed first
+        sudo apt-get install -y python3-full
         python3 -m venv "$VENV_DIR"
         echo "Virtual environment created at $VENV_DIR."
     fi
@@ -32,8 +34,8 @@ setup_venv() {
     
     if [ -f "$REQUIREMENTS_FILE" ]; then
         echo "Installing dependencies from $REQUIREMENTS_FILE..."
-        pip install --upgrade pip
-        pip install -r "$REQUIREMENTS_FILE"
+        "$VENV_DIR/bin/pip" install --upgrade pip
+        "$VENV_DIR/bin/pip" install -r "$REQUIREMENTS_FILE"
         echo "Dependencies installed."
     else
         echo "Requirements file $REQUIREMENTS_FILE not found. Skipping dependency installation." >&2
@@ -57,7 +59,7 @@ terminate_previous_session() {
 run_script() {
     echo "Starting the FastAPI application..."
     source "$VENV_DIR/bin/activate"
-    uvicorn app:app --host 0.0.0.0 --port 5000 --reload &
+    "$VENV_DIR/bin/uvicorn" app:app --host 0.0.0.0 --port 5000 --reload &
     APP_PID=$!
     echo "FastAPI application started on http://0.0.0.0:5000 with PID $APP_PID"
 }
