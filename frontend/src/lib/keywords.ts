@@ -17,27 +17,22 @@ export const technicalKeywords = [
   "Azure API Management", "Secure Transactions", "Gaming APIs", "Unity3D"
 ];
 
-// Negative keywords to highlight
-export const negativeKeywords = [
-  // Security and Clearance Requirements
+export const blockedKeywords = [
   "Security Clearance", "Clearance Required", "Active Clearance",
   "Polygraph", "Full-Scope Polygraph", "CI Polygraph",
   "Secret Clearance", "Top Secret", "TS/SCI",
   "Public Trust", "Government Clearance",
-
-  // Citizenship and Work Authorization
   "Green Card", "GC", "US Citizen", "Citizenship Required",
   "Must be US Citizen", "Permanent Resident",
-  "Must be authorized to work",
-  "Sponsorship not available", "No sponsorship",
-  "Cannot sponsor", "Will not sponsor",
 
-  // Military and Government
   "Military Experience", "DoD Experience",
   "Security+ Certification", "CISSP Required",
-  "Government Experience", "Federal Experience",
   "Defense Industry", "Defense Contractor",
+];
 
+// Negative keywords to highlight
+export const negativeKeywords = [
+  // Security and Clearance Requirements
   "Java", "Apache", "Airflow", "CNC", "Machining", 
 ];
 

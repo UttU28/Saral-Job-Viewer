@@ -8,6 +8,7 @@ import { getMatchedKeywords, getNegativeKeywords } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { blockedKeywords } from '@/lib/keywords';
 
 export function LinkedInJobs() {
   const navigate = useNavigate();
@@ -31,7 +32,14 @@ export function LinkedInJobs() {
     );
   };
 
-  const filteredJobs = jobs.filter(job => !isCompanyBlacklisted(job.companyName));
+  const isJobShit = (jobDescription: string) => {
+    return blockedKeywords.some(keyword => 
+      jobDescription.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
+
+  const filteredJobs = jobs.filter(job => !isCompanyBlacklisted(job.companyName) && !isJobShit(job.jobDescription));
   const totalJobs = filteredJobs.length;
   const appliedJobs = filteredJobs.filter(job => job.applied === 'YES').length;
   const rejectedJobs = filteredJobs.filter(job => job.applied === 'NEVER').length;
