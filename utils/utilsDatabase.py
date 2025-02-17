@@ -319,7 +319,12 @@ def addDiceJob(
 def getNotAppliedDiceJobs():
     session = getSession()
     try:
-        return session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NO").all()
+        currentTimestamp = time.time()
+        twentyFourHoursAgo = currentTimestamp - (24 * 60 * 60)
+        return session.query(DiceJobPosting).filter(
+            DiceJobPosting.applied == "NO",
+            DiceJobPosting.timeStamp.cast(Float) >= twentyFourHoursAgo
+        ).all()
     except Exception as e:
         logging.error(f"Error fetching not applied Dice jobs: {e}")
         return []

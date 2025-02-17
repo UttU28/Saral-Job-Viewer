@@ -25,12 +25,12 @@ rawFilePath = os.path.join(DATA_DIR, "rawData.json")
 def initializeJsonFiles():
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
-        logger.info(f"Created data directory at {DATA_DIR}")
+        print(f"Created data directory at {DATA_DIR}")
 
     if not os.path.exists(rawFilePath):
         with open(rawFilePath, 'w') as f:
             json.dump({}, f)
-        logger.info(f"Created new rawData.json file at {rawFilePath}")
+        print(f"Created new rawData.json file at {rawFilePath}")
 
     with open(rawFilePath, 'r') as f:
         rawData = json.load(f)
@@ -66,7 +66,8 @@ def bhaiTimeKyaHai(watch):
         timeHai = int(watch.timestamp())
         return timeHai
     except Exception as e:
-        logger.error(f"Error converting time: {watch}", exc_info=e)
+        print(f"Error converting time: {watch}")
+        print(f"Error details: {str(e)}")
         return None
 
 def getJobDescription(jobID):
@@ -75,7 +76,8 @@ def getJobDescription(jobID):
         response = requests.get(url)
         response.raise_for_status()
     except requests.RequestException as e:
-        logger.error(f"Failed to retrieve the webpage. URL: {url}, Error: {e}", exc_info=e)
+        print(f"Failed to retrieve the webpage. URL: {url}")
+        print(f"Error details: {str(e)}")
         return False
 
     try:
@@ -93,7 +95,8 @@ def getJobDescription(jobID):
         jobDescription = " \n".join([element.strip() for element in jobDescription if element != ''])
         return jobDescription, datePosted, dateUpdated
     except Exception as e:
-        logger.error(f"Error processing job description for jobID: {jobID}", exc_info=e)
+        print(f"Error processing job description for jobID: {jobID}")
+        print(f"Error details: {str(e)}")
         return False
 
 
@@ -147,14 +150,15 @@ def scrapeTheJobs():
             while has_more_pages:
                 try:
                     url = f"https://www.dice.com/jobs?q={jobKeyWord.replace(' ','%20')}&countryCode=US&radius=30&radiusUnit=mi&page={page}&pageSize=100&filters.postedDate=ONE&filters.employmentType={empType}&filters.easyApply=true&language=en"
-                    logger.info(f"Fetching jobs for keyword: {jobKeyWord} - Type: {empType} - Page {page}")
+                    print(f"Fetching jobs for keyword: {jobKeyWord} - Type: {empType} - Page {page}")
                     driver.get(url)
                     try:
                         WebDriverWait(driver, 10).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, 'div.card.search-card, p.no-jobs-message'))
                         )
                     except Exception as e:
-                        logger.error("Error waiting for data to load", exc_info=e)
+                        print("Error waiting for data to load")
+                        print(f"Error details: {str(e)}")
                     sleep(1)
                     
                     pageSource = driver.page_source
@@ -163,17 +167,17 @@ def scrapeTheJobs():
                     # Check if we've hit the no results page
                     no_results = soup.select_one('p.no-jobs-message')
                     if no_results:
-                        logger.info(f"No more results found for {jobKeyWord} after page {page-1}")
+                        print(f"No more results found for {jobKeyWord} after page {page-1}")
                         has_more_pages = False
                         break
 
                     currentElements = soup.select('div.card.search-card')
                     if not currentElements:
-                        logger.info(f"No job cards found for {jobKeyWord} on page {page}")
+                        print(f"No job cards found for {jobKeyWord} on page {page}")
                         has_more_pages = False
                         break
 
-                    logger.info(f"Found {len(currentElements)} jobs for {jobKeyWord} on page {page}")
+                    print(f"Found {len(currentElements)} jobs for {jobKeyWord} on page {page}")
                     
                     # Process jobs for current page
                     for element in tqdm(currentElements, desc=f"Processing {jobKeyWord} jobs - Type: {empType} - Page {page}"):
@@ -187,20 +191,22 @@ def scrapeTheJobs():
                                 if writeTheJob(jobID, link, title, location, company, empType):
                                     passCount += 1
                         except Exception as e:
-                            logger.error("Error processing job", exc_info=e)
+                            print("Error processing job")
+                            print(f"Error details: {str(e)}")
                     
                     # Move to next page
                     page += 1
                     
                 except Exception as e:
-                    logger.error(f"Error fetching data for {jobKeyWord} on page {page}", exc_info=e)
+                    print(f"Error fetching data for {jobKeyWord} on page {page}")
+                    print(f"Error details: {str(e)}")
                     has_more_pages = False
             
             # Clean and save data after finishing all pages for current employment type
-            logger.info(f"Data cleaned and saved after processing all pages for {jobKeyWord} - {empType}")
+            print(f"Data cleaned and saved after processing all pages for {jobKeyWord} - {empType}")
 
     driver.quit()
-    logger.info(f"Total PASS COUNT = {passCount}")
+    print(f"Total PASS COUNT = {passCount}")
 
 if __name__ == "__main__":
     scrapeTheJobs()

@@ -60,14 +60,23 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3): P
 
 
 export const api = {
-    async scrapeNewData() {
-      const response = await fetchWithRetry(`${API_BASE_URL}/scrapeNewData`, {
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      }, 3);
-      return handleResponse(response);
-    },
+  async scrapeLinkedIn() {
+    const response = await fetchWithRetry(`${API_BASE_URL}/scrapeLinkedIn`, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    }, 3);
+    return handleResponse(response);
+  },
+
+  async scrapeDice() {
+    const response = await fetchWithRetry(`${API_BASE_URL}/scrapeDice`, {
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
+    }, 3);
+    return handleResponse(response);
+  },
   
     async getJobs() {
       const response = await fetchWithRetry(`${API_BASE_URL}/getData`, {

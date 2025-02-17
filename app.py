@@ -132,11 +132,30 @@ def getDiceData():
     return records
 
 
-@app.get("/scrapeNewData")
-def scrapeNewData():
+@app.get("/scrapeLinkedIn")
+def scrapeLinkedIn():
     """Trigger the LinkedIn data scraping script asynchronously."""
     try:
         script_path = "/home/robada/Desktop/Saral-Job-Viewer/services/linkedInScraping.sh"
+        subprocess.Popen([script_path], 
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        start_new_session=True)
+        
+        return {"success": True, "message": "Data scraping initiated"}
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to trigger scraper: {str(e)}"
+        )
+
+
+@app.get("/scrapeDice")
+def scrapeDice():
+    """Trigger the LinkedIn data scraping script asynchronously."""
+    try:
+        script_path = "/home/robada/Desktop/Saral-Job-Viewer/services/diceScraping.sh"
         subprocess.Popen([script_path], 
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,

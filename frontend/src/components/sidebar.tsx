@@ -70,10 +70,27 @@ function SidebarContent({
     onClose?.();
   };
 
-  const handleScrapeNewData = async () => {
+  const handleLinkedInScraping = async () => {
     try {
       setIsScrapingData(true);
-      const response = await api.scrapeNewData();
+      const response = await api.scrapeLinkedIn();
+      if (response.success) {
+        toast.success(response.message || 'Data scraping initiated successfully');
+      }
+    } catch (error) {
+      toast.error('Failed to start data scraping', {
+        description: error instanceof Error ? error.message : 'Please try again later'
+      });
+    } finally {
+      setIsScrapingData(false);
+      onClose?.();
+    }
+  };
+
+  const handleDiceScraping = async () => {
+    try {
+      setIsScrapingData(true);
+      const response = await api.scrapeDice();
       if (response.success) {
         toast.success(response.message || 'Data scraping initiated successfully');
       }
@@ -108,11 +125,21 @@ function SidebarContent({
         <Button
           variant="outline"
           className="w-full justify-start mb-4"
-          onClick={handleScrapeNewData}
+          onClick={handleLinkedInScraping}
           disabled={isScrapingData}
         >
           <RefreshCwIcon className={`h-4 w-4 mr-2 ${isScrapingData ? 'animate-spin' : ''}`} />
-          Fetch New Jobs
+          Fetch LinkedIn Jobs
+        </Button>
+
+        <Button
+          variant="outline"
+          className="w-full justify-start mb-4"
+          onClick={handleDiceScraping}
+          disabled={isScrapingData}
+        >
+          <RefreshCwIcon className={`h-4 w-4 mr-2 ${isScrapingData ? 'animate-spin' : ''}`} />
+          Fetch Dice Jobs
         </Button>
         
         <div className="space-y-2 mb-4">
