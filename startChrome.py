@@ -3,7 +3,6 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from dotenv import load_dotenv
-import argparse
 
 def start_chrome_session(user_type):
     # Load environment variables
@@ -37,15 +36,19 @@ def start_chrome_session(user_type):
     return driver
 
 if __name__ == "__main__":
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description='Start Chrome session for scraping or applying')
-    parser.add_argument('--type', choices=['scraping', 'applying'], 
-                       required=True, help='Type of Chrome session to start')
-    
-    args = parser.parse_args()
+    # Get user input for session type
+    while True:
+        choice = input("Enter choice (1 for scraping, 2 for applying): ").strip()
+        if choice == "1":
+            user_type = "scraping"
+            break
+        elif choice == "2":
+            user_type = "applying"
+            break
+        print("Invalid input. Please enter 1 for scraping or 2 for applying")
     
     # Start the Chrome session
-    driver = start_chrome_session(args.type)
+    driver = start_chrome_session(user_type)
     
     # Keep the session running until interrupted
     try:
