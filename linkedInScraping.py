@@ -4,7 +4,7 @@ import time
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from utils.utilsDataScraping import checkJob, addJob, getSearchKeywords
+from utils.utilsDataScraping import checkJob, addJob, getSearchKeywords, createDummyKeywords
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
@@ -85,7 +85,14 @@ def buildLinkedinUrl(searchText):
 
 
 if __name__ == "__main__":
+    # Check if keywords exist in DB, if not create dummy data
     keywordsData = getSearchKeywords()
+    if not keywordsData["noCompany"] and not keywordsData["searchList"]:
+        print("No keywords found in database. Creating dummy data...")
+        createDummyKeywords()
+        keywordsData = getSearchKeywords()
+    
+    print(keywordsData)
     excludedCompanies = keywordsData["noCompany"]
     jobKeywords = keywordsData["searchList"]
 

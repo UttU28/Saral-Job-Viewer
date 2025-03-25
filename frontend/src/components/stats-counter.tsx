@@ -33,7 +33,7 @@ export function StatsCounter({
       {/* Total Jobs */}
       <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Total Jobs</p>
+          <p className="text-sm font-medium text-muted-foreground">Today Jobs</p>
           <p className="text-2xl font-bold">{totalJobs}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -44,7 +44,7 @@ export function StatsCounter({
       {/* Applied */}
       <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Applied</p>
+          <p className="text-sm font-medium text-muted-foreground">U Applied</p>
           <p className="text-2xl font-bold text-accent">{appliedJobs + totalAccepted}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-accent/10 flex items-center justify-center">
@@ -55,7 +55,7 @@ export function StatsCounter({
       {/* Rejected */}
       <div className="bg-gradient-to-br from-black/40 to-black/60 border border-border/20 rounded-lg p-4 flex items-center justify-between backdrop-blur-sm">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">Rejected</p>
+          <p className="text-sm font-medium text-muted-foreground">U Rejected</p>
           <p className="text-2xl font-bold text-destructive">{rejectedJobs + totalRejected}</p>
         </div>
         <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">

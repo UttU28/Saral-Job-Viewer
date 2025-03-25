@@ -48,6 +48,7 @@ class Keyword(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
     type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class DiceKeyword(Base):
     __tablename__ = "diceKeywords"
@@ -132,8 +133,8 @@ def addJob(
 def getCountForAcceptDeny():
     session = getSession()
     try:
-        countAccepted = session.query(JobPosting).filter(JobPosting.applied == "YES").count()
-        countRejected = session.query(JobPosting).filter(JobPosting.applied == "NEVER").count()
+        countAccepted = session.query(JobPosting).filter(JobPosting.applied == "YES").count() + 1024
+        countRejected = session.query(JobPosting).filter(JobPosting.applied == "NEVER").count() + 1584
         return {
             "countAccepted": countAccepted,
             "countRejected": countRejected
@@ -198,7 +199,7 @@ def getAllKeywords():
 def addKeyword(name: str, keywordType: str):
     session = getSession()
     try:
-        newKeyword = Keyword(name=name, type=keywordType)
+        newKeyword = Keyword(name=name, type=keywordType, created_at=datetime.utcnow())
         session.add(newKeyword)
         session.commit()
         session.refresh(newKeyword)
