@@ -1,10 +1,13 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text, Integer, Enum, TIMESTAMP
+from sqlalchemy import create_engine, Column, String, Text, Integer, Enum, TIMESTAMP, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+
+# Import the database config from utilsDatabase
+from utils.utilsDatabase import DbConfig, getSession
 
 # Load environment variables from .env file
 load_dotenv()
@@ -12,6 +15,9 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.ERROR)
 logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
+
+# Get database configuration
+dbConfig = DbConfig()
 
 # Initialize the SQLAlchemy declarative base
 Base = declarative_base()
@@ -31,32 +37,18 @@ class JobPosting(Base):
     jobDescription = Column(Text)
     applied = Column(Text)
 
-# Define SearchKeywords model
+# Define SearchKeywords model - changed to be compatible with SQLite
 class SearchKeywords(Base):
     __tablename__ = "linkedInKeywords"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    type = Column(Enum("NoCompany", "SearchList"), nullable=False)
-    created_at = Column(TIMESTAMP)
+    type = Column(String(50), nullable=False)  # Changed from Enum to String for SQLite compatibility
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-# Database connection URL from environment variables
-databaseUrl = os.getenv("DATABASE_URL")
-if not databaseUrl:
-    raise ValueError("DATABASE_URL is not set in the .env file!")
-
-# Initialize the SQLAlchemy engine
-engine = create_engine(databaseUrl, echo=False)
-
-# Create all tables in the database if they don't already exist
+# Create tables if they don't exist using the configured database
+engine = create_engine(dbConfig.connectionUrl, echo=False)
 Base.metadata.create_all(engine)
-
-# Create a session maker
-Session = sessionmaker(bind=engine)
-
-# Function to get a new session
-def getSession():
-    return Session()
 
 # Add a new job posting
 def addJob(
@@ -90,11 +82,14 @@ def addJob(
             session.add(newEntry)
             session.commit()
             print(f"Entry with ID {jobId} added.")
+            return True
         else:
             print(f"Entry with ID {jobId} already exists. Ignoring.")
+            return False
     except Exception as e:
         session.rollback()
         print(f"Error: Could not add job with ID {jobId}. Reason: {e}")
+        return False
     finally:
         session.close()
 
@@ -111,6 +106,7 @@ def checkJob(jobId: str) -> bool:
 def getSearchKeywords():
     session = getSession()
     try:
+        # Filter by type strings instead of enums for SQLite compatibility
         allKeywords = session.query(SearchKeywords).all()
         noCompany = [keyword.name for keyword in allKeywords if keyword.type == "NoCompany"]
         searchList = [keyword.name for keyword in allKeywords if keyword.type == "SearchList"]
@@ -133,15 +129,15 @@ def createDummyKeywords():
         
         # Dummy data for NoCompany keywords (keywords without specific company names)
         noCompany_keywords = [
-            "dice", 'jobbot'
+            "jobbot", "Jobot", "Lensa"
         ]
         
         # Dummy data for SearchList keywords (specific search terms or job titles)
         searchList_keywords = [
-            "python developer", "full stack developer"
+            "python developer", "full stack developer", "automation developer"
         ]
         
-        current_time = datetime.now()
+        current_time = datetime.utcnow()
         
         # Add NoCompany keywords
         for keyword in noCompany_keywords:

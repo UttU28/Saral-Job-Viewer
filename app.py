@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from utils.utilsDatabase import (
@@ -26,6 +26,10 @@ import json
 from dotenv import load_dotenv
 from datetime import datetime
 load_dotenv()
+
+# Get database configuration
+dbType = os.getenv("DB_TYPE", "sqlite")
+print(f"Using database type: {dbType}")
 
 questionsFilePath = os.getenv('QUESTIONS_JSON')
 
@@ -106,11 +110,48 @@ class LinkedInQuestion(BaseModel):
 class UpdateLinkedInQuestionsRequest(BaseModel):
     questions: list[LinkedInQuestion]
 
+# Route to switch database
+@app.get("/switchDb/{db_type}")
+def switchDatabase(db_type: str = Path(..., pattern="^(mysql|sqlite)$")):
+    """
+    Switch the database type between MySQL and SQLite.
+    This only updates the environment variable, you need to restart the application for changes to take effect.
+    """
+    try:
+        # Update the .env file
+        envPath = os.path.join(os.getcwd(), '.env')
+        with open(envPath, 'r') as file:
+            lines = file.readlines()
+        
+        updatedLines = []
+        for line in lines:
+            if line.startswith('DB_TYPE='):
+                updatedLines.append(f'DB_TYPE={db_type.lower()}\n')
+            else:
+                updatedLines.append(line)
+        
+        with open(envPath, 'w') as file:
+            file.writelines(updatedLines)
+        
+        return {
+            "success": True,
+            "message": f"Database type switched to {db_type}. Restart the application for changes to take effect.",
+            "currentDbType": db_type
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to switch database type: {str(e)}"
+        )
+
 # API Endpoints
 @app.get("/")
 def helloWorld():
     """Welcome endpoint."""
-    return {"message": "Hello Duniya"}
+    return {
+        "message": "Hello Duniya",
+        "databaseType": dbType
+    }
 
 
 @app.get("/getData", response_model=list[JobPostingModel])
@@ -408,5 +449,18 @@ def update_linkedin_questions(request: UpdateLinkedInQuestionsRequest):
 # Run the application
 if __name__ == "__main__":
     import uvicorn
-
+    import argparse
+    
+    # Create command line argument parser
+    parser = argparse.ArgumentParser(description="Run the FastAPI application")
+    parser.add_argument("--db-type", choices=["mysql", "sqlite"], default=dbType,
+                      help="Database type to use (mysql or sqlite)")
+    args = parser.parse_args()
+    
+    # Update environment variable based on command line argument
+    if args.db_type != dbType:
+        print(f"Switching database type from {dbType} to {args.db_type}")
+        os.environ["DB_TYPE"] = args.db_type
+        # Note: This doesn't update the .env file, only the runtime environment
+    
     uvicorn.run(app, host="0.0.0.0", port=5000)

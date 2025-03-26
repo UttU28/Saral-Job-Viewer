@@ -10,38 +10,45 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 import requests
 import json, os
+import signal
 from datetime import datetime, timezone
 from tqdm import tqdm
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime, Float, Boolean, Table, MetaData
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import subprocess
 
-from utils.utilsDatabase import addDiceJob
+from utils.utilsDatabase import addDiceJob, DbConfig, getSession
 
 load_dotenv()
 
-# Initialize JSON file paths
-DATA_DIR = os.getenv('DATA_DIR', 'data')  # Use environment variable with fallback
-rawFilePath = os.path.join(DATA_DIR, "rawData.json")
+# Setup database connection
+dbConfig = DbConfig()
 
-def initializeJsonFiles():
-    if not os.path.exists(DATA_DIR):
-        os.makedirs(DATA_DIR)
-        print(f"Created data directory at {DATA_DIR}")
-
-    if not os.path.exists(rawFilePath):
-        with open(rawFilePath, 'w') as f:
-            json.dump({}, f)
-        print(f"Created new rawData.json file at {rawFilePath}")
-
-    with open(rawFilePath, 'r') as f:
-        rawData = json.load(f)
-    return rawData
-
-rawData = initializeJsonFiles()
-
-# Setup logging
+# Initialize logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger()
 
+# Initialize metadata
+Base = declarative_base()
+metadata = MetaData()
+
+# RawDiceJobs model to store raw job data
+class RawDiceJob(Base):
+    __tablename__ = 'diceRawJobs'
+    
+    jobId = Column(String(255), primary_key=True)
+    timestamp = Column(Float, nullable=False)
+    processed = Column(Boolean, default=False)
+    
+    def __repr__(self):
+        return f"<RawDiceJob(jobId='{self.jobId}', timestamp='{self.timestamp}', processed={self.processed})>"
+
+# Create tables if they don't exist
+Base.metadata.create_all(create_engine(dbConfig.connectionUrl))
+
+# Initialize parameters for job filtering
 contentOut = [
     "security clearance", "security-clearance", 
     "us citizenship", "us citizen", "citizenship required", "residency required", "residence required",
@@ -65,9 +72,7 @@ def bhaiTimeKyaHai(watch):
         watch = datetime.strptime(watch, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
         timeHai = int(watch.timestamp())
         return timeHai
-    except Exception as e:
-        print(f"Error converting time: {watch}")
-        print(f"Error details: {str(e)}")
+    except Exception:
         return None
 
 def getJobDescription(jobID):
@@ -75,9 +80,7 @@ def getJobDescription(jobID):
     try:
         response = requests.get(url)
         response.raise_for_status()
-    except requests.RequestException as e:
-        print(f"Failed to retrieve the webpage. URL: {url}")
-        print(f"Error details: {str(e)}")
+    except requests.RequestException:
         return False
 
     try:
@@ -94,119 +97,228 @@ def getJobDescription(jobID):
         jobDescription = BeautifulSoup(jobDescription, 'html.parser').get_text().split("\n")
         jobDescription = " \n".join([element.strip() for element in jobDescription if element != ''])
         return jobDescription, datePosted, dateUpdated
-    except Exception as e:
-        print(f"Error processing job description for jobID: {jobID}")
-        print(f"Error details: {str(e)}")
+    except Exception:
         return False
 
+# Function to check if a job exists in the database
+def jobExists(jobId):
+    session = getSession()
+    try:
+        existingJob = session.query(RawDiceJob).filter_by(jobId=jobId).first()
+        return existingJob is not None
+    except Exception:
+        return False
+    finally:
+        session.close()
+
+# Function to add a job to the raw jobs database
+def addRawJob(jobId, timestamp):
+    session = getSession()
+    try:
+        newJob = RawDiceJob(jobId=jobId, timestamp=timestamp, processed=False)
+        session.add(newJob)
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+# Function to mark a job as processed
+def markJobAsProcessed(jobId):
+    session = getSession()
+    try:
+        job = session.query(RawDiceJob).filter_by(jobId=jobId).first()
+        if job:
+            job.processed = True
+            session.commit()
+            return True
+        return False
+    except Exception:
+        session.rollback()
+        return False
+    finally:
+        session.close()
+
+# Function to ensure Chrome is completely terminated
+def cleanupChrome(driver, service_instance=None):
+    """Ensure Chrome is properly terminated."""
+    # Close the driver
+    if driver:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+    
+    # Stop the service
+    if service_instance:
+        try:
+            service_instance.stop()
+        except Exception:
+            pass
+    
+    # On Windows, look for any Chrome WebDriver processes that might be leftover
+    if os.name == 'nt':  # Windows
+        try:
+            # Kill any chromedriver processes that might be leftover
+            subprocess.run(
+                ['taskkill', '/F', '/IM', 'chromedriver.exe'], 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False
+            )
+            
+            # Find headless Chrome processes
+            result = subprocess.run(
+                ['wmic', 'process', 'where', 
+                 "commandline like '%--headless%'", 
+                 'get', 'processid'],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            # Parse the output to get PIDs
+            lines = result.stdout.strip().split('\n')
+            
+            if len(lines) > 1:  # First line is header
+                for line in lines[1:]:
+                    if line.strip().isdigit():
+                        pid = line.strip()
+                        subprocess.run(
+                            ['taskkill', '/F', '/PID', pid], 
+                            check=False,
+                            stderr=subprocess.PIPE,
+                            stdout=subprocess.PIPE
+                        )
+        except Exception:
+            pass
 
 def scrapeTheJobs():
-    # Move these variables to the outer scope so they're accessible
-    global rawData
-    
     def checkRequirementMatching(taroText, shouldBe, shouldNot):
         for temp1 in shouldBe:
-            if temp1 in taroText:
+            if temp1 in taroText.lower():
                 for temp2 in shouldNot:
-                    if temp2 in taroText:
+                    if temp2 in taroText.lower():
                         return False
                 return True
         return False
+        
     def writeTheJob(jobID, link, title, location, company, empType):
-        if jobID not in rawData:
+        if not jobExists(jobID):
             currentTime = int(datetime.now(timezone.utc).timestamp())
-            rawData[jobID] = currentTime
-            jdData = getJobDescription(jobID)
-            # Save rawData immediately after new job is found
-            with open(rawFilePath, 'w', encoding='utf-8') as jsonFile:
-                json.dump(rawData, jsonFile, ensure_ascii=False, indent=4)
-            if jdData:
-                description, datePosted, dateUpdated = jdData
-                checkRequirements = checkRequirementMatching(description, contentIn, contentOut)
-                if checkRequirements:
-                    jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
-                    return addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
+            # Add to raw jobs database
+            if addRawJob(jobID, currentTime):
+                jdData = getJobDescription(jobID)
+                if jdData:
+                    description, datePosted, dateUpdated = jdData
+                    checkRequirements = checkRequirementMatching(description, contentIn, contentOut)
+                    if checkRequirements:
+                        jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
+                        result = addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
+                        if result:
+                            markJobAsProcessed(jobID)
+                            return True
         return False
 
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-notifications")
-    options.add_argument("--incognito")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-popup-blocking")
-    options.add_argument("--disable-infobars")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # Initialize driver and service before the try block
+    driver = None
+    service = None
+    
+    try:
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-notifications")
+        options.add_argument("--incognito")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-infobars")
+        
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
 
-    jobKeyWords = ['Python developer', 'software engineer', 'Django Flask', 'Python LLM']
-    employmentType = ['CONTRACTS', 'FULLTIME']
-    passCount = 0
+        jobKeyWords = ['Python developer', 'software engineer', 'Django Flask', 'Python LLM']
+        employmentType = ['CONTRACTS', 'FULLTIME']
+        passCount = 0
+        totalJobsProcessed = 0
 
-    for jobKeyWord in jobKeyWords:
-        for empType in employmentType:
-            page = 1
-            has_more_pages = True
-            
-            while has_more_pages:
-                try:
-                    url = f"https://www.dice.com/jobs?q={jobKeyWord.replace(' ','%20')}&countryCode=US&radius=30&radiusUnit=mi&page={page}&pageSize=100&filters.postedDate=ONE&filters.employmentType={empType}&filters.easyApply=true&language=en"
-                    print(f"Fetching jobs for keyword: {jobKeyWord} - Type: {empType} - Page {page}")
-                    driver.get(url)
+        for jobKeyWord in jobKeyWords:
+            for empType in employmentType:
+                page = 1
+                has_more_pages = True
+                
+                while has_more_pages:
                     try:
-                        WebDriverWait(driver, 10).until(
-                            EC.presence_of_element_located((By.CSS_SELECTOR, 'div.card.search-card, p.no-jobs-message'))
-                        )
-                    except Exception as e:
-                        print("Error waiting for data to load")
-                        print(f"Error details: {str(e)}")
-                    sleep(1)
-                    
-                    pageSource = driver.page_source
-                    soup = BeautifulSoup(pageSource, 'html.parser')
-
-                    # Check if we've hit the no results page
-                    no_results = soup.select_one('p.no-jobs-message')
-                    if no_results:
-                        print(f"No more results found for {jobKeyWord} after page {page-1}")
-                        has_more_pages = False
-                        break
-
-                    currentElements = soup.select('div.card.search-card')
-                    if not currentElements:
-                        print(f"No job cards found for {jobKeyWord} on page {page}")
-                        has_more_pages = False
-                        break
-
-                    print(f"Found {len(currentElements)} jobs for {jobKeyWord} on page {page}")
-                    
-                    # Process jobs for current page
-                    for element in tqdm(currentElements, desc=f"Processing {jobKeyWord} jobs - Type: {empType} - Page {page}"):
+                        url = f"https://www.dice.com/jobs?q={jobKeyWord.replace(' ','%20')}&countryCode=US&radius=30&radiusUnit=mi&page={page}&pageSize=100&filters.postedDate=ONE&filters.employmentType={empType}&filters.easyApply=true&language=en"
+                        driver.get(url)
                         try:
-                            if element.find('div', {'data-cy': 'card-easy-apply'}):
-                                jobID = element.select('a.card-title-link')[0].get('id').strip()
-                                location = element.select('span.search-result-location')[0].text.strip()
-                                title = element.select('a.card-title-link')[0].text.strip()
-                                company = element.select('[data-cy="search-result-company-name"]')[0].text.strip()
-                                link = f"https://www.dice.com/job-detail/{jobID}"
-                                if writeTheJob(jobID, link, title, location, company, empType):
-                                    passCount += 1
-                        except Exception as e:
-                            print("Error processing job")
-                            print(f"Error details: {str(e)}")
-                    
-                    # Move to next page
-                    page += 1
-                    
-                except Exception as e:
-                    print(f"Error fetching data for {jobKeyWord} on page {page}")
-                    print(f"Error details: {str(e)}")
-                    has_more_pages = False
-            
-            # Clean and save data after finishing all pages for current employment type
-            print(f"Data cleaned and saved after processing all pages for {jobKeyWord} - {empType}")
+                            WebDriverWait(driver, 10).until(
+                                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.card.search-card, p.no-jobs-message'))
+                            )
+                        except Exception:
+                            pass
+                        sleep(1)
+                        
+                        pageSource = driver.page_source
+                        soup = BeautifulSoup(pageSource, 'html.parser')
 
-    driver.quit()
-    print(f"Total PASS COUNT = {passCount}")
+                        # Check if we've hit the no results page
+                        no_results = soup.select_one('p.no-jobs-message')
+                        if no_results:
+                            has_more_pages = False
+                            break
+
+                        currentElements = soup.select('div.card.search-card')
+                        if not currentElements:
+                            has_more_pages = False
+                            break
+
+                        # Initialize counters for this page
+                        page_success = 0
+                        page_fail = 0
+                        page_total = len(currentElements)
+                        
+                        # Process jobs for current page
+                        for element in tqdm(currentElements, desc=f"Processing {jobKeyWord} jobs - Type: {empType} - Page {page}"):
+                            try:
+                                if element.find('div', {'data-cy': 'card-easy-apply'}):
+                                    jobID = element.select('a.card-title-link')[0].get('id').strip()
+                                    location = element.select('span.search-result-location')[0].text.strip()
+                                    title = element.select('a.card-title-link')[0].text.strip()
+                                    company = element.select('[data-cy="search-result-company-name"]')[0].text.strip()
+                                    link = f"https://www.dice.com/job-detail/{jobID}"
+                                    
+                                    totalJobsProcessed += 1
+                                    if writeTheJob(jobID, link, title, location, company, empType):
+                                        passCount += 1
+                                        page_success += 1
+                                    else:
+                                        page_fail += 1
+                            except Exception:
+                                page_fail += 1
+                        
+                        # Print summary for this page
+                        print(f"\nSummary for {jobKeyWord} - {empType} - Page {page}:")
+                        print(f"  Success: {page_success} | Failed: {page_fail} | Total: {page_total}")
+                        print(f"  Progress: {passCount}/{totalJobsProcessed} jobs added successfully overall\n")
+                        
+                        # Move to next page
+                        page += 1
+                        
+                    except Exception:
+                        has_more_pages = False
+                
+    except Exception as e:
+        logger.error(f"An error occurred during scraping: {e}")
+    finally:
+        # Safely close the driver without killing other Chrome processes
+        cleanupChrome(driver, service)
+        print(f"\n===== FINAL SUMMARY =====")
+        print(f"Total jobs processed: {totalJobsProcessed}")
+        print(f"Total jobs successfully added: {passCount}")
+        print(f"Success rate: {(passCount/totalJobsProcessed)*100:.2f}% (if jobs were processed)" if totalJobsProcessed > 0 else "No jobs processed")
 
 if __name__ == "__main__":
     scrapeTheJobs()

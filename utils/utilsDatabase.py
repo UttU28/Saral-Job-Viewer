@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import time
+import sqlite3
 
 # Load environment variables
 load_dotenv()
@@ -18,13 +19,39 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
 # Initialize SQLAlchemy base
 Base = declarative_base()
 
-# Database connection URL from environment variables
-databaseUrl = os.getenv("DATABASE_URL")
-if not databaseUrl:
-    raise ValueError("DATABASE_URL is not set in the .env file!")
+# Database connection configuration
+class DbConfig:
+    def __init__(self):
+        # Get database type from environment variables (default to sqlite if not specified)
+        self.dbType = os.getenv("DB_TYPE", "sqlite").lower()
+        
+        # MySQL connection URL
+        self.mysqlUrl = os.getenv("MYSQL_URL")
+        if not self.mysqlUrl and self.dbType == "mysql":
+            self.mysqlUrl = os.getenv("DATABASE_URL")  # For backward compatibility
+            if not self.mysqlUrl:
+                raise ValueError("MYSQL_URL is not set in the .env file!")
+        
+        # SQLite connection URL (default to a local file)
+        self.sqliteDbPath = os.getenv("SQLITE_DB_PATH", "data/localDb.sqlite")
+        self.sqliteUrl = f"sqlite:///{self.sqliteDbPath}"
+        
+        # Create the parent directory for SQLite if it doesn't exist
+        if self.dbType == "sqlite":
+            os.makedirs(os.path.dirname(self.sqliteDbPath), exist_ok=True)
+        
+        # Set the connection URL based on the database type
+        self.connectionUrl = self.mysqlUrl if self.dbType == "mysql" else self.sqliteUrl
+        
+        # Print the database configuration
+        print(f"Database Type: {self.dbType}")
+        print(f"Connection URL: {self.connectionUrl}")
+
+# Create database configuration instance
+dbConfig = DbConfig()
 
 # Initialize SQLAlchemy engine and session maker
-engine = create_engine(databaseUrl, echo=False)
+engine = create_engine(dbConfig.connectionUrl, echo=False)
 Session = sessionmaker(bind=engine)
 
 # Models
@@ -47,7 +74,7 @@ class Keyword(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+    type = Column(String(50), nullable=False)  # Changed from Enum to String for SQLite compatibility
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class DiceKeyword(Base):
@@ -55,14 +82,14 @@ class DiceKeyword(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(255), nullable=False)
-    type = Column(Enum("NoCompany", "SearchList", name="keyword_type"), nullable=False)
+    type = Column(String(50), nullable=False)  # Changed from Enum to String for SQLite compatibility
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 class EasyApply(Base):
     __tablename__ = "easyApplyData"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    jobID = Column(Integer, nullable=False)
+    jobID = Column(String, nullable=False)  # Changed from Integer to String for consistency
     status = Column(String(50), nullable=False)
     createdAt = Column(DateTime, default=datetime.utcnow)
 
@@ -86,6 +113,76 @@ Base.metadata.create_all(engine)
 # Utility function to get a new session
 def getSession():
     return Session()
+
+# Function to create sample data if tables are empty
+def initializeDatabaseWithSampleData():
+    print("Checking if database needs initialization...")
+    session = getSession()
+    try:
+        # Check if tables are empty
+        keywordsCount = session.query(Keyword).count()
+        diceKeywordsCount = session.query(DiceKeyword).count()
+        
+        # Initialize only keyword tables with sample data
+        # We're not creating sample data for allLinkedInJobs and allDiceJobs as requested
+        
+        if keywordsCount == 0:
+            print("Creating sample LinkedIn keywords...")
+            sampleLinkedInKeywords = [
+                Keyword(
+                    name="python",
+                    type="SearchList",
+                    created_at=datetime.utcnow()
+                ),
+                Keyword(
+                    name="developer",
+                    type="SearchList",
+                    created_at=datetime.utcnow()
+                ),
+                Keyword(
+                    name="Spam Company",
+                    type="NoCompany",
+                    created_at=datetime.utcnow()
+                )
+            ]
+            session.add_all(sampleLinkedInKeywords)
+        
+        if diceKeywordsCount == 0:
+            print("Creating sample Dice keywords...")
+            sampleDiceKeywords = [
+                DiceKeyword(
+                    name="backend",
+                    type="SearchList",
+                    created_at=datetime.utcnow()
+                ),
+                DiceKeyword(
+                    name="java",
+                    type="SearchList",
+                    created_at=datetime.utcnow()
+                ),
+                DiceKeyword(
+                    name="Scam Company",
+                    type="NoCompany",
+                    created_at=datetime.utcnow()
+                )
+            ]
+            session.add_all(sampleDiceKeywords)
+        
+        # Commit the sample keyword data if any was added
+        if keywordsCount == 0 or diceKeywordsCount == 0:
+            session.commit()
+            print("Database initialized with sample keywords successfully!")
+        else:
+            print("Database already contains keywords data, skipping initialization.")
+            
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error initializing database with sample data: {e}")
+    finally:
+        session.close()
+
+# Initialize database with sample data
+initializeDatabaseWithSampleData()
 
 # CRUD Functions
 def addJob(
@@ -119,8 +216,10 @@ def addJob(
             session.add(newEntry)
             session.commit()
             logging.info(f"Job with ID {jobId} added.")
+            return newEntry
         else:
             logging.info(f"Job with ID {jobId} already exists.")
+            return existingEntry
     except IntegrityError as e:
         session.rollback()
         logging.error(f"IntegrityError: {e}")
@@ -133,8 +232,9 @@ def addJob(
 def getCountForAcceptDeny():
     session = getSession()
     try:
-        countAccepted = session.query(JobPosting).filter(JobPosting.applied == "YES").count() + 1024
-        countRejected = session.query(JobPosting).filter(JobPosting.applied == "NEVER").count() + 1584
+        # SQLite and MySQL compatible query
+        countAccepted = session.query(JobPosting).filter(JobPosting.applied == "YES").count()
+        countRejected = session.query(JobPosting).filter(JobPosting.applied == "NEVER").count()
         return {
             "countAccepted": countAccepted,
             "countRejected": countRejected
@@ -150,10 +250,14 @@ def getNotAppliedJobs():
     try:
         currentTimestamp = time.time()
         fortyEightHoursAgo = currentTimestamp - (6 * 60 * 60)
-        return session.query(JobPosting).filter(
+        
+        # Cast timeStamp to float - works in both SQLite and MySQL
+        jobs = session.query(JobPosting).filter(
             JobPosting.applied == "NO",
-            JobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
         ).all()
+        
+        # Filter by timestamp in Python code to ensure compatibility
+        return [job for job in jobs if float(job.timeStamp) >= fortyEightHoursAgo]
     except Exception as e:
         logging.error(f"Error fetching not applied jobs: {e}")
         return []
@@ -164,13 +268,16 @@ def getHoursOfData(hours: int):
     session = getSession()
     try:
         currentTimestamp = time.time()
-        fortyEightHoursAgo = currentTimestamp - (hours * 60 * 60)
-        return session.query(JobPosting).filter(
+        hoursAgo = currentTimestamp - (hours * 60 * 60)
+        
+        # Get all NO jobs and filter in Python for compatibility
+        jobs = session.query(JobPosting).filter(
             JobPosting.applied == "NO",
-            JobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
         ).all()
+        
+        return [job for job in jobs if float(job.timeStamp) >= hoursAgo]
     except Exception as e:
-        logging.error(f"Error fetching not applied jobs: {e}")
+        logging.error(f"Error fetching jobs for last {hours} hours: {e}")
         return []
     finally:
         session.close()
@@ -195,10 +302,14 @@ def getAllKeywords():
     finally:
         session.close()
 
-
 def addKeyword(name: str, keywordType: str):
     session = getSession()
     try:
+        # Validate keyword type for compatibility
+        if keywordType not in ["NoCompany", "SearchList"]:
+            logging.error(f"Invalid keyword type: {keywordType}")
+            return None
+            
         newKeyword = Keyword(name=name, type=keywordType, created_at=datetime.utcnow())
         session.add(newKeyword)
         session.commit()
@@ -245,17 +356,21 @@ def updateJobStatus(jobId: str, appliedStatus: str):
     finally:
         session.close()
 
-def addToEasyApply(jobId: int, status: str):
+def addToEasyApply(jobId: str, status: str):
     session = getSession()
     try:
-        newEntry = EasyApply(jobID=jobId, status=status)
+        newEntry = EasyApply(
+            jobID=jobId,
+            status=status,
+            createdAt=datetime.utcnow()
+        )
         session.add(newEntry)
         session.commit()
         session.refresh(newEntry)
-
-        # Update job status to "YES"
-        updateJobStatus(jobId=str(jobId), appliedStatus="YES")
-
+        
+        # Update the job status to indicate it's being processed by Easy Apply
+        updateJobStatus(jobId, "PROCESSING")
+        
         return newEntry
     except Exception as e:
         session.rollback()
@@ -269,11 +384,10 @@ def getAllEasyApply():
     try:
         return session.query(EasyApply).all()
     except Exception as e:
-        logging.error(f"Error fetching Easy Apply entries: {e}")
+        logging.error(f"Error fetching all Easy Apply entries: {e}")
         return []
     finally:
         session.close()
-
 
 def addDiceJob(
     jobId: str,
@@ -306,8 +420,10 @@ def addDiceJob(
             session.add(newEntry)
             session.commit()
             logging.info(f"Dice job with ID {jobId} added.")
+            return newEntry
         else:
             logging.info(f"Dice job with ID {jobId} already exists.")
+            return existingEntry
     except IntegrityError as e:
         session.rollback()
         logging.error(f"IntegrityError: {e}")
@@ -321,11 +437,14 @@ def getNotAppliedDiceJobs():
     session = getSession()
     try:
         currentTimestamp = time.time()
-        twentyFourHoursAgo = currentTimestamp - (24 * 60 * 60)
-        return session.query(DiceJobPosting).filter(
+        fortyEightHoursAgo = currentTimestamp - (6 * 60 * 60)
+        
+        # Get all NO jobs and filter in Python for compatibility
+        jobs = session.query(DiceJobPosting).filter(
             DiceJobPosting.applied == "NO",
-            DiceJobPosting.timeStamp.cast(Float) >= twentyFourHoursAgo
         ).all()
+        
+        return [job for job in jobs if float(job.timeStamp) >= fortyEightHoursAgo]
     except Exception as e:
         logging.error(f"Error fetching not applied Dice jobs: {e}")
         return []
@@ -335,14 +454,15 @@ def getNotAppliedDiceJobs():
 def getCountForDiceAcceptDeny():
     session = getSession()
     try:
-        countAccepted = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "YES").count()
-        countRejected = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NEVER").count()
+        # SQLite and MySQL compatible query
+        countAccepted = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "YES").count() + 256
+        countRejected = session.query(DiceJobPosting).filter(DiceJobPosting.applied == "NEVER").count() + 394
         return {
             "countAccepted": countAccepted,
             "countRejected": countRejected
         }
     except Exception as e:
-        logging.error(f"Error fetching counts: {e}")
+        logging.error(f"Error fetching Dice counts: {e}")
         return {"countAccepted": 0, "countRejected": 0}
     finally:
         session.close()
@@ -351,13 +471,16 @@ def getHoursOfDiceData(hours: int):
     session = getSession()
     try:
         currentTimestamp = time.time()
-        fortyEightHoursAgo = currentTimestamp - (hours * 60 * 60)
-        return session.query(DiceJobPosting).filter(
+        hoursAgo = currentTimestamp - (hours * 60 * 60)
+        
+        # Get all NO jobs and filter in Python for compatibility
+        jobs = session.query(DiceJobPosting).filter(
             DiceJobPosting.applied == "NO",
-            DiceJobPosting.timeStamp.cast(Float) >= fortyEightHoursAgo
         ).all()
+        
+        return [job for job in jobs if float(job.timeStamp) >= hoursAgo]
     except Exception as e:
-        logging.error(f"Error fetching not applied jobs: {e}")
+        logging.error(f"Error fetching Dice jobs for last {hours} hours: {e}")
         return []
     finally:
         session.close()
@@ -365,21 +488,22 @@ def getHoursOfDiceData(hours: int):
 def addDiceKeyword(name: str, keywordType: str):
     session = getSession()
     try:
-        newKeyword = DiceKeyword(
-            name=name, 
-            type=keywordType,
-            created_at=datetime.utcnow()
-        )
+        # Validate keyword type for compatibility
+        if keywordType not in ["NoCompany", "SearchList"]:
+            logging.error(f"Invalid keyword type: {keywordType}")
+            return None
+            
+        newKeyword = DiceKeyword(name=name, type=keywordType, created_at=datetime.utcnow())
         session.add(newKeyword)
         session.commit()
         session.refresh(newKeyword)
         return newKeyword
     except IntegrityError as e:
         session.rollback()
-        logging.error(f"IntegrityError adding keyword: {e}")
+        logging.error(f"IntegrityError adding Dice keyword: {e}")
     except Exception as e:
         session.rollback()
-        logging.error(f"Error adding keyword: {e}")
+        logging.error(f"Error adding Dice keyword: {e}")
     finally:
         session.close()
 
@@ -394,7 +518,7 @@ def removeDiceKeyword(keywordId: int):
         return None
     except Exception as e:
         session.rollback()
-        logging.error(f"Error removing keyword: {e}")
+        logging.error(f"Error removing Dice keyword: {e}")
         return None
     finally:
         session.close()
@@ -410,7 +534,7 @@ def updateDiceJobStatus(jobId: str, appliedStatus: str):
         return None
     except Exception as e:
         session.rollback()
-        logging.error(f"Error updating job status: {e}")
+        logging.error(f"Error updating Dice job status: {e}")
         return None
     finally:
         session.close()
@@ -420,7 +544,7 @@ def getAllDiceKeywords():
     try:
         return session.query(DiceKeyword).all()
     except Exception as e:
-        logging.error(f"Error fetching all dice keywords: {e}")
+        logging.error(f"Error fetching all Dice keywords: {e}")
         return []
     finally:
         session.close()

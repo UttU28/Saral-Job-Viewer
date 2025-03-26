@@ -5,20 +5,20 @@ from selenium.webdriver.chrome.service import Service
 from dotenv import load_dotenv
 import random
 
-def start_chrome_session(user_type):
+def start_chrome_session():
     # Load environment variables
     load_dotenv()
     
-    # Set up configuration based on user type
-    if user_type == "scraping":
-        chrome_dir = os.getenv('SCRAPING_CHROME_DIR')
-        port = os.getenv('SCRAPING_PORT')
-    else:  # applying
-        chrome_dir = os.getenv('APPLYING_CHROME_DIR')
-        port = os.getenv('APPLYING_PORT')
-    
+    # Set up configuration for scraping
+    chrome_dir = os.getenv('SCRAPING_CHROME_DIR')
+    port = os.getenv('SCRAPING_PORT')
     chrome_driver_path = os.getenv('CHROME_DRIVER_PATH')
     chrome_app_path = os.getenv('CHROME_APP_PATH')
+    
+    # Ensure Chrome data directory exists
+    if not os.path.exists(chrome_dir):
+        os.makedirs(chrome_dir, exist_ok=True)
+        print(f"Created Chrome data directory at {chrome_dir}")
     
     # Set up Chrome options
     options = Options()
@@ -60,26 +60,15 @@ def start_chrome_session(user_type):
         '''
     })
     
-    print(f"Chrome session started for {user_type}")
+    print(f"Chrome session started for scraping")
     print(f"Using directory: {chrome_dir}")
     print(f"Debug port: {port}")
     
     return driver
 
 if __name__ == "__main__":
-    # Get user input for session type
-    while True:
-        choice = input("Enter choice (1 for scraping, 2 for applying): ").strip()
-        if choice == "1":
-            user_type = "scraping"
-            break
-        elif choice == "2":
-            user_type = "applying"
-            break
-        print("Invalid input. Please enter 1 for scraping or 2 for applying")
-    
-    # Start the Chrome session
-    driver = start_chrome_session(user_type)
+    # Start the Chrome session for scraping
+    driver = start_chrome_session()
     
     # Keep the session running until interrupted
     try:
