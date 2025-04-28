@@ -158,12 +158,6 @@ class UserUpdateRequest(BaseModel):
     github_url: Optional[str] = None
     portfolio_url: Optional[str] = None
 
-# Add a new Pydantic model for lead data
-class GenerateLeadsRequest(BaseModel):
-    companyName: str
-    position: str
-    jobDescription: str
-
 # Route to switch database
 @app.get("/switchDb/{db_type}")
 def switchDatabase(db_type: str = Path(..., pattern="^(mysql|sqlite)$")):
@@ -571,36 +565,6 @@ async def get_user_info():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to get user information: {str(e)}"
-        )
-
-@app.post("/generateLeads")
-def generate_leads(request: GenerateLeadsRequest):
-    """
-    Receive lead data from frontend, log it, and return it back.
-    """
-    try:
-        # Log the received data
-        print("=" * 50)
-        print("LEAD DATA RECEIVED:")
-        print(f"Company: {request.companyName}")
-        print(f"Position: {request.position}")
-        print(f"Job Description: {request.jobDescription[:100]}...")  # Truncate for logging
-        print("=" * 50)
-        
-        # Return the same data back to the client
-        return {
-            "success": True,
-            "message": "Lead information received successfully",
-            "data": {
-                "companyName": request.companyName,
-                "position": request.position,
-                "jobDescription": request.jobDescription
-            }
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing lead data: {str(e)}"
         )
 
 # Run the application

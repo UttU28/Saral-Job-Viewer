@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { useRef } from 'react';
 
-interface JobCardProps {
+interface LinkedInJobCardProps {
   id: string;
   link: string;
   title: string;
@@ -32,10 +32,9 @@ interface JobCardProps {
   onUpdateStatus: (jobId: string, status: 'YES' | 'NEVER') => void;
   onAddKeyword?: (name: string, type: string) => Promise<void>;
   useBot?: boolean;
-  source: 'linkedin' | 'dice';
 }
 
-export function JobCard({
+export function LinkedInJobCard({
   id,
   link,
   title,
@@ -50,8 +49,7 @@ export function JobCard({
   onUpdateStatus,
   onAddKeyword,
   useBot = false,
-  source,
-}: JobCardProps) {
+}: LinkedInJobCardProps) {
   const descriptionRef = useRef<HTMLDivElement>(null);
   const formattedTime = formatTimestamp(timeStamp);
   const isEasyApply = method.toLowerCase() === 'easyapply';
@@ -100,21 +98,12 @@ export function JobCard({
         window.open(link, '_blank');
       }
 
-      if (source === 'dice') {
-        await api.applyJobDice({
-          jobID: id,
-          applyMethod: method,
-          link: link,
-          useBot: useBot,
-        });
-      } else {
-        await api.applyJob({
-          jobID: id,
-          applyMethod: method,
-          link: link,
-          useBot: useBot,
-        });
-      }
+      await api.applyJob({
+        jobID: id,
+        applyMethod: method,
+        link: link,
+        useBot: useBot,
+      });
 
       toast.success('Successfully applied for the job!', {
         description: `Application submitted for ${title}`,
@@ -132,11 +121,7 @@ export function JobCard({
 
   const handleReject = async () => {
     try {
-      if (source === 'dice') {
-        await api.rejectJobDice({ jobID: id });
-      } else {
-        await api.rejectJob({ jobID: id });
-      }
+      await api.rejectJob({ jobID: id });
 
       toast.success('Job rejected', {
         description: `You won't see this job in your active listings anymore`,
@@ -160,11 +145,7 @@ export function JobCard({
       }
 
       // Reject this job
-      if (source === 'dice') {
-        await api.rejectJobDice({ jobID: id });
-      } else {
-        await api.rejectJob({ jobID: id });
-      }
+      await api.rejectJob({ jobID: id });
 
       toast.success('Company blacklisted', {
         description: `${companyName} has been added to excluded companies`,
@@ -180,32 +161,16 @@ export function JobCard({
     }
   };
 
-  const handleGetLeads = async () => {
-    // Extract unique position title (remove duplicates)
-    const uniqueTitle = title.split('\n')[0];
-    
-    const leadData = {
+  const handleGetLeads = () => {
+    console.log({
       companyName,
-      position: uniqueTitle,
+      position: title,
       jobDescription
-    };
+    });
     
-    try {
-      // Send data to backend
-      const response = await api.generateLeads(leadData);
-      
-      console.log('Lead data sent to backend:', leadData);
-      console.log('Backend response:', response);
-      
-      toast.success('Lead information captured', {
-        description: `Information for ${companyName} has been logged on the server`,
-      });
-    } catch (error) {
-      toast.error('Failed to generate leads', {
-        description: error instanceof Error ? error.message : 'Please try again later',
-      });
-      console.error('Error generating leads:', error);
-    }
+    toast.success('Lead information captured', {
+      description: `Information for ${companyName} has been logged to console`,
+    });
   };
 
   return (
@@ -358,4 +323,4 @@ export function JobCard({
       </div>
     </div>
   );
-}
+} 

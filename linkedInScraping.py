@@ -1,6 +1,8 @@
 import subprocess
 from time import sleep
 import time
+import sys
+import logging
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -18,6 +20,42 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 
 from utils.utilsDatabase import DbConfig, getSession
+
+# Function to run scraping in visible command prompt
+def run_in_background():
+    """
+    Run the LinkedIn scraping process in a visible command prompt
+    """
+    # Get the current script path
+    script_path = os.path.abspath(__file__)
+    
+    # Start the process in a visible window
+    if os.name == 'nt':  # Windows
+        # Use regular python.exe to get a visible window
+        python_exe = sys.executable
+        
+        # Start in a new visible command prompt window
+        subprocess.Popen(
+            ['start', 'cmd', '/k', python_exe, script_path],
+            shell=True  # Required for 'start' command
+        )
+    else:  # Linux/Mac
+        # Use xterm or gnome-terminal based on availability
+        try:
+            # Try gnome-terminal first
+            subprocess.Popen(['gnome-terminal', '--', sys.executable, script_path])
+        except FileNotFoundError:
+            try:
+                # Try xterm if gnome-terminal isn't available
+                subprocess.Popen(['xterm', '-e', f"{sys.executable} {script_path}"])
+            except FileNotFoundError:
+                # Fallback to regular terminal
+                subprocess.Popen(
+                    [sys.executable, script_path],
+                    start_new_session=True
+                )
+    
+    return True
 
 # Load environment variables
 load_dotenv()
@@ -324,123 +362,149 @@ def cleanupChrome(driver, chrome_process):
     print("Chrome cleanup completed.")
 
 if __name__ == "__main__":
-    # Check if keywords exist in DB, if not create dummy data
-    keywordsData = getSearchKeywords()
-    if not keywordsData["noCompany"] and not keywordsData["searchList"]:
-        print("No keywords found in database. Creating dummy data...")
-        createDummyKeywords()
+    # Set up logging to file since we're running in the background
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'linkedin_scraping.log')
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger()
+    
+    # Redirect standard output and error to log
+    def log_info(msg):
+        logger.info(msg)
+        
+    def log_error(msg):
+        logger.error(msg)
+    
+    # Log start of scraping
+    logger.info("Starting LinkedIn job scraping")
+    
+    try:
+        # Check if keywords exist in DB, if not create dummy data
         keywordsData = getSearchKeywords()
-    
-    print(keywordsData)
-    excludedCompanies = keywordsData["noCompany"]
-    jobKeywords = keywordsData["searchList"]
-
-    # Ensure chrome data directory exists
-    if not os.path.exists(chromeDataDir):
-        os.makedirs(chromeDataDir, exist_ok=True)
-        print(f"'{chromeDataDir}' directory was created.")
-    else:
-        print(f"'{chromeDataDir}' directory already exists.")
-    
-    # Ensure user profile directory exists
-    if not os.path.exists(chromeUserDataDir):
-        os.makedirs(chromeUserDataDir, exist_ok=True)
-        print(f"'{chromeUserDataDir}' directory was created.")
-    else:
-        print(f"'{chromeUserDataDir}' directory already exists.")
-
-    print(f"Using Chrome user data directory: {chromeUserDataDir}")
-
-    for keyword in jobKeywords:
-        print(f"\nStarting search for keyword: {keyword}")
+        if not keywordsData["noCompany"] and not keywordsData["searchList"]:
+            logger.info("No keywords found in database. Creating dummy data...")
+            createDummyKeywords()
+            keywordsData = getSearchKeywords()
         
-        # Initialize driver and chrome_app as None
-        driver = None
-        chromeApp = None
+        logger.info(f"Keywords data: {keywordsData}")
+        excludedCompanies = keywordsData["noCompany"]
+        jobKeywords = keywordsData["searchList"]
+
+        # Ensure chrome data directory exists
+        if not os.path.exists(chromeDataDir):
+            os.makedirs(chromeDataDir, exist_ok=True)
+            logger.info(f"'{chromeDataDir}' directory was created.")
+        else:
+            logger.info(f"'{chromeDataDir}' directory already exists.")
         
-        try:
-            # Start Chrome process
-            print("Starting Chrome...")
-            start_time = time.time()
-            chromeApp = subprocess.Popen([
-                chromeAppPath,
-                f'--remote-debugging-port={debuggingPort}',
-                f'--user-data-dir={chromeUserDataDir}'
-            ])
-            sleep(2)
+        # Ensure user profile directory exists
+        if not os.path.exists(chromeUserDataDir):
+            os.makedirs(chromeUserDataDir, exist_ok=True)
+            logger.info(f"'{chromeUserDataDir}' directory was created.")
+        else:
+            logger.info(f"'{chromeUserDataDir}' directory already exists.")
 
-            options = Options()
-            options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
-            options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
-            options.add_argument("--disable-notifications")
-            driver = webdriver.Chrome(options=options)
+        logger.info(f"Using Chrome user data directory: {chromeUserDataDir}")
 
-            searchUrl = buildLinkedinUrl(keyword.strip())
-            print(searchUrl)
-            driver.get(searchUrl)
+        for keyword in jobKeywords:
+            logger.info(f"\nStarting search for keyword: {keyword}")
             
-            # Wait for initial page load
-            if not waitForPageLoad(driver):
-                print("Failed to load initial job listings page. Moving to next keyword.")
-                continue
+            # Initialize driver and chrome_app as None
+            driver = None
+            chromeApp = None
+            
+            try:
+                # Start Chrome process
+                logger.info("Starting Chrome...")
+                start_time = time.time()
+                chromeApp = subprocess.Popen([
+                    chromeAppPath,
+                    f'--remote-debugging-port={debuggingPort}',
+                    f'--user-data-dir={chromeUserDataDir}'
+                ])
+                sleep(2)
+
+                options = Options()
+                options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
+                options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
+                options.add_argument("--disable-notifications")
+                driver = webdriver.Chrome(options=options)
+
+                searchUrl = buildLinkedinUrl(keyword.strip())
+                logger.info(f"Navigating to: {searchUrl}")
+                driver.get(searchUrl)
                 
-            while True:
-                # Check if 8 minutes have passed
-                if time.time() - start_time > 480:  # 480 seconds = 8 minutes
-                    print("Session timeout reached (8 minutes). Moving to next keyword...")
-                    break
+                # Wait for initial page load
+                if not waitForPageLoad(driver):
+                    print("Failed to load initial job listings page. Moving to next keyword.")
+                    continue
                     
-                sleep(4)
-                try:
-                    # Check for no results banner
-                    driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
-                    print("All Jobs have been scraped")
-                    break
-                except NoSuchElementException:
-                    # Check if job listings exist on the page
-                    job_listings = driver.find_elements(By.CLASS_NAME, "job-card-container--clickable")
-                    if not job_listings:
-                        print("No job listings found on this page. Moving to next page or keyword.")
+                while True:
+                    # Check if 8 minutes have passed
+                    if time.time() - start_time > 480:  # 480 seconds = 8 minutes
+                        print("Session timeout reached (8 minutes). Moving to next keyword...")
                         break
                         
-                    # Try to find and click the job list container to ensure we're on the page
+                    sleep(4)
                     try:
-                        list_container = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
-                        driver.execute_script("arguments[0].scrollIntoView();", list_container)
-                        # No need to click, just make sure it's in view
-                    except Exception as e:
-                        print(f"Error finding list container: {e}")
-                        
-                    # Process the job listings
-                    if not readJobListingsPage(driver, excludedCompanies):
-                        print("Failed to process job listings. Moving to next page.")
-                except Exception as error:
-                    print(f"Error navigating page: {error}")
-
-                # Try to navigate to the next page
-                try:
-                    nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
-                    if nextButton.is_enabled():
-                        # Use JavaScript to click the button to avoid any potential issues
-                        driver.execute_script("arguments[0].click();", nextButton)
-                        # Wait for the next page to load
-                        sleep(3)
-                    else:
-                        print("Next button is disabled. No more pages to scrape.")
+                        # Check for no results banner
+                        driver.find_element(By.CLASS_NAME, "jobs-search-no-results-banner")
+                        print("All Jobs have been scraped")
                         break
-                except NoSuchElementException:
-                    print("No more pages to scrape - Next button not found")
-                    break
-                except Exception as e:
-                    print(f"Error clicking next button: {e}")
-                    break
-        except Exception as e:
-            print(f"Error during scraping for keyword '{keyword}': {e}")
-        finally:
-            # Ensure cleanup happens regardless of any exceptions
-            print("Cleaning up Chrome processes...")
-            cleanupChrome(driver, chromeApp)
-            
-            print(f"Finished keyword: {keyword}")
-            print("Waiting 30 seconds before next keyword...")
-            sleep(30)
+                    except NoSuchElementException:
+                        # Check if job listings exist on the page
+                        job_listings = driver.find_elements(By.CLASS_NAME, "job-card-container--clickable")
+                        if not job_listings:
+                            print("No job listings found on this page. Moving to next page or keyword.")
+                            break
+                            
+                        # Try to find and click the job list container to ensure we're on the page
+                        try:
+                            list_container = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
+                            driver.execute_script("arguments[0].scrollIntoView();", list_container)
+                            # No need to click, just make sure it's in view
+                        except Exception as e:
+                            print(f"Error finding list container: {e}")
+                            
+                        # Process the job listings
+                        if not readJobListingsPage(driver, excludedCompanies):
+                            print("Failed to process job listings. Moving to next page.")
+                    except Exception as error:
+                        print(f"Error navigating page: {error}")
+
+                    # Try to navigate to the next page
+                    try:
+                        nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
+                        if nextButton.is_enabled():
+                            # Use JavaScript to click the button to avoid any potential issues
+                            driver.execute_script("arguments[0].click();", nextButton)
+                            # Wait for the next page to load
+                            sleep(3)
+                        else:
+                            print("Next button is disabled. No more pages to scrape.")
+                            break
+                    except NoSuchElementException:
+                        print("No more pages to scrape - Next button not found")
+                        break
+                    except Exception as e:
+                        print(f"Error clicking next button: {e}")
+                        break
+            except Exception as e:
+                logger.error(f"Error during scraping for keyword '{keyword}': {e}")
+            finally:
+                # Ensure cleanup happens regardless of any exceptions
+                logger.info("Cleaning up Chrome processes...")
+                cleanupChrome(driver, chromeApp)
+                
+                logger.info(f"Finished keyword: {keyword}")
+                logger.info("Waiting 30 seconds before next keyword...")
+                sleep(30)
+                
+        logger.info("LinkedIn job scraping completed")
+        
+    except Exception as e:
+        logger.error(f"Error in main LinkedIn scraping process: {e}")
+        raise

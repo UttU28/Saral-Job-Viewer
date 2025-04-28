@@ -125,18 +125,21 @@ export function DiceJobs() {
 
             <div className="flex items-center gap-2">
               <DicesIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-lg font-semibold">Dice Jobs</h1>
+              <h1 
+                className="text-lg font-semibold cursor-pointer hover:text-primary transition-colors" 
+                onClick={() => navigate('/')}
+              >
+                Dice Jobs
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
+          <Button
               variant="outline"
               className="gap-2"
-              onClick={() => navigate('/config')}
+              onClick={() => navigate('/linkedin')}
             >
-              <DicesIcon className="h-4 w-4" />
-              Apply Config
-              <ExternalLinkIcon className="h-4 w-4" />
+              Go to LinkedIn
             </Button>
             <Button
               variant="outline"

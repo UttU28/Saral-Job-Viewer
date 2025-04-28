@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 
 # Import the database config from utilsDatabase
-from utils.utilsDatabase import DbConfig, getSession
+from utils.utilsDatabase import DbConfig, getSession, Keyword, DiceKeyword
 
 # Load environment variables from .env file
 load_dotenv()
@@ -104,70 +104,110 @@ def checkJob(jobId: str) -> bool:
 
 # Fetch and organize search keywords into two arrays
 def getSearchKeywords():
-    session = getSession()
     try:
-        # Filter by type strings instead of enums for SQLite compatibility
-        allKeywords = session.query(SearchKeywords).all()
-        noCompany = [keyword.name for keyword in allKeywords if keyword.type == "NoCompany"]
-        searchList = [keyword.name for keyword in allKeywords if keyword.type == "SearchList"]
-        return {"noCompany": noCompany, "searchList": searchList}
-    except Exception as e:
-        print(f"Error: Could not fetch search keywords. Reason: {e}")
-        return {"noCompany": [], "searchList": []}
-    finally:
+        session = getSession()
+        excludedCompanies = []
+        searchList = []
+        
+        keywords = session.query(Keyword).all()
+        for keyword in keywords:
+            if keyword.type.lower() == "no":
+                excludedCompanies.append(keyword.name)
+            elif keyword.type.lower() == "yes":
+                searchList.append(keyword.name)
+        
         session.close()
+        return {"noCompany": excludedCompanies, "searchList": searchList}
+    except Exception as e:
+        print(f"Error getting keywords: {e}")
+        return {"noCompany": [], "searchList": []}
 
-# Create dummy data for search keywords
-def createDummyKeywords():
-    session = getSession()
+# Get keywords from database for Dice scraping
+def getDiceSearchKeywords():
     try:
-        # Check if we already have dummy data
-        existing_count = session.query(SearchKeywords).count()
-        if existing_count > 0:
-            print(f"Database already contains {existing_count} keywords. Skipping dummy data creation.")
-            return
+        session = getSession()
+        excludedCompanies = []
+        searchList = []
         
-        # Dummy data for NoCompany keywords (keywords without specific company names)
-        noCompany_keywords = [
-            "jobbot", "Jobot", "Lensa"
+        keywords = session.query(DiceKeyword).all()
+        for keyword in keywords:
+            if keyword.type.lower() == "no" or keyword.type.lower() == "nocompany":
+                excludedCompanies.append(keyword.name)
+            elif keyword.type.lower() == "yes" or keyword.type.lower() == "searchlist":
+                searchList.append(keyword.name)
+        
+        session.close()
+        return {"noCompany": excludedCompanies, "searchList": searchList}
+    except Exception as e:
+        print(f"Error getting dice keywords: {e}")
+        return {"noCompany": [], "searchList": []}
+
+# Add dummy data to database
+def createDummyKeywords():
+    try:
+        session = getSession()
+        
+        # Add keywords
+        defaultKeywords = [
+            {"name": "Python developer", "type": "YES"},
+            {"name": "backend developer", "type": "YES"},
+            {"name": "software engineer", "type": "YES"},
+            {"name": "Google", "type": "NO"},
+            {"name": "Meta", "type": "NO"}
         ]
         
-        # Dummy data for SearchList keywords (specific search terms or job titles)
-        searchList_keywords = [
-            "python developer", "full stack developer", "automation developer"
-        ]
-        
-        current_time = datetime.utcnow()
-        
-        # Add NoCompany keywords
-        for keyword in noCompany_keywords:
-            new_keyword = SearchKeywords(
-                name=keyword,
-                type="NoCompany",
-                created_at=current_time
-            )
-            session.add(new_keyword)
-        
-        # Add SearchList keywords
-        for keyword in searchList_keywords:
-            new_keyword = SearchKeywords(
-                name=keyword,
-                type="SearchList",
-                created_at=current_time
-            )
-            session.add(new_keyword)
+        for kw in defaultKeywords:
+            # Check if keyword already exists
+            existing = session.query(Keyword).filter_by(name=kw["name"]).first()
+            if not existing:
+                keyword = Keyword(name=kw["name"], type=kw["type"])
+                session.add(keyword)
         
         session.commit()
-        print(f"Added {len(noCompany_keywords)} NoCompany keywords and {len(searchList_keywords)} SearchList keywords.")
-    except Exception as e:
-        session.rollback()
-        print(f"Error: Could not create dummy keywords. Reason: {e}")
-    finally:
+        print("Dummy keywords created successfully")
         session.close()
+        return True
+    except Exception as e:
+        print(f"Error creating dummy keywords: {e}")
+        session.rollback()
+        session.close()
+        return False
+
+# Add dummy data to Dice keywords database
+def createDiceDummyKeywords():
+    try:
+        session = getSession()
+        
+        # Add dice keywords
+        defaultKeywords = [
+            {"name": "Python developer", "type": "SearchList"},
+            {"name": "software engineer", "type": "SearchList"},
+            {"name": "Django Flask", "type": "SearchList"},
+            {"name": "Python LLM", "type": "SearchList"},
+            {"name": "Revature", "type": "NoCompany"},
+            {"name": "Dice", "type": "NoCompany"}
+        ]
+        
+        for kw in defaultKeywords:
+            # Check if keyword already exists
+            existing = session.query(DiceKeyword).filter_by(name=kw["name"]).first()
+            if not existing:
+                keyword = DiceKeyword(name=kw["name"], type=kw["type"])
+                session.add(keyword)
+        
+        session.commit()
+        print("Dummy dice keywords created successfully")
+        session.close()
+        return True
+    except Exception as e:
+        print(f"Error creating dummy dice keywords: {e}")
+        session.rollback()
+        session.close()
+        return False
 
 # Example usage of the dummy data creator
 if __name__ == "__main__":
     createDummyKeywords()
     keywords = getSearchKeywords()
     print("NoCompany Keywords:", keywords["noCompany"])
-    print("SearchList Keywords:", keywords["searchList"])
+    print("SearchList Keywords:", keywords["searchList"]) 

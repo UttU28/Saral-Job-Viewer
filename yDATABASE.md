@@ -1,6 +1,6 @@
 # Database Schema for Job Application System
 
-This document provides the schema for tables used in the job application system. The database includes tables for LinkedIn jobs, Dice jobs, easy application data, and keywords.
+This document provides the schema for tables used in the job application system. The database includes tables for LinkedIn jobs, Dice jobs, easy application data, keywords, and user information.
 
 ## Tables
 
@@ -78,6 +78,23 @@ CREATE TABLE diceKeywords (
 );
 ```
 
+### 6. `users`
+Stores user information for job applications.
+
+```sql
+CREATE TABLE users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NULL,
+    linkedin_url VARCHAR(255) NULL,
+    github_url VARCHAR(255) NULL,
+    portfolio_url VARCHAR(255) NULL,
+    has_resume BOOLEAN DEFAULT FALSE,
+    has_cover_letter BOOLEAN DEFAULT FALSE,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+```
 
 ## Notes
 - `allLinkedInJobs` and `allDiceJobs` store job listings from respective platforms.
@@ -85,9 +102,12 @@ CREATE TABLE diceKeywords (
 - `linkedInKeywords` and `diceKeywords` store search keywords categorized by type:
   - `SearchList`: Keywords that should be used in search queries while scraping job data.
   - `NoCompany`: A blacklist of company names to avoid scraping irrelevant data.
+- `users` stores personal information for job applications:
+  - Only one user is expected in the system
+  - Resume and cover letter files are stored in the data directory
+  - `has_resume` and `has_cover_letter` flags indicate if files have been uploaded
 - All primary keys are uniquely identifying each record.
 - Indexes are used where necessary to improve query performance.
-
 
 Ensure proper database management practices, including indexing and backups, for efficient querying and data integrity.
 

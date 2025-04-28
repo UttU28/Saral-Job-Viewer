@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime, Float
+from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime, Float, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import time
 import sqlite3
+from typing import Optional, Dict, Any
 
 # Load environment variables
 load_dotenv()
@@ -107,6 +108,21 @@ class DiceJobPosting(Base):
     jobDescription = Column(Text)
     applied = Column(Text)
 
+# Add User model
+class User(Base):
+    __tablename__ = "users"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+    linkedin_url = Column(String(255), nullable=True)
+    github_url = Column(String(255), nullable=True)
+    portfolio_url = Column(String(255), nullable=True)
+    has_resume = Column(Boolean, default=False)
+    has_cover_letter = Column(Boolean, default=False)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # Create all tables if they don't already exist
 Base.metadata.create_all(engine)
 
@@ -122,6 +138,7 @@ def initializeDatabaseWithSampleData():
         # Check if tables are empty
         keywordsCount = session.query(Keyword).count()
         diceKeywordsCount = session.query(DiceKeyword).count()
+        usersCount = session.query(User).count()
         
         # Initialize only keyword tables with sample data
         # We're not creating sample data for allLinkedInJobs and allDiceJobs as requested
@@ -168,12 +185,22 @@ def initializeDatabaseWithSampleData():
             ]
             session.add_all(sampleDiceKeywords)
         
-        # Commit the sample keyword data if any was added
-        if keywordsCount == 0 or diceKeywordsCount == 0:
+        # Create default user entry if none exists
+        if usersCount == 0:
+            print("Creating default user entry...")
+            defaultUser = User(
+                name="",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            session.add(defaultUser)
+        
+        # Commit the sample data if any was added
+        if keywordsCount == 0 or diceKeywordsCount == 0 or usersCount == 0:
             session.commit()
-            print("Database initialized with sample keywords successfully!")
+            print("Database initialized with sample data successfully!")
         else:
-            print("Database already contains keywords data, skipping initialization.")
+            print("Database already contains data, skipping initialization.")
             
     except Exception as e:
         session.rollback()
@@ -367,10 +394,10 @@ def addToEasyApply(jobId: str, status: str):
         session.add(newEntry)
         session.commit()
         session.refresh(newEntry)
-        
+
         # Update the job status to indicate it's being processed by Easy Apply
         updateJobStatus(jobId, "PROCESSING")
-        
+
         return newEntry
     except Exception as e:
         session.rollback()
@@ -546,5 +573,102 @@ def getAllDiceKeywords():
     except Exception as e:
         logging.error(f"Error fetching all Dice keywords: {e}")
         return []
+    finally:
+        session.close()
+
+# User-related functions
+def getUserInfo():
+    """Get user information"""
+    session = getSession()
+    try:
+        # Get the first user (there should only be one)
+        user = session.query(User).first()
+        
+        if not user:
+            return None
+        
+        # Create a dictionary from the user object before the session is closed
+        user_dict = {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'linkedin_url': user.linkedin_url,
+            'github_url': user.github_url,
+            'portfolio_url': user.portfolio_url,
+            'has_resume': user.has_resume,
+            'has_cover_letter': user.has_cover_letter,
+            'created_at': user.created_at,
+            'updated_at': user.updated_at
+        }
+        
+        return user_dict
+    except Exception as e:
+        logging.error(f"Error getting user info: {e}")
+        return None
+    finally:
+        session.close()
+
+def updateUserInfo(**kwargs):
+    """Update user information"""
+    session = getSession()
+    try:
+        # Get the first user or create a new one
+        user = session.query(User).first()
+        
+        if not user:
+            # Create a new user if none exists
+            user = User(
+                name=kwargs.get('name', ''),
+                email=kwargs.get('email'),
+                linkedin_url=kwargs.get('linkedin_url'),
+                github_url=kwargs.get('github_url'),
+                portfolio_url=kwargs.get('portfolio_url'),
+                has_resume=kwargs.get('has_resume', False),
+                has_cover_letter=kwargs.get('has_cover_letter', False),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            session.add(user)
+        else:
+            # Update existing user
+            if 'name' in kwargs:
+                user.name = kwargs['name']
+            if 'email' in kwargs:
+                user.email = kwargs['email']
+            if 'linkedin_url' in kwargs:
+                user.linkedin_url = kwargs['linkedin_url']
+            if 'github_url' in kwargs:
+                user.github_url = kwargs['github_url']
+            if 'portfolio_url' in kwargs:
+                user.portfolio_url = kwargs['portfolio_url']
+            if 'has_resume' in kwargs:
+                user.has_resume = kwargs['has_resume']
+            if 'has_cover_letter' in kwargs:
+                user.has_cover_letter = kwargs['has_cover_letter']
+            
+            user.updated_at = datetime.utcnow()
+        
+        session.commit()
+        
+        # Create a dictionary from the user object to return,
+        # ensuring we have all data before closing the session
+        user_dict = {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'linkedin_url': user.linkedin_url,
+            'github_url': user.github_url,
+            'portfolio_url': user.portfolio_url,
+            'has_resume': user.has_resume,
+            'has_cover_letter': user.has_cover_letter,
+            'created_at': user.created_at,
+            'updated_at': user.updated_at
+        }
+        
+        return user_dict
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error updating user info: {e}")
+        return None
     finally:
         session.close()

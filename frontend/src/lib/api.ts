@@ -31,6 +31,12 @@ type KeywordType = {
   type: string;
 };
 
+interface GenerateLeadsRequest {
+  companyName: string;
+  position: string;
+  jobDescription: string;
+}
+
 export class APIError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -262,6 +268,17 @@ export const api = {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ questions }),
+    }, 3);
+    return handleResponse(response);
+  },
+
+  async generateLeads({ companyName, position, jobDescription }: GenerateLeadsRequest) {
+    const response = await fetchWithRetry(`${API_BASE_URL}/generateLeads`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ companyName, position, jobDescription }),
     }, 3);
     return handleResponse(response);
   },

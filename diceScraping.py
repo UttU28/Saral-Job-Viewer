@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 import requests
 import json, os
 import signal
+import sys
 from datetime import datetime, timezone
 from tqdm import tqdm
 from dotenv import load_dotenv
@@ -20,6 +21,7 @@ from sqlalchemy.orm import sessionmaker
 import subprocess
 
 from utils.utilsDatabase import addDiceJob, DbConfig, getSession
+from utils.utilsDataScraping import getDiceSearchKeywords, createDiceDummyKeywords
 
 load_dotenv()
 
@@ -206,21 +208,37 @@ def scrapeTheJobs():
         return False
         
     def writeTheJob(jobID, link, title, location, company, empType):
-        if not jobExists(jobID):
-            currentTime = int(datetime.now(timezone.utc).timestamp())
+        """Process a job and add it to the database if it meets requirements"""
+        try:
+            # Skip if job already exists
+            if jobExists(jobID):
+                return False
+                
             # Add to raw jobs database
-            if addRawJob(jobID, currentTime):
-                jdData = getJobDescription(jobID)
-                if jdData:
-                    description, datePosted, dateUpdated = jdData
-                    checkRequirements = checkRequirementMatching(description, contentIn, contentOut)
-                    if checkRequirements:
-                        jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
-                        result = addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO")
-                        if result:
-                            markJobAsProcessed(jobID)
-                            return True
-        return False
+            currentTime = int(datetime.now(timezone.utc).timestamp())
+            if not addRawJob(jobID, currentTime):
+                return False
+                
+            # Get and process job description
+            jdData = getJobDescription(jobID)
+            if not jdData:
+                return False
+                
+            description, datePosted, dateUpdated = jdData
+            
+            # Check if job meets content requirements
+            if not checkRequirementMatching(description, contentIn, contentOut):
+                return False
+                
+            # Determine job type and add to database
+            jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
+            if addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO"):
+                markJobAsProcessed(jobID)
+                return True
+                
+            return False
+        except Exception:
+            return False
 
     # Initialize driver and service before the try block
     driver = None
@@ -239,10 +257,33 @@ def scrapeTheJobs():
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
 
-        jobKeyWords = ['Python developer', 'software engineer', 'Django Flask', 'Python LLM']
+        # Get keywords from database
+        keywordsData = getDiceSearchKeywords()
+        if not keywordsData["noCompany"] and not keywordsData["searchList"]:
+            print("No dice keywords found in database. Creating dummy data...")
+            createDiceDummyKeywords()
+            keywordsData = getDiceSearchKeywords()
+        
+        print(f"Using dice keywords: {keywordsData}")
+        excludedCompanies = keywordsData["noCompany"]
+        jobKeyWords = keywordsData["searchList"]
+        
         employmentType = ['CONTRACTS', 'FULLTIME']
         passCount = 0
         totalJobsProcessed = 0
+        
+        # Track jobs by type for summary
+        job_stats = {
+            "by_keyword": {},
+            "by_employment": {
+                "CONTRACTS": {"success": 0, "total": 0},
+                "FULLTIME": {"success": 0, "total": 0}
+            }
+        }
+        
+        # Initialize keyword stats
+        for keyword in jobKeyWords:
+            job_stats["by_keyword"][keyword] = {"success": 0, "total": 0}
 
         for jobKeyWord in jobKeyWords:
             for empType in employmentType:
@@ -298,7 +339,7 @@ def scrapeTheJobs():
                                         page_fail += 1
                             except Exception:
                                 page_fail += 1
-                        
+                            
                         # Print summary for this page
                         print(f"\nSummary for {jobKeyWord} - {empType} - Page {page}:")
                         print(f"  Success: {page_success} | Failed: {page_fail} | Total: {page_total}")
@@ -320,5 +361,59 @@ def scrapeTheJobs():
         print(f"Total jobs successfully added: {passCount}")
         print(f"Success rate: {(passCount/totalJobsProcessed)*100:.2f}% (if jobs were processed)" if totalJobsProcessed > 0 else "No jobs processed")
 
+# Function to run scraping in visible command prompt
+def run_in_background():
+    """
+    Run the Dice scraping process in a visible command prompt
+    """
+    # Get the current script path
+    script_path = os.path.abspath(__file__)
+    
+    # Start the process in a visible window
+    if os.name == 'nt':  # Windows
+        # Use regular python.exe to get a visible window
+        python_exe = sys.executable
+        
+        # Start in a new visible command prompt window
+        subprocess.Popen(
+            ['start', 'cmd', '/k', python_exe, script_path],
+            shell=True  # Required for 'start' command
+        )
+    else:  # Linux/Mac
+        # Use xterm or gnome-terminal based on availability
+        try:
+            # Try gnome-terminal first
+            subprocess.Popen(['gnome-terminal', '--', sys.executable, script_path])
+        except FileNotFoundError:
+            try:
+                # Try xterm if gnome-terminal isn't available
+                subprocess.Popen(['xterm', '-e', f"{sys.executable} {script_path}"])
+            except FileNotFoundError:
+                # Fallback to regular terminal
+                subprocess.Popen(
+                    [sys.executable, script_path],
+                    start_new_session=True
+                )
+    
+    return True
+
 if __name__ == "__main__":
-    scrapeTheJobs()
+    # Run directly rather than being imported
+    # Set up logging to file since we're running in the background
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dice_scraping.log')
+    logging.basicConfig(
+        filename=log_file,
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger()
+    
+    # Log start of scraping
+    logger.info("Starting Dice job scraping")
+    
+    try:
+        scrapeTheJobs()
+        logger.info("Dice job scraping completed successfully")
+    except Exception as e:
+        logger.error(f"Error during Dice job scraping: {e}")
+        raise 

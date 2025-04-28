@@ -133,18 +133,21 @@ export function LinkedInJobs() {
 
             <div className="flex items-center gap-2">
               <LinkedinIcon className="h-6 w-6 text-primary" />
-              <h1 className="text-lg font-semibold">LinkedIn Jobs</h1>
+              <h1 
+                className="text-lg font-semibold cursor-pointer hover:text-primary transition-colors" 
+                onClick={() => navigate('/')}
+              >
+                LinkedIn Jobs
+              </h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               className="gap-2"
-              onClick={() => navigate('/config')}
+              onClick={() => navigate('/dice')}
             >
-              <LinkedinIcon className="h-4 w-4" />
-              EasyApply Config
-              <ExternalLinkIcon className="h-4 w-4" />
+              Go to Dice
             </Button>
             <Button
               variant="outline"
