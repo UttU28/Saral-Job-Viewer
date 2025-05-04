@@ -80,26 +80,79 @@ def bhaiTimeKyaHai(watch):
 def getJobDescription(jobID):
     url = f"https://www.dice.com/job-detail/{jobID}"
     try:
-        response = requests.get(url)
+        print(f"Fetching job description from {url}")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
-    except requests.RequestException:
+    except requests.RequestException as e:
+        print(f"Error fetching job description: {e}")
         return False
 
     try:
         htmlContent = response.text
         soup = BeautifulSoup(htmlContent, 'html.parser')
-        scriptTag = soup.select('script#__NEXT_DATA__')[0].text
-        data = json.loads(scriptTag)
-        thisData = data["props"]["pageProps"]["initialState"]["api"]["queries"][f'getJobById("{jobID}")']["data"]
-
-        jobDescription = thisData["description"]
-        datePosted = bhaiTimeKyaHai(thisData["datePosted"])
-        dateUpdated = bhaiTimeKyaHai(thisData["dateUpdated"])
-        jobDescription = BeautifulSoup(jobDescription, 'html.parser').prettify()
-        jobDescription = BeautifulSoup(jobDescription, 'html.parser').get_text().split("\n")
-        jobDescription = " \n".join([element.strip() for element in jobDescription if element != ''])
-        return jobDescription, datePosted, dateUpdated
-    except Exception:
+        
+        # Try to find the Next.js data script which contains job details
+        scriptTag = soup.select_one('script#__NEXT_DATA__')
+        
+        if scriptTag:
+            # Parse JSON data from the script tag
+            data = json.loads(scriptTag.text)
+            
+            # Extract job data from the nested structure
+            # Navigate through the JSON structure to find job data
+            try:
+                # First try the new path structure
+                queries = data.get("props", {}).get("pageProps", {}).get("initialState", {}).get("api", {}).get("queries", {})
+                
+                # Find the query that contains job data
+                job_query_key = None
+                for key in queries:
+                    if f'"{jobID}"' in key:
+                        job_query_key = key
+                        break
+                
+                if job_query_key:
+                    thisData = queries[job_query_key].get("data", {})
+                else:
+                    # Try alternate paths
+                    thisData = data.get("props", {}).get("pageProps", {}).get("jobData", {})
+                
+                # Extract job description
+                jobDescription = thisData.get("description", "")
+                
+                # Extract dates
+                datePosted = bhaiTimeKyaHai(thisData.get("datePosted", ""))
+                dateUpdated = bhaiTimeKyaHai(thisData.get("dateUpdated", ""))
+                
+                # Parse HTML in description
+                jobDescription = BeautifulSoup(jobDescription, 'html.parser').prettify()
+                jobDescription = BeautifulSoup(jobDescription, 'html.parser').get_text().split("\n")
+                jobDescription = " \n".join([element.strip() for element in jobDescription if element != ''])
+                
+                return jobDescription, datePosted, dateUpdated
+            
+            except (KeyError, TypeError) as e:
+                print(f"Error parsing job data structure: {e}")
+                # If script parsing fails, try direct HTML extraction as fallback
+                pass
+        
+        # Fallback: Try to extract description directly from HTML
+        description_div = soup.select_one('div[data-testid="jobDescriptionHtml"]')
+        if description_div:
+            jobDescription = description_div.prettify()
+            jobDescription = BeautifulSoup(jobDescription, 'html.parser').get_text().split("\n")
+            jobDescription = " \n".join([element.strip() for element in jobDescription if element != ''])
+            
+            # For dates, use current time as fallback
+            current_time = int(datetime.now(timezone.utc).timestamp())
+            return jobDescription, current_time, current_time
+            
+        return False
+    except Exception as e:
+        print(f"Exception in getJobDescription: {e}")
         return False
 
 # Function to check if a job exists in the database
@@ -231,13 +284,14 @@ def scrapeTheJobs():
                 return False
                 
             # Determine job type and add to database
-            jobType = "Contract" if empType == "CONTRACTS" else "FullTime"
+            jobType = "Contract" if empType.lower() == "contract" else "FullTime"
             if addDiceJob(jobID, link, title, company, location, "EasyApply", dateUpdated, jobType, description, "NO"):
                 markJobAsProcessed(jobID)
                 return True
                 
             return False
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error processing job {jobID}: {e}")
             return False
 
     # Initialize driver and service before the try block
@@ -245,17 +299,24 @@ def scrapeTheJobs():
     service = None
     
     try:
+        print("Setting up Chrome options...")
         options = Options()
-        options.add_argument("--headless")
+        # During testing, disable headless mode
+        options.add_argument("--headless=new")  # Use new headless mode
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-notifications")
         options.add_argument("--incognito")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-popup-blocking")
+        options.add_argument("--disable-popup-blocking") 
         options.add_argument("--disable-infobars")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-software-rasterizer")
         
+        print("Installing and starting Chrome WebDriver...")
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=options)
+        print("Chrome WebDriver started successfully!")
 
         # Get keywords from database
         keywordsData = getDiceSearchKeywords()
@@ -268,7 +329,7 @@ def scrapeTheJobs():
         excludedCompanies = keywordsData["noCompany"]
         jobKeyWords = keywordsData["searchList"]
         
-        employmentType = ['CONTRACTS', 'FULLTIME']
+        employmentType = ['CONTRACT', 'FULLTIME']  # Updated to match Dice's current filter values
         passCount = 0
         totalJobsProcessed = 0
         
@@ -276,7 +337,7 @@ def scrapeTheJobs():
         job_stats = {
             "by_keyword": {},
             "by_employment": {
-                "CONTRACTS": {"success": 0, "total": 0},
+                "CONTRACT": {"success": 0, "total": 0},
                 "FULLTIME": {"success": 0, "total": 0}
             }
         }
@@ -290,54 +351,125 @@ def scrapeTheJobs():
                 page = 1
                 has_more_pages = True
                 
-                while has_more_pages:
+                while has_more_pages and page <= 5:  # Limit to 5 pages during testing
                     try:
-                        url = f"https://www.dice.com/jobs?q={jobKeyWord.replace(' ','%20')}&countryCode=US&radius=30&radiusUnit=mi&page={page}&pageSize=100&filters.postedDate=ONE&filters.employmentType={empType}&filters.easyApply=true&language=en"
+                        # Updated URL format for Dice's new UI
+                        url = f"https://www.dice.com/jobs?q={jobKeyWord.replace(' ','%20')}&countryCode=US&page={page}&pageSize=100&filters.employmentType={empType}&filters.easyApply=true&language=en"
+                        # URL with today's filter: &filters.postedDate=ONE
+                        print(f"Navigating to: {url}")
                         driver.get(url)
+                        
+                        # Wait for job cards to load
                         try:
                             WebDriverWait(driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.card.search-card, p.no-jobs-message'))
+                                EC.presence_of_element_located((By.CSS_SELECTOR, '[data-testid="job-search-job-detail-link"], .no-results-message'))
                             )
-                        except Exception:
+                        except Exception as e:
+                            print(f"Error waiting for page to load: {e}")
                             pass
-                        sleep(1)
                         
+                        # Allow time for JavaScript to render content
+                        sleep(2)
+                        
+                        # Get page source after content is loaded
                         pageSource = driver.page_source
                         soup = BeautifulSoup(pageSource, 'html.parser')
 
                         # Check if we've hit the no results page
-                        no_results = soup.select_one('p.no-jobs-message')
+                        no_results = soup.select('.no-results-message')
                         if no_results:
+                            print("No results found for this search.")
                             has_more_pages = False
                             break
 
-                        currentElements = soup.select('div.card.search-card')
-                        if not currentElements:
+                        # Find all job cards with the new selector
+                        job_cards = soup.select('div.flex.flex-col.gap-6.overflow-hidden')
+                        if not job_cards:
+                            # Try alternative selector
+                            job_cards = soup.select('div[class*="flex flex-col gap-6 overflow-hidden"]')
+                            
+                        if not job_cards:
+                            print(f"No job cards found on page {page}. UI may have changed again.")
+                            print("Trying to get all divs to debug...")
+                            all_divs = soup.select('div')
+                            print(f"Found {len(all_divs)} divs total")
+                            # Don't save debug files
                             has_more_pages = False
                             break
 
+                        print(f"Found {len(job_cards)} job cards on page {page}")
+                        
                         # Initialize counters for this page
                         page_success = 0
                         page_fail = 0
-                        page_total = len(currentElements)
+                        page_total = len(job_cards)
                         
-                        # Process jobs for current page
-                        for element in tqdm(currentElements, desc=f"Processing {jobKeyWord} jobs - Type: {empType} - Page {page}"):
+                        # Process each job card
+                        for card in tqdm(job_cards, desc=f"Processing {jobKeyWord} jobs - Type: {empType} - Page {page}"):
                             try:
-                                if element.find('div', {'data-cy': 'card-easy-apply'}):
-                                    jobID = element.select('a.card-title-link')[0].get('id').strip()
-                                    location = element.select('span.search-result-location')[0].text.strip()
-                                    title = element.select('a.card-title-link')[0].text.strip()
-                                    company = element.select('[data-cy="search-result-company-name"]')[0].text.strip()
-                                    link = f"https://www.dice.com/job-detail/{jobID}"
+                                # Extract job link and ID
+                                job_link_elem = card.select_one('[data-testid="job-search-job-detail-link"]')
+                                if not job_link_elem:
+                                    print("Job link element not found in card, skipping...")
+                                    continue
                                     
+                                job_link = job_link_elem.get('href')
+                                # Extract job ID from the URL
+                                jobID = job_link.split('/')[-1]
+                                
+                                # Extract job title
+                                title = job_link_elem.text.strip()
+                                
+                                # Extract company name
+                                company_elem = card.select_one('a[href*="company-profile"]')
+                                company = company_elem.text.strip() if company_elem else "Unknown Company"
+                                
+                                # Extract location
+                                location_elem = card.select_one('p.text-sm.font-normal.text-zinc-600')
+                                location = "Remote" # Default if not found
+                                if location_elem:
+                                    location_text = location_elem.text.strip()
+                                    if "in " in location_text:
+                                        location = location_text.split("in ", 1)[1]
+                                
+                                # Extract employment type
+                                emp_type_elem = card.select_one('[id="employmentType-label"]')
+                                actual_emp_type = "Full-time"  # Default
+                                if emp_type_elem:
+                                    actual_emp_type = emp_type_elem.text.strip()
+                                
+                                # Check if this job is from an excluded company
+                                exclude_job = False
+                                for excluded in excludedCompanies:
+                                    if excluded.lower() in company.lower():
+                                        exclude_job = True
+                                        break
+                                
+                                if exclude_job:
+                                    print(f"Skipping job from excluded company: {company}")
+                                    page_fail += 1
                                     totalJobsProcessed += 1
-                                    if writeTheJob(jobID, link, title, location, company, empType):
-                                        passCount += 1
-                                        page_success += 1
-                                    else:
-                                        page_fail += 1
-                            except Exception:
+                                    continue
+                                
+                                # Process the job
+                                full_link = f"https://www.dice.com{job_link}" if not job_link.startswith('http') else job_link
+                                totalJobsProcessed += 1
+                                
+                                print(f"Processing job: {title} at {company} - Type: {actual_emp_type}")
+                                
+                                if writeTheJob(jobID, full_link, title, location, company, actual_emp_type):
+                                    passCount += 1
+                                    page_success += 1
+                                    job_stats["by_keyword"][jobKeyWord]["success"] += 1
+                                    job_stats["by_employment"][empType]["success"] += 1
+                                else:
+                                    page_fail += 1
+                                
+                                job_stats["by_keyword"][jobKeyWord]["total"] += 1
+                                job_stats["by_employment"][empType]["total"] += 1
+                                
+                            except Exception as e:
+                                print(f"Error processing job card: {e}")
                                 page_fail += 1
                             
                         # Print summary for this page
@@ -345,14 +477,21 @@ def scrapeTheJobs():
                         print(f"  Success: {page_success} | Failed: {page_fail} | Total: {page_total}")
                         print(f"  Progress: {passCount}/{totalJobsProcessed} jobs added successfully overall\n")
                         
-                        # Move to next page
-                        page += 1
-                        
-                    except Exception:
+                        # Check if there's a next page button that's enabled
+                        next_button = driver.find_elements(By.CSS_SELECTOR, 'button[aria-label="Next Page"]')
+                        if next_button and len(next_button) > 0 and next_button[0].is_enabled():
+                            page += 1
+                        else:
+                            print("No more pages available")
+                            has_more_pages = False
+                            
+                    except Exception as e:
+                        print(f"Error processing page {page}: {e}")
                         has_more_pages = False
                 
     except Exception as e:
         logger.error(f"An error occurred during scraping: {e}")
+        print(f"ERROR: {e}")
     finally:
         # Safely close the driver without killing other Chrome processes
         cleanupChrome(driver, service)

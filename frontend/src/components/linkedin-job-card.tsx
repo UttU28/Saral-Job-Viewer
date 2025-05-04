@@ -162,15 +162,8 @@ export function LinkedInJobCard({
   };
 
   const handleGetLeads = () => {
-    console.log({
-      companyName,
-      position: title,
-      jobDescription
-    });
-    
-    toast.success('Lead information captured', {
-      description: `Information for ${companyName} has been logged to console`,
-    });
+    // Open the job link in a new tab without marking as read
+    window.open(link, '_blank');
   };
 
   return (

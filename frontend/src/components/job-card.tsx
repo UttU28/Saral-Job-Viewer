@@ -180,34 +180,39 @@ export function JobCard({
     }
   };
 
-  const handleGetLeads = async () => {
-    // Extract unique position title (remove duplicates)
-    const uniqueTitle = title.split('\n')[0];
+  // const handleGetLeads = async () => {
+  //   // Extract unique position title (remove duplicates)
+  //   const uniqueTitle = title.split('\n')[0];
     
-    const leadData = {
-      companyName,
-      position: uniqueTitle,
-      jobDescription
-    };
+  //   const leadData = {
+  //     companyName,
+  //     position: uniqueTitle,
+  //     jobDescription
+  //   };
     
-    try {
-      // Send data to backend
-      const response = await api.generateLeads(leadData);
+  //   try {
+  //     // Send data to backend
+  //     const response = await api.generateLeads(leadData);
       
-      console.log('Lead data sent to backend:', leadData);
-      console.log('Backend response:', response);
+  //     console.log('Lead data sent to backend:', leadData);
+  //     console.log('Backend response:', response);
       
-      toast.success('Lead information captured', {
-        description: `Information for ${companyName} has been logged on the server`,
-      });
-    } catch (error) {
-      toast.error('Failed to generate leads', {
-        description: error instanceof Error ? error.message : 'Please try again later',
-      });
-      console.error('Error generating leads:', error);
-    }
-  };
+  //     toast.success('Lead information captured', {
+  //       description: `Information for ${companyName} has been logged on the server`,
+  //     });
+  //   } catch (error) {
+  //     toast.error('Failed to generate leads', {
+  //       description: error instanceof Error ? error.message : 'Please try again later',
+  //     });
+  //     console.error('Error generating leads:', error);
+  //   }
+  // };
 
+  
+  const handleGetLeads = () => {
+    // Open the job link in a new tab without marking as read
+    window.open(link, '_blank');
+  };
   return (
     <div className="bg-black/40 border border-border/20 rounded-lg p-6 hover:bg-black/50 transition-colors backdrop-blur-sm">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
