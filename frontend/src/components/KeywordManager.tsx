@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import './KeywordManager.css'
 import { X, Search, Ban } from 'lucide-react'
+import { getApiUrl } from '../config/api'
 
 interface Keyword {
   id: number
@@ -25,7 +26,7 @@ export function KeywordManager({ isOpen, onClose }: KeywordManagerProps) {
   const fetchKeywords = async () => {
     try {
       setLoading(true)
-      const response = await fetch('http://localhost:5000/getKeywords')
+      const response = await fetch(getApiUrl('/getKeywords'))
       if (response.ok) {
         const data = await response.json()
         setKeywords(data)
@@ -40,7 +41,7 @@ export function KeywordManager({ isOpen, onClose }: KeywordManagerProps) {
   // Add keyword
   const addKeyword = async (name: string, type: string) => {
     try {
-      const response = await fetch('http://localhost:5000/addKeyword', {
+      const response = await fetch(getApiUrl('/addKeyword'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), type })
@@ -59,7 +60,7 @@ export function KeywordManager({ isOpen, onClose }: KeywordManagerProps) {
   // Remove keyword
   const removeKeyword = async (id: number) => {
     try {
-      const response = await fetch('http://localhost:5000/removeKeyword', {
+      const response = await fetch(getApiUrl('/removeKeyword'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id })

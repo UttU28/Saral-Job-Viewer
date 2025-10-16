@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 import { KeywordManager } from './components/KeywordManager'
 import { Settings, Ban, Search, X, RotateCcw } from 'lucide-react'
+import { getApiUrl } from './config/api'
 
 const cleanJobTitle = (title: string): string => {
   if (!title) return ''
@@ -73,10 +74,10 @@ function App() {
       
       let response
       if (filter === 'all') {
-        response = await fetch('http://localhost:5000/getAllJobs')
+        response = await fetch(getApiUrl('/getAllJobs'))
       } else {
         const hours = filter === '1h' ? 1 : filter === '3h' ? 3 : filter === '6h' ? 6 : 24
-        response = await fetch('http://localhost:5000/getHoursOfData', {
+        response = await fetch(getApiUrl('/getHoursOfData'), {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -161,7 +162,7 @@ function App() {
   // Trigger LinkedIn scraping
   const startScraping = async () => {
     try {
-      const response = await fetch('http://localhost:5000/scrapeLinkedIn')
+      const response = await fetch(getApiUrl('/scrapeLinkedIn'))
       const result = await response.json()
       alert(result.message)
     } catch {
@@ -183,7 +184,7 @@ function App() {
   const confirmBlacklist = async () => {
     const companyName = blacklistConfirmation.companyName
     try {
-      const response = await fetch('http://localhost:5000/addKeyword', {
+      const response = await fetch(getApiUrl('/addKeyword'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: companyName.trim(), type: 'NoCompany' })
@@ -270,7 +271,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>LinkedIn Job Manager</h1>
+        <h1>SaralJob Viewer</h1>
         <div className="actions">
           <button onClick={startScraping} className="btn-primary">
             Start Scraping

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional, List
 from utils.utilsDatabase import (
     getAllJobs,
     getAllKeywords,
@@ -69,7 +70,7 @@ class KeywordModel(BaseModel):
     id: int
     name: str
     type: str
-    created_at: datetime | None = None
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -97,7 +98,7 @@ def helloWorld():
         "databaseType": dbType
     }
 
-@app.get("/getData", response_model=list[JobPostingModel])
+@app.get("/getData", response_model=List[JobPostingModel])
 def getData():
     """Fetch LinkedIn job postings."""
     records = getNotAppliedJobs()
@@ -120,7 +121,7 @@ def scrapeLinkedIn():
     
     return {"success": True, "message": "LinkedIn scraping triggered"}
 
-@app.get("/getKeywords", response_model=list[KeywordModel])
+@app.get("/getKeywords", response_model=List[KeywordModel])
 def getKeywords():
     """Fetch all keywords."""
     keywords = getAllKeywords()
@@ -146,7 +147,7 @@ def removeKeywordEndpoint(request: RemoveKeywordRequest):
         status_code=404, detail=f"No keyword found with ID {request.id}."
     )
 
-@app.get("/getAllJobs", response_model=list[JobPostingModel])
+@app.get("/getAllJobs", response_model=List[JobPostingModel])
 def getAllJobsEndpoint():
     """Fetch all LinkedIn job postings."""
     records = getAllJobs()
@@ -154,7 +155,7 @@ def getAllJobsEndpoint():
         raise HTTPException(status_code=404, detail="No jobs found.")
     return records
 
-@app.post("/getHoursOfData", response_model=list[JobPostingModel])
+@app.post("/getHoursOfData", response_model=List[JobPostingModel])
 def getHoursOfDataEndpoint(request: HoursRequest):
     """Fetch job postings from the last specified hours."""
     try:
@@ -190,4 +191,4 @@ def updateJobStatusEndpoint(request: JobStatusRequest):
 # Run the application
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run(app, host="0.0.0.0", port=3011)

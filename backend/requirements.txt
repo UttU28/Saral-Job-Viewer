@@ -1,16 +1,14 @@
+# Core FastAPI dependencies
 fastapi
 uvicorn
 pydantic
 python-dotenv
+
+# Database
 SQLAlchemy
-psycopg2-binary
-PyMySQL
+
+# Web scraping dependencies
 selenium
-mysqlclient
-cryptography
-pyautogui
-beautifulsoup4
-tqdm
-requests
 webdriver-manager
-pytz
+beautifulsoup4
+requests
