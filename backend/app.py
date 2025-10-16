@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 from utils.utilsDatabase import (
@@ -40,15 +39,6 @@ dbType = os.getenv("DB_TYPE", "sqlite")
 print(f"Using database type: {dbType}")
 
 app = FastAPI()
-
-# Add CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Pydantic Models
 class JobPostingModel(BaseModel):
