@@ -1,555 +1,590 @@
-import { useState, useEffect } from 'react'
-import { ThemeProvider } from '@/components/theme-provider';
-import { Toaster, toast } from 'sonner';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { EasyApplyConfig } from '@/pages/EasyApplyConfig';
-import { LinkedInJobs } from '@/pages/LinkedInJobs';
-import { DiceJobs } from '@/pages/DiceJobs';
-import { LinkedinIcon, ExternalLink, GithubIcon, Globe, Mail, Upload, FileText, User } from 'lucide-react';
-import { Label } from './components/ui/label';
-import { Input } from './components/ui/input';
-import { Button } from './components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-import { Separator } from './components/ui/separator';
-import axios from 'axios';
+import { useState, useEffect, useCallback } from 'react'
+import './App.css'
+import { KeywordManager } from './components/KeywordManager'
+import { Settings, Ban, Search, X, RotateCcw } from 'lucide-react'
 
-// API base URL - replace with your actual API URL
-const API_URL = 'http://localhost:5000';
-
-// User information interface
-interface UserInfo {
-  id?: number;
-  name: string;
-  email?: string;
-  linkedin_url?: string;
-  github_url?: string;
-  portfolio_url?: string;
-  has_resume: boolean;
-  has_cover_letter: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-// Custom Dice icon component since Lucide doesn't have one
-const DiceIcon = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg 
-    xmlns="http://www.w3.org/2000/svg" 
-    width="24" 
-    height="24" 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-    {...props}
-  >
-    <rect x="3" y="3" width="18" height="18" rx="2" />
-    <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-    <circle cx="16" cy="8" r="1.5" fill="currentColor" />
-    <circle cx="8" cy="16" r="1.5" fill="currentColor" />
-    <circle cx="16" cy="16" r="1.5" fill="currentColor" />
-  </svg>
-)
-
-function MainApp() {
-  const navigate = useNavigate();
-  const [selectedOption, setSelectedOption] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('job-boards');
+const cleanJobTitle = (title: string): string => {
+  if (!title) return ''
   
-  // User form state
-  const [userInfo, setUserInfo] = useState<UserInfo>({
-    name: '',
-    email: '',
-    linkedin_url: '',
-    github_url: '',
-    portfolio_url: '',
-    has_resume: false,
-    has_cover_letter: false
-  });
-  const [isSaving, setIsSaving] = useState(false);
-  const [isUploadingResume, setIsUploadingResume] = useState(false);
-  const [isUploadingCoverLetter, setIsUploadingCoverLetter] = useState(false);
-
-  // Fetch user info on component mount
-  useEffect(() => {
-    fetchUserInfo();
-  }, []);
-
-  // Function to fetch user info from backend
-  const fetchUserInfo = async () => {
-    try {
-      const response = await axios.get(`${API_URL}/getUserInfo`);
-      if (response.data) {
-        setUserInfo(response.data);
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-      toast.error('Failed to load user information');
+  const cleaned = title.replace(/\s+with\s+verification\s*$/i, '').trim()
+  
+  const separatorMatch = cleaned.match(/^(.+?)\s*[-–—]\s*(.+)$/)
+  if (separatorMatch) {
+    const [, first, second] = separatorMatch
+    if (first.trim().toLowerCase() === second.trim().toLowerCase()) {
+      return first.trim()
     }
-  };
-
-  // Function to update user info
-  const handleSaveUserInfo = async () => {
-    if (!userInfo.name.trim()) {
-      toast.error('Name is required');
-      return;
+  }
+  
+  const words = cleaned.split(/\s+/)
+  if (words.length >= 4 && words.length % 2 === 0) {
+    const half = words.length / 2
+    const firstHalf = words.slice(0, half).join(' ')
+    const secondHalf = words.slice(half).join(' ')
+    
+    if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+      return firstHalf
     }
-
-    setIsSaving(true);
-    try {
-      const response = await axios.post(`${API_URL}/updateUser`, {
-        name: userInfo.name,
-        email: userInfo.email,
-        linkedin_url: userInfo.linkedin_url,
-        github_url: userInfo.github_url,
-        portfolio_url: userInfo.portfolio_url
-      });
-      
-      if (response.data && response.data.success) {
-        // Update the form with the returned user data
-        setUserInfo(response.data.user);
-        toast.success('User information saved successfully');
-      }
-    } catch (error) {
-      console.error('Error saving user info:', error);
-      toast.error('Failed to save user information');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Function to handle resume upload
-  const handleResumeUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Check file type
-    if (file.type !== 'application/pdf') {
-      toast.error('Please upload a PDF file for your resume');
-      return;
-    }
-
-    setIsUploadingResume(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await axios.post(`${API_URL}/uploadResume`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      if (response.data.success) {
-        setUserInfo(prev => ({ ...prev, has_resume: true }));
-        toast.success(userInfo.has_resume 
-          ? 'Resume updated successfully' 
-          : 'Resume uploaded successfully');
-      }
-    } catch (error) {
-      console.error('Error uploading resume:', error);
-      toast.error('Failed to upload resume');
-    } finally {
-      setIsUploadingResume(false);
-      // Clear the file input value to allow re-uploading the same file if needed
-      const fileInput = document.getElementById('resume-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-    }
-  };
-
-  // Function to handle cover letter upload
-  const handleCoverLetterUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Check file type
-    if (file.type !== 'application/pdf') {
-      toast.error('Please upload a PDF file for your cover letter');
-      return;
-    }
-
-    setIsUploadingCoverLetter(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await axios.post(`${API_URL}/uploadCoverLetter`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
-      });
-      
-      if (response.data.success) {
-        setUserInfo(prev => ({ ...prev, has_cover_letter: true }));
-        toast.success(userInfo.has_cover_letter 
-          ? 'Cover letter updated successfully' 
-          : 'Cover letter uploaded successfully');
-      }
-    } catch (error) {
-      console.error('Error uploading cover letter:', error);
-      toast.error('Failed to upload cover letter');
-    } finally {
-      setIsUploadingCoverLetter(false);
-      // Clear the file input value to allow re-uploading the same file if needed
-      const fileInput = document.getElementById('cover-letter-upload') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-    }
-  };
-
-  const handleLinkedInClick = () => {
-    setSelectedOption('linkedin');
-    navigate('/linkedin-jobs');
-  };
-
-  const handleDiceClick = () => {
-    setSelectedOption('dice');
-    navigate('/dice-jobs');
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-background/95 text-foreground">
-      <div className="container mx-auto px-4 py-12">
-        {/* Header */}
-        <header className="text-center mb-8">
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-600 mb-4">
-            Welcome to Saral Job Apply
-        </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Your intelligent assistant for finding and applying to developer jobs.
-          </p>
-        </header>
-
-        {/* Main content with tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="max-w-5xl mx-auto">
-          <TabsList className="grid grid-cols-2 w-[400px] mx-auto mb-8">
-            <TabsTrigger value="job-boards">Job Boards</TabsTrigger>
-            <TabsTrigger value="profile">Your Profile</TabsTrigger>
-          </TabsList>
-          
-          {/* Job Boards Tab */}
-          <TabsContent value="job-boards">
-            <div className="space-y-8">
-              <h2 className="text-2xl font-semibold mb-6">
-          Choose your job board to start applying
-              </h2>
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                {/* LinkedIn Card - Now entirely clickable */}
-                <div 
-                  onClick={handleLinkedInClick}
-                  className={`group cursor-pointer relative h-full rounded-lg border bg-card text-card-foreground shadow transition-all duration-300 hover:shadow-md hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-primary ${selectedOption === 'linkedin' ? 'ring-2 ring-primary' : ''}`}
-                  tabIndex={0}
-                  role="button"
-                  aria-label="Browse LinkedIn Jobs"
-                >
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <LinkedinIcon className="h-6 w-6 text-blue-500" />
-                      <span className="text-lg font-semibold">LinkedIn Jobs</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Browse and apply to jobs from your LinkedIn network
-                    </p>
-                    
-                    <div className="h-32 flex items-center justify-center bg-muted/50 rounded-md mb-4">
-                      <img 
-                        src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/81/LinkedIn_icon.svg/2048px-LinkedIn_icon.svg.png" 
-                        alt="LinkedIn Logo" 
-                        className="h-16 w-16 object-contain"
-                      />
-                    </div>
-                    
-                    <div className="inline-flex items-center justify-center w-full h-10 px-4 py-2 text-sm font-medium bg-secondary rounded-md text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground">
-                      Browse LinkedIn Jobs
-                      <ExternalLink className="ml-2 h-4 w-4" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 rounded-lg border-2 border-transparent group-hover:border-primary/50 group-focus:border-primary pointer-events-none"></div>
-                </div>
-
-                {/* Dice Card - Now entirely clickable */}
-                <div 
-                  onClick={handleDiceClick}
-                  className={`group cursor-pointer relative h-full rounded-lg border bg-card text-card-foreground shadow transition-all duration-300 hover:shadow-md hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-primary ${selectedOption === 'dice' ? 'ring-2 ring-primary' : ''}`}
-                  tabIndex={0}
-                  role="button"
-                  aria-label="Browse Dice Jobs"
-                >
-                  <div className="p-6">
-                    <div className="flex items-center gap-2 mb-2">
-                      <DiceIcon className="h-6 w-6 text-purple-500" />
-                      <span className="text-lg font-semibold">Dice Jobs</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Find tech and developer roles on the Dice platform
-                    </p>
-                    
-                    <div className="h-32 flex items-center justify-center bg-muted/50 rounded-md mb-4">
-                      <div className="bg-purple-600 h-16 w-16 flex items-center justify-center rounded-lg">
-                        <DiceIcon className="h-10 w-10 text-white" />
-                      </div>
-                    </div>
-                    
-                    <div className="inline-flex items-center justify-center w-full h-10 px-4 py-2 text-sm font-medium bg-secondary rounded-md text-secondary-foreground group-hover:bg-primary group-hover:text-primary-foreground">
-                      Browse Dice Jobs
-                      <ExternalLink className="ml-2 h-4 w-4" />
-                    </div>
-                  </div>
-                  <div className="absolute inset-0 rounded-lg border-2 border-transparent group-hover:border-primary/50 group-focus:border-primary pointer-events-none"></div>
-                </div>
-              </div>
-              
-              {/* Additional Features */}
-              <div className="mt-16">
-                <h3 className="text-xl font-medium mb-4 text-center">Smart Job Search Features</h3>
-                <div className="grid md:grid-cols-3 gap-4 text-sm">
-                  <div className="bg-card p-4 rounded-lg border">
-                    <h4 className="font-medium mb-2 text-primary">Automated Filtering</h4>
-                    <p className="text-muted-foreground">Automatically filter out jobs that don't match your criteria</p>
-                  </div>
-                  <div className="bg-card p-4 rounded-lg border">
-                    <h4 className="font-medium mb-2 text-primary">Easy Apply</h4>
-                    <p className="text-muted-foreground">One-click apply for supported job listings</p>
-                  </div>
-                  <div className="bg-card p-4 rounded-lg border">
-                    <h4 className="font-medium mb-2 text-primary">Job Tracking</h4>
-                    <p className="text-muted-foreground">Keep track of all your applications in one place</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </TabsContent>
-          
-          {/* Profile Tab */}
-          <TabsContent value="profile">
-            <div className="max-w-3xl mx-auto">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <User className="h-5 w-5" />
-                    Your Profile Information
-                  </CardTitle>
-                  <CardDescription>
-                    Enter your details below to use with job applications
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form 
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      handleSaveUserInfo();
-                    }}
-                    className="space-y-6"
-                  >
-                    <div className="space-y-4">
-                      <div className="grid gap-2">
-                        <Label htmlFor="name">Name <span className="text-red-500">*</span></Label>
-                        <Input 
-                          id="name"
-                          placeholder="Your full name"
-                          value={userInfo.name}
-                          onChange={(e) => setUserInfo(prev => ({ ...prev, name: e.target.value }))}
-                          required
-                        />
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="email">Email</Label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="email"
-                            type="email"
-                            placeholder="you@example.com"
-                            value={userInfo.email || ''}
-                            onChange={(e) => setUserInfo(prev => ({ ...prev, email: e.target.value }))}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="linkedin">LinkedIn URL</Label>
-                        <div className="relative">
-                          <LinkedinIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="linkedin"
-                            placeholder="https://linkedin.com/in/your-profile"
-                            value={userInfo.linkedin_url || ''}
-                            onChange={(e) => setUserInfo(prev => ({ ...prev, linkedin_url: e.target.value }))}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="github">GitHub URL</Label>
-                        <div className="relative">
-                          <GithubIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="github"
-                            placeholder="https://github.com/your-username"
-                            value={userInfo.github_url || ''}
-                            onChange={(e) => setUserInfo(prev => ({ ...prev, github_url: e.target.value }))}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div className="grid gap-2">
-                        <Label htmlFor="portfolio">Portfolio URL</Label>
-                        <div className="relative">
-                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input 
-                            id="portfolio"
-                            placeholder="https://your-portfolio.com"
-                            value={userInfo.portfolio_url || ''}
-                            onChange={(e) => setUserInfo(prev => ({ ...prev, portfolio_url: e.target.value }))}
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={isSaving}
-                    >
-                      {isSaving ? 'Saving...' : 'Save Information'}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-              
-              <Separator className="my-8" />
-              
-              {/* Resume and Cover Letter Uploads */}
-              <div className="grid md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <FileText className="h-5 w-5" />
-                      Resume
-                    </CardTitle>
-                    <CardDescription>
-                      {userInfo.has_resume 
-                        ? "Your resume is uploaded. You can upload a new one to replace it." 
-                        : "Upload your resume (PDF only)"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-3 w-3 rounded-full ${userInfo.has_resume ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <span className="text-sm">
-                          {userInfo.has_resume 
-                            ? 'Resume uploaded - You can update it anytime' 
-                            : 'No resume uploaded'}
-                        </span>
-                      </div>
-                      
-                      <div className="relative">
-                        <Input
-                          type="file"
-                          id="resume-upload"
-                          accept=".pdf"
-                          className="hidden"
-                          onChange={handleResumeUpload}
-                        />
-          <Button
-                          type="button" 
-                          variant="outline"
-                          className="w-full"
-                          disabled={isUploadingResume}
-                          onClick={() => document.getElementById('resume-upload')?.click()}
-          >
-                          <Upload className="h-4 w-4 mr-2" />
-                          {isUploadingResume 
-                            ? 'Uploading...' 
-                            : userInfo.has_resume 
-                              ? 'Upload New Resume' 
-                              : 'Upload Resume'}
-          </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-base">
-                      <FileText className="h-5 w-5" />
-                      Cover Letter
-                    </CardTitle>
-                    <CardDescription>
-                      {userInfo.has_cover_letter 
-                        ? "Your cover letter is uploaded. You can upload a new one to replace it." 
-                        : "Upload your cover letter (PDF only)"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`h-3 w-3 rounded-full ${userInfo.has_cover_letter ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <span className="text-sm">
-                          {userInfo.has_cover_letter 
-                            ? 'Cover letter uploaded - You can update it anytime' 
-                            : 'No cover letter uploaded'}
-                        </span>
-                      </div>
-                      
-                      <div className="relative">
-                        <Input
-                          type="file"
-                          id="cover-letter-upload"
-                          accept=".pdf"
-                          className="hidden"
-                          onChange={handleCoverLetterUpload}
-                        />
-          <Button
-                          type="button" 
-            variant="outline"
-                          className="w-full"
-                          disabled={isUploadingCoverLetter}
-                          onClick={() => document.getElementById('cover-letter-upload')?.click()}
-          >
-                          <Upload className="h-4 w-4 mr-2" />
-                          {isUploadingCoverLetter 
-                            ? 'Uploading...' 
-                            : userInfo.has_cover_letter 
-                              ? 'Upload New Cover Letter' 
-                              : 'Upload Cover Letter'}
-          </Button>
-        </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </div>
-    </div>
-  );
+  }
+  
+  const duplicateMatch = cleaned.match(/^(.+?)\s+\1$/i)
+  if (duplicateMatch) {
+    return duplicateMatch[1]
+  }
+  
+  return cleaned
 }
+
+interface Job {
+  id: string
+  title: string
+  companyName: string
+  location: string
+  jobType: string
+  applied: string
+  timeStamp: string
+  link: string
+  jobDescription: string
+  aiProcessed?: boolean
+  aiTags?: string
+}
+
+type TimeFilter = 'all' | '1h' | '3h' | '6h' | '24h'
 
 function App() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [activeFilter, setActiveFilter] = useState<TimeFilter>('1h')
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filteredJobs, setFilteredJobs] = useState<Job[]>([])
+  const [isKeywordManagerOpen, setIsKeywordManagerOpen] = useState(false)
+  const [blacklistConfirmation, setBlacklistConfirmation] = useState<{
+    isOpen: boolean
+    companyName: string
+  }>({ isOpen: false, companyName: '' })
+
+  // Fetch jobs from backend API with time filter
+  const fetchJobs = useCallback(async (filter: TimeFilter = activeFilter) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      let response
+      if (filter === 'all') {
+        response = await fetch('http://localhost:5000/getAllJobs')
+      } else {
+        const hours = filter === '1h' ? 1 : filter === '3h' ? 3 : filter === '6h' ? 6 : 24
+        response = await fetch('http://localhost:5000/getHoursOfData', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ hours })
+        })
+      }
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch jobs')
+      }
+      const jobsData = await response.json()
+      setJobs(jobsData)
+      setFilteredJobs(jobsData) // Initialize filtered jobs
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setLoading(false)
+    }
+  }, [activeFilter])
+  
+  // Handle filter change
+  const handleFilterChange = (filter: TimeFilter) => {
+    setActiveFilter(filter)
+    fetchJobs(filter)
+    setIsDropdownOpen(false) // Close dropdown after selection
+  }
+  
+  // Search functionality
+  const handleSearch = (term: string) => {
+    setSearchTerm(term)
+    
+    if (!term.trim()) {
+      setFilteredJobs(jobs)
+      return
+    }
+    
+    const searchPattern = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+    
+    const filtered = jobs.filter(job => {
+      const searchFields = [
+        cleanJobTitle(job.title) || '',
+        job.companyName || '',
+        job.jobDescription || '',
+        job.location || ''
+      ].join(' ')
+      
+      return searchPattern.test(searchFields)
+    })
+    
+    setFilteredJobs(filtered)
+  }
+  
+  // Clear search
+  const clearSearch = () => {
+    setSearchTerm('')
+    setFilteredJobs(jobs)
+  }
+  
+  // Toggle dropdown
+  const toggleDropdown = () => {
+    setIsDropdownOpen(!isDropdownOpen)
+  }
+  
+  // Close dropdown when clicking outside
+  const closeDropdown = () => {
+    setIsDropdownOpen(false)
+  }
+  
+  // Get filter display text
+  const getFilterDisplayText = (filter: TimeFilter) => {
+    switch (filter) {
+      case '1h': return 'Past 1 hour'
+      case '3h': return 'Past 3 hours'
+      case '6h': return 'Past 6 hours'
+      case '24h': return 'Past 24 hours'
+      case 'all': return 'All Jobs'
+      default: return 'Select Filter'
+    }
+  }
+
+  // Trigger LinkedIn scraping
+  const startScraping = async () => {
+    try {
+      const response = await fetch('http://localhost:5000/scrapeLinkedIn')
+      const result = await response.json()
+      alert(result.message)
+    } catch {
+      alert('Failed to start scraping')
+    }
+  }
+
+  // Show blacklist confirmation modal
+  const showBlacklistConfirmation = (companyName: string) => {
+    setBlacklistConfirmation({ isOpen: true, companyName })
+  }
+
+  // Close blacklist confirmation modal
+  const closeBlacklistConfirmation = () => {
+    setBlacklistConfirmation({ isOpen: false, companyName: '' })
+  }
+
+  // Add company to blacklist (actual API call)
+  const confirmBlacklist = async () => {
+    const companyName = blacklistConfirmation.companyName
+    try {
+      const response = await fetch('http://localhost:5000/addKeyword', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: companyName.trim(), type: 'NoCompany' })
+      })
+      
+      if (response.ok) {
+        // Successfully blacklisted - no alert needed, modal will close
+        console.log(`"${companyName}" has been added to blacklist`)
+      } else {
+        console.error('Failed to add company to blacklist')
+      }
+    } catch (error) {
+      console.error('Error blacklisting company:', error)
+    } finally {
+      closeBlacklistConfirmation()
+    }
+  }
+
+  useEffect(() => {
+    fetchJobs()
+  }, [fetchJobs])
+
+  // Close dropdown when clicking outside or pressing Escape
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.filter-dropdown-wrapper')) {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsDropdownOpen(false)
+      }
+    }
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleKeyDown)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isDropdownOpen])
+
+  // Handle click outside and escape key for blacklist confirmation modal
+  useEffect(() => {
+    if (!blacklistConfirmation.isOpen) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (target.classList.contains('blacklist-confirmation-overlay')) {
+        closeBlacklistConfirmation()
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeBlacklistConfirmation()
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [blacklistConfirmation.isOpen])
+  
+  // Update filtered jobs when jobs change
+  useEffect(() => {
+    if (searchTerm) {
+      handleSearch(searchTerm)
+    } else {
+      setFilteredJobs(jobs)
+    }
+  }, [jobs]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<MainApp />} />
-          <Route path="/linkedin-jobs" element={<LinkedInJobs />} />
-          <Route path="/dice-jobs" element={<DiceJobs />} />
-          <Route path="/config" element={<EasyApplyConfig />} />
-        </Routes>
-      </BrowserRouter>
-      <Toaster />
-    </ThemeProvider>
-  );
+    <div className="app">
+      <header className="header">
+        <h1>LinkedIn Job Manager</h1>
+        <div className="actions">
+          <button onClick={startScraping} className="btn-primary">
+            Start Scraping
+          </button>
+          <button 
+            onClick={() => fetchJobs()} 
+            className="btn-secondary btn-refresh-square"
+            title="Refresh Jobs"
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+      </header>
+      
+      <div className="filters-container">
+        <div className="search-wrapper">
+          <div className="search-input-container">
+            <input
+              type="text"
+              placeholder="Search jobs, companies, or descriptions..."
+              value={searchTerm}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="search-input"
+            />
+            {searchTerm && (
+              <button onClick={clearSearch} className="clear-search-btn">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <div className="filter-dropdown-wrapper">
+          <button 
+            onClick={toggleDropdown}
+            className={`filter-dropdown-trigger ${isDropdownOpen ? 'open' : ''}`}
+          >
+            <span className="filter-label">Time Filter:</span>
+            <span className="filter-value">{getFilterDisplayText(activeFilter)}</span>
+            <span className={`dropdown-arrow ${isDropdownOpen ? 'rotated' : ''}`}>▼</span>
+          </button>
+          
+          {isDropdownOpen && (
+            <>
+              <div className="dropdown-overlay" onClick={closeDropdown}></div>
+              <div className="filter-dropdown-menu">
+                <div className="dropdown-header">Select Time Period</div>
+                <button 
+                  onClick={() => handleFilterChange('1h')} 
+                  className={`dropdown-item ${activeFilter === '1h' ? 'active' : ''}`}
+                >
+                  <span className="item-label">Past 1 hour</span>
+                  <span className="item-desc">&nbsp; Most recent jobs</span>
+                  {activeFilter === '1h' && <span className="check-mark">✓</span>}
+                </button>
+                <button 
+                  onClick={() => handleFilterChange('3h')} 
+                  className={`dropdown-item ${activeFilter === '3h' ? 'active' : ''}`}
+                >
+                  <span className="item-label">Past 3 hours</span>
+                  <span className="item-desc">&nbsp; Recent postings</span>
+                  {activeFilter === '3h' && <span className="check-mark">✓</span>}
+                </button>
+                <button 
+                  onClick={() => handleFilterChange('6h')} 
+                  className={`dropdown-item ${activeFilter === '6h' ? 'active' : ''}`}
+                >
+                  <span className="item-label">Past 6 hours</span>
+                  <span className="item-desc">&nbsp; Today's jobs</span>
+                  {activeFilter === '6h' && <span className="check-mark">✓</span>}
+                </button>
+                <button 
+                  onClick={() => handleFilterChange('24h')} 
+                  className={`dropdown-item ${activeFilter === '24h' ? 'active' : ''}`}
+                >
+                  <span className="item-label">Past 24 hours</span>
+                  <span className="item-desc">&nbsp; Last day</span>
+                  {activeFilter === '24h' && <span className="check-mark">✓</span>}
+                </button>
+                <button 
+                  onClick={() => handleFilterChange('all')} 
+                  className={`dropdown-item ${activeFilter === 'all' ? 'active' : ''}`}
+                >
+                  <span className="item-label">All Jobs</span>
+                  <span className="item-desc">&nbsp; Complete database</span>
+                  {activeFilter === 'all' && <span className="check-mark">✓</span>}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+        
+        <button onClick={() => setIsKeywordManagerOpen(true)} className="manage-keywords-btn">
+          <Settings size={16} />
+          <span>Manage Keywords</span>
+        </button>
+      </div>
+
+      <main className="main">
+        {loading && <div className="loading">Loading jobs...</div>}
+        
+        {error && (
+          <div className="error">
+            Error: {error}
+          </div>
+        )}
+
+        {!loading && !error && (
+          <div className="jobs-container">
+            <div className="jobs-header">
+              <h2>
+                Found {filteredJobs.length} {searchTerm && filteredJobs.length !== jobs.length ? `of ${jobs.length}` : ''} Jobs 
+                {activeFilter !== 'all' ? `(${activeFilter.toUpperCase()})` : ''}
+                {searchTerm && (
+                  <span className="search-indicator">
+                    - Searching: "{searchTerm}"
+                  </span>
+                )}
+              </h2>
+      </div>
+            
+             {filteredJobs.length === 0 && jobs.length > 0 ? (
+               <div className="no-results">
+                 <div className="no-results-icon">
+                   <Search size={48} />
+                 </div>
+                 <h3>No jobs found</h3>
+                 <p>
+                   {searchTerm ? 
+                     `No jobs match your search "${searchTerm}". Try adjusting your search terms or clearing the search.` :
+                     'No jobs found for the selected time filter.'
+                   }
+                 </p>
+                 {searchTerm && (
+                   <button onClick={clearSearch} className="btn-secondary">
+                     Clear Search
+                   </button>
+                 )}
+               </div>
+             ) : (
+               <div className="jobs-grid">
+                 {filteredJobs.map((job) => (
+                   <JobCard 
+                     key={job.id} 
+                     job={job} 
+                     searchTerm={searchTerm} 
+                     onShowBlacklistConfirmation={showBlacklistConfirmation}
+                   />
+                 ))}
+               </div>
+             )}
+          </div>
+        )}
+      </main>
+      
+      <KeywordManager 
+        isOpen={isKeywordManagerOpen} 
+        onClose={() => setIsKeywordManagerOpen(false)} 
+      />
+
+      {/* Blacklist Confirmation Modal */}
+      {blacklistConfirmation.isOpen && (
+        <div className="blacklist-confirmation-overlay">
+          <div className="blacklist-confirmation-modal">
+            <div className="confirmation-header">
+              <h3>Blacklist Company</h3>
+              <button onClick={closeBlacklistConfirmation} className="close-btn">
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="confirmation-content">
+              <div className="confirmation-icon">
+                <Ban size={40} color="#cc0000" />
+              </div>
+              <p>Are you sure you want to blacklist this company?</p>
+              <div className="company-name-display">
+                <strong>"{blacklistConfirmation.companyName}"</strong>
+              </div>
+              <p className="confirmation-warning">
+                Future jobs from this company will be filtered out from your search results.
+              </p>
+            </div>
+            
+            <div className="confirmation-actions">
+              <button onClick={closeBlacklistConfirmation} className="btn-cancel">
+                Cancel
+              </button>
+              <button onClick={confirmBlacklist} className="btn-confirm">
+                Yes, Blacklist
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
-export default App;
+// Job Card Component
+function JobCard({ 
+  job, 
+  searchTerm, 
+  onShowBlacklistConfirmation 
+}: { 
+  job: Job
+  searchTerm?: string
+  onShowBlacklistConfirmation: (companyName: string) => void
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  const timeAgo = (timestamp: string) => {
+    try {
+      const now = new Date()
+      const jobDate = new Date(parseInt(timestamp) * 1000)
+      const diffInSeconds = Math.floor((now.getTime() - jobDate.getTime()) / 1000)
+      
+      if (diffInSeconds < 60) {
+        return `${diffInSeconds}s ago`
+      } else if (diffInSeconds < 3600) {
+        const minutes = Math.floor(diffInSeconds / 60)
+        return `${minutes}m ago`
+      } else if (diffInSeconds < 86400) {
+        const hours = Math.floor(diffInSeconds / 3600)
+        return `${hours}h ago`
+      } else if (diffInSeconds < 2592000) {
+        const days = Math.floor(diffInSeconds / 86400)
+        return `${days}d ago`
+      } else if (diffInSeconds < 31536000) {
+        const months = Math.floor(diffInSeconds / 2592000)
+        return `${months}mo ago`
+      } else {
+        const years = Math.floor(diffInSeconds / 31536000)
+        return `${years}y ago`
+      }
+    } catch {
+      return 'Unknown'
+    }
+  }
+
+  const toggleExpanded = () => {
+    setIsExpanded(!isExpanded)
+  }
+
+  const handleBlacklist = (e: React.MouseEvent) => {
+    e.preventDefault() // Prevent any link navigation
+    e.stopPropagation() // Stop event bubbling
+    onShowBlacklistConfirmation(job.companyName)
+  }
+  
+  // Highlight search terms in text
+  const highlightText = (text: string, term?: string) => {
+    if (!term || !text) return text
+    
+    try {
+      const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const pattern = new RegExp(`(${escapedTerm})`, 'gi')
+      const parts = text.split(pattern)
+      
+      return parts.map((part, index) => 
+        pattern.test(part) ? 
+          <mark key={index} className="search-highlight">{part}</mark> : 
+          part
+      )
+    } catch {
+      return text
+    }
+  }
+
+  return (
+    <div className="job-card">
+      <div className="job-main">
+        <div className="job-header">
+          <a href={job.link} target="_blank" rel="noopener noreferrer" className="job-title-link">
+            <h3>{highlightText(cleanJobTitle(job.title), searchTerm)}</h3>
+          </a>
+          <div className="job-header-buttons">
+            <button 
+              onClick={handleBlacklist} 
+              className="btn-blacklist"
+              title="Blacklist this company"
+            >
+              <Ban size={12} />
+            </button>
+            {job.jobDescription.trim() && (
+              <button 
+                onClick={toggleExpanded} 
+                className="btn-expand-compact"
+              >
+                {isExpanded ? 'Less' : 'More'}
+              </button>
+            )}
+          </div>
+        </div>
+        
+        <div className="job-meta-line">
+          <span className="company-name">{highlightText(job.companyName, searchTerm)}</span>
+          <span className="meta-separator">•</span>
+          <span className="job-location">{highlightText(job.location, searchTerm)}</span>
+          <span className="meta-separator">•</span>
+          <span className="job-type">{job.jobType}</span>
+          <span className="meta-separator">•</span>
+          <span className="job-posted">{timeAgo(job.timeStamp)}</span>
+        </div>
+
+        <div className="job-description">
+          <div className={`description-content ${isExpanded ? 'expanded' : 'collapsed'}`}>
+            {highlightText(job.jobDescription, searchTerm)}
+          </div>
+        </div>
+
+      </div>
+      </div>
+  )
+}
+
+export default App
