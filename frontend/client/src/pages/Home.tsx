@@ -20,17 +20,32 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const { toast } = useToast();
 
-  const { data: jobs = [], isLoading: jobsLoading, refetch: refetchJobs } = useQuery<Job[]>({
+  const {
+    data: jobs = [],
+    isLoading: jobsLoading,
+    refetch: refetchJobs,
+  } = useQuery<Job[]>({
     queryKey: ["/api/getAllJobs"],
   });
 
-  const { data: keywords = [], isLoading: keywordsLoading } = useQuery<Keyword[]>({
+  const { data: keywords = [], isLoading: keywordsLoading } = useQuery<
+    Keyword[]
+  >({
     queryKey: ["/api/getKeywords"],
   });
 
   const addKeywordMutation = useMutation({
-    mutationFn: async ({ name, type }: { name: string; type: "SearchList" | "NoCompany" }) => {
-      const response = await apiRequest("POST", "/api/addKeyword", { name, type });
+    mutationFn: async ({
+      name,
+      type,
+    }: {
+      name: string;
+      type: "SearchList" | "NoCompany";
+    }) => {
+      const response = await apiRequest("POST", "/api/addKeyword", {
+        name,
+        type,
+      });
       return await response.json();
     },
     onSuccess: () => {
@@ -77,7 +92,7 @@ export default function Home() {
     if (timeFilter !== "all") {
       const now = Math.floor(Date.now() / 1000);
       const filterSeconds = timeFilter * 3600;
-      filtered = filtered.filter(job => {
+      filtered = filtered.filter((job) => {
         const diff = now - parseInt(job.timeStamp);
         return diff <= filterSeconds;
       });
@@ -86,16 +101,19 @@ export default function Home() {
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(job =>
-        job.title.toLowerCase().includes(query) ||
-        job.companyName.toLowerCase().includes(query) ||
-        job.location.toLowerCase().includes(query) ||
-        job.jobDescription.toLowerCase().includes(query)
+      filtered = filtered.filter(
+        (job) =>
+          job.title.toLowerCase().includes(query) ||
+          job.companyName.toLowerCase().includes(query) ||
+          job.location.toLowerCase().includes(query) ||
+          job.jobDescription.toLowerCase().includes(query),
       );
     }
 
     // Sort by timestamp (newest first)
-    filtered = [...filtered].sort((a, b) => parseInt(b.timeStamp) - parseInt(a.timeStamp));
+    filtered = [...filtered].sort(
+      (a, b) => parseInt(b.timeStamp) - parseInt(a.timeStamp),
+    );
 
     return filtered;
   }, [jobs, timeFilter, searchQuery]);
@@ -137,7 +155,10 @@ export default function Home() {
               />
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <FilterButtons activeFilter={timeFilter} onChange={setTimeFilter} />
+              <FilterButtons
+                activeFilter={timeFilter}
+                onChange={setTimeFilter}
+              />
               <Button
                 variant="outline"
                 size="icon"
@@ -151,7 +172,10 @@ export default function Home() {
           </div>
 
           <div className="flex items-center justify-between">
-            <div className="text-sm text-muted-foreground" data-testid="text-job-count">
+            <div
+              className="text-sm text-muted-foreground"
+              data-testid="text-job-count"
+            >
               {isLoading ? (
                 <span>Loading jobs...</span>
               ) : (
@@ -169,7 +193,9 @@ export default function Home() {
           ) : filteredJobs.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-lg text-muted-foreground">
-                {searchQuery ? "No jobs found matching your search" : "No jobs available"}
+                {searchQuery
+                  ? "No jobs found matching your search"
+                  : "No jobs available"}
               </p>
             </div>
           ) : (

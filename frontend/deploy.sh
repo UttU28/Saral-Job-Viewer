@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# PM2 Deploy script for Saral Job Viewer Frontend
-echo "🚀 Starting PM2 deployment of Saral Job Viewer Frontend..."
+# PM2 Deploy script for Saral Job Viewer Full-Stack Application
+echo "🚀 Starting PM2 deployment of Saral Job Viewer Full-Stack App..."
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,8 +38,8 @@ fi
 print_status "Installing dependencies..."
 npm install
 
-# Build the application
-print_status "Building React application..."
+# Build the full-stack application (client + server)
+print_status "Building full-stack application..."
 npm run build
 
 # Check if build was successful
@@ -52,9 +52,9 @@ fi
 print_status "Stopping existing PM2 process..."
 pm2 delete jobviewer-frontend 2>/dev/null || true
 
-# Start new PM2 process
+# Start new PM2 process with the built Node.js server
 print_status "Starting PM2 process..."
-pm2 serve dist/ 3010 --name jobviewer-frontend --spa
+PORT=3010 NODE_ENV=production pm2 start dist/index.js --name jobviewer-frontend
 
 # Save PM2 configuration
 print_status "Saving PM2 configuration..."
@@ -63,8 +63,8 @@ pm2 save
 # Check if process is running
 if pm2 list | grep -q "jobviewer-frontend.*online"; then
     print_status "✅ Deployment successful!"
-    print_status "Frontend is running on http://localhost:3010"
-    print_status "Job Viewer Frontend deployed successfully!"
+    print_status "Full-stack app is running on http://localhost:3010"
+    print_status "Job Viewer Full-Stack App deployed successfully!"
     print_status "Access via nginx at: https://jobviewer.thatinsaneguy.com/"
     
     # Show process status

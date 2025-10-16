@@ -12,25 +12,8 @@ from utils.utilsDatabase import (
     getCountForAcceptDeny,
 )
 import os
-import importlib.util
 from dotenv import load_dotenv
 from datetime import datetime
-
-# Import the scraping modules
-def import_module_from_file(file_path, module_name):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None:
-        return None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-# Define paths to scraping scripts
-current_dir = os.path.dirname(os.path.abspath(__file__))
-linkedin_scraping_path = os.path.join(current_dir, "linkedInScraping.py")
-
-# Import scraping modules if they exist
-linkedin_scraping_module = import_module_from_file(linkedin_scraping_path, "linkedin_scraping")
 
 load_dotenv()
 
@@ -52,6 +35,8 @@ class JobPostingModel(BaseModel):
     jobType: str
     jobDescription: str
     applied: str
+    aiTags: Optional[str] = None
+    aiProcessed: bool = False
 
     class Config:
         from_attributes = True
@@ -84,7 +69,7 @@ class JobStatusRequest(BaseModel):
 def helloWorld():
     """Welcome endpoint."""
     return {
-        "message": "LinkedIn Job Scraper API",
+        "message": "Job Viewer Web API",
         "databaseType": dbType
     }
 
@@ -96,20 +81,6 @@ def getData():
         raise HTTPException(status_code=404, detail="No LinkedIn jobs found.")
     return records
 
-@app.get("/scrapeLinkedIn")
-def scrapeLinkedIn():
-    """Trigger the LinkedIn data scraping script."""
-    print("LinkedIn scraping function clicked")
-    
-    # Start the LinkedIn scraping in a visible command window
-    if linkedin_scraping_module and hasattr(linkedin_scraping_module, "run_in_background"):
-        try:
-            linkedin_scraping_module.run_in_background()
-            return {"success": True, "message": "LinkedIn scraping started in a command window"}
-        except Exception as e:
-            print(f"Error triggering LinkedIn scraping: {e}")
-    
-    return {"success": True, "message": "LinkedIn scraping triggered"}
 
 @app.get("/getKeywords", response_model=List[KeywordModel])
 def getKeywords():

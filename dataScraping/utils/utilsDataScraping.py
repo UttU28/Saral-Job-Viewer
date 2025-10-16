@@ -1,59 +1,13 @@
-import logging
-from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime, Boolean
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 import os
 from dotenv import load_dotenv
-from datetime import datetime
-import json
 
-# Import the database config from utilsDatabase
-from utils.utilsDatabase import DbConfig, getSession, Keyword
+# Import the database functions we need
+from utils.utilsDatabase import getSession, Keyword, addJob as dbAddJob, JobPosting
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(level=logging.ERROR)
-logging.getLogger("sqlalchemy.engine").setLevel(logging.ERROR)
-
-# Get database configuration
-dbConfig = DbConfig()
-
-# Initialize the SQLAlchemy declarative base
-Base = declarative_base()
-
-# Define JobPosting model
-class JobPosting(Base):
-    __tablename__ = "allLinkedInJobs"
-
-    id = Column(String, primary_key=True)
-    link = Column(Text)
-    title = Column(Text)
-    companyName = Column(Text)
-    location = Column(Text)
-    method = Column(Text)
-    timeStamp = Column(Text)
-    jobType = Column(Text)
-    jobDescription = Column(Text)
-    applied = Column(Text)
-    aiProcessed = Column(Boolean, default=False, nullable=False)
-    aiTags = Column(Text, default='[]', nullable=False)  # JSON string for array of tags
-
-# Define SearchKeywords model - changed to be compatible with SQLite
-class SearchKeywords(Base):
-    __tablename__ = "linkedInKeywords"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(255), nullable=False)
-    type = Column(String(50), nullable=False)  # Changed from Enum to String for SQLite compatibility
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-# Create tables if they don't exist using the configured database
-engine = create_engine(dbConfig.connectionUrl, echo=False)
-Base.metadata.create_all(engine)
-
-# Add a new job posting
+# Add a new job posting - simplified wrapper
 def addJob(
     jobId: str,
     jobLink: str,
@@ -68,9 +22,6 @@ def addJob(
     aiProcessed: bool = False,
     aiTags: list = None
 ):
-    # Import the database function instead of duplicating logic
-    from utils.utilsDatabase import addJob as dbAddJob
-    
     try:
         result = dbAddJob(
             jobId=jobId,
@@ -125,12 +76,12 @@ def getSearchKeywords():
         print(f"Error getting keywords: {e}")
         return {"noCompany": [], "searchList": []}
 
-# Add dummy data to database
+# Initialize keywords for scraping if none exist
 def createDummyKeywords():
     try:
         session = getSession()
         
-        # Add keywords
+        # Add default keywords for scraping
         defaultKeywords = [
             {"name": "Python developer", "type": "SearchList"},
             {"name": "backend developer", "type": "SearchList"},
@@ -147,18 +98,11 @@ def createDummyKeywords():
                 session.add(keyword)
         
         session.commit()
-        print("Dummy keywords created successfully")
+        print("Default scraping keywords created successfully")
         session.close()
         return True
     except Exception as e:
-        print(f"Error creating dummy keywords: {e}")
+        print(f"Error creating default keywords: {e}")
         session.rollback()
         session.close()
         return False
-
-# Example usage of the dummy data creator
-if __name__ == "__main__":
-    createDummyKeywords()
-    keywords = getSearchKeywords()
-    print("NoCompany Keywords:", keywords["noCompany"])
-    print("SearchList Keywords:", keywords["searchList"])

@@ -356,6 +356,38 @@ def setJobTags(jobId: str, tags: list):
     finally:
         session.close()
 
+def updateJobAIResponse(jobId: str, aiResponse: str):
+    """Update job with AI classification response"""
+    session = getSession()
+    try:
+        job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
+        if not job:
+            return False
+        
+        cleaned_response = aiResponse.strip()
+        if cleaned_response.startswith("```json"):
+            cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
+        elif cleaned_response.startswith("```"):
+            cleaned_response = cleaned_response.replace("```", "").strip()
+        
+        # Validate JSON
+        try:
+            json_data = json.loads(cleaned_response)
+            job.aiTags = cleaned_response
+            job.aiProcessed = True
+            session.commit()
+            return True
+        except json.JSONDecodeError:
+            logging.error(f"Invalid JSON in AI response for job {jobId}")
+            return False
+            
+    except Exception as e:
+        session.rollback()
+        logging.error(f"Error updating job AI response: {e}")
+        return False
+    finally:
+        session.close()
+
 def markJobAsAiProcessed(jobId: str):
     """Mark a job as AI processed"""
     session = getSession()

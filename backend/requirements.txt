@@ -7,8 +7,3 @@ python-dotenv
 # Database
 SQLAlchemy
 
-# Web scraping dependencies
-selenium
-webdriver-manager
-beautifulsoup4
-requests

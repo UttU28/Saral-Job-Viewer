@@ -3,59 +3,78 @@ from time import sleep
 import time
 import sys
 import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from utils.utilsDataScraping import checkJob, addJob, getSearchKeywords, createDummyKeywords
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException, StaleElementReferenceException
-from dotenv import load_dotenv
 import os
 import signal
 from urllib.parse import urlencode
-from sqlalchemy import create_engine, Column, String, Text, Integer, DateTime, Float, Boolean, Table, MetaData
+from datetime import datetime
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Column, String, Boolean, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
 
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+
+from utils.utilsDataScraping import checkJob, addJob, getSearchKeywords, createDummyKeywords
 from utils.utilsDatabase import DbConfig, getSession
 
-# Function to run scraping in visible command prompt
-def run_in_background():
+# Main function to start LinkedIn scraping process
+def start_linkedin_scraping():
     """
     Run the LinkedIn scraping process in a visible command prompt
     """
-    # Get the current script path
-    script_path = os.path.abspath(__file__)
-    
-    # Start the process in a visible window
-    if os.name == 'nt':  # Windows
-        # Use regular python.exe to get a visible window
-        python_exe = sys.executable
+    try:
+        main_scraping_process()
+        return True
+    except Exception as e:
+        print(f"Error starting LinkedIn scraping: {e}")
+        return False
+
+# Function to update database from data directory
+def update_database_from_data():
+    """
+    Update the database with any data from the data directory
+    This function can be used to process any cached or stored data
+    """
+    try:
+        print("Starting database update from data directory...")
         
-        # Start in a new visible command prompt window
-        subprocess.Popen(
-            ['start', 'cmd', '/k', python_exe, script_path],
-            shell=True  # Required for 'start' command
-        )
-    else:  # Linux/Mac
-        # Use xterm or gnome-terminal based on availability
+        # Get current data directory path
+        data_dir = os.path.join(os.getcwd(), 'data')
+        print(f"Checking data directory: {data_dir}")
+        
+        if not os.path.exists(data_dir):
+            print("Data directory does not exist")
+            return False
+            
+        # Process any unprocessed raw jobs from the database
+        session = getSession()
         try:
-            # Try gnome-terminal first
-            subprocess.Popen(['gnome-terminal', '--', sys.executable, script_path])
-        except FileNotFoundError:
-            try:
-                # Try xterm if gnome-terminal isn't available
-                subprocess.Popen(['xterm', '-e', f"{sys.executable} {script_path}"])
-            except FileNotFoundError:
-                # Fallback to regular terminal
-                subprocess.Popen(
-                    [sys.executable, script_path],
-                    start_new_session=True
-                )
-    
-    return True
+            unprocessed_jobs = session.query(RawLinkedInJob).filter_by(processed=False).all()
+            print(f"Found {len(unprocessed_jobs)} unprocessed raw jobs")
+            
+            for raw_job in unprocessed_jobs:
+                # Mark as processed (this was already done in the scraping process)
+                raw_job.processed = True
+                
+            session.commit()
+            print("Database update completed successfully")
+            return True
+            
+        except Exception as e:
+            session.rollback()
+            print(f"Error updating database: {e}")
+            return False
+        finally:
+            session.close()
+            
+    except Exception as e:
+        print(f"Error in update_database_from_data: {e}")
+        return False
 
 # Load environment variables
 load_dotenv()
@@ -78,7 +97,6 @@ dbConfig = DbConfig()
 
 # Initialize SQLAlchemy base
 Base = declarative_base()
-metadata = MetaData()
 
 # Model to store raw LinkedIn job IDs that have been processed
 class RawLinkedInJob(Base):
@@ -87,9 +105,6 @@ class RawLinkedInJob(Base):
     jobId = Column(String(255), primary_key=True)
     timestamp = Column(Float, nullable=False)
     processed = Column(Boolean, default=False)
-    
-    def __repr__(self):
-        return f"<RawLinkedInJob(jobId='{self.jobId}', timestamp='{self.timestamp}', processed={self.processed})>"
 
 # Create tables if they don't exist
 Base.metadata.create_all(create_engine(dbConfig.connectionUrl))
@@ -137,6 +152,13 @@ def markJobAsProcessed(jobId):
     finally:
         session.close()
 
+def clean_title(title):
+    if '\n' in title:
+        parts = title.split('\n')
+        if len(parts) >= 2:
+            return parts[0].strip()
+    return title
+
 def waitForPageLoad(driver):
     """Wait for the job listings page to load."""
     try:
@@ -169,7 +191,7 @@ def readJobListingsPage(driver, excludedCompanies):
                     continue
                     
                 jobData = posting.find_element(By.CLASS_NAME, "job-card-container__link")
-                jobTitle = jobData.text.strip()
+                jobTitle = clean_title(jobData.text.strip())
                 jobLink = jobData.get_attribute('href')
                 companyName = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__subtitle ").text.strip()
                 jobLocation = posting.find_element(By.CLASS_NAME, "artdeco-entity-lockup__caption ").text.strip()
@@ -361,31 +383,28 @@ def cleanupChrome(driver, chrome_process):
     
     print("Chrome cleanup completed.")
 
-if __name__ == "__main__":
-    # Set up logging to file since we're running in the background
+def main_scraping_process():
+    """Main LinkedIn scraping process function"""
+    # Set up logging
     log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'linkedin_scraping.log')
     logging.basicConfig(
-        filename=log_file,
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()  # Also log to console
+        ]
     )
     logger = logging.getLogger()
-    
-    # Redirect standard output and error to log
-    def log_info(msg):
-        logger.info(msg)
-        
-    def log_error(msg):
-        logger.error(msg)
     
     # Log start of scraping
     logger.info("Starting LinkedIn job scraping")
     
     try:
-        # Check if keywords exist in DB, if not create dummy data
+        # Check if keywords exist in DB, if not create default data
         keywordsData = getSearchKeywords()
         if not keywordsData["noCompany"] and not keywordsData["searchList"]:
-            logger.info("No keywords found in database. Creating dummy data...")
+            logger.info("No keywords found in database. Creating default data...")
             createDummyKeywords()
             keywordsData = getSearchKeywords()
         
@@ -465,7 +484,6 @@ if __name__ == "__main__":
                         try:
                             list_container = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
                             driver.execute_script("arguments[0].scrollIntoView();", list_container)
-                            # No need to click, just make sure it's in view
                         except Exception as e:
                             print(f"Error finding list container: {e}")
                             
@@ -479,9 +497,7 @@ if __name__ == "__main__":
                     try:
                         nextButton = driver.find_element(By.CLASS_NAME, "jobs-search-pagination__button--next")
                         if nextButton.is_enabled():
-                            # Use JavaScript to click the button to avoid any potential issues
                             driver.execute_script("arguments[0].click();", nextButton)
-                            # Wait for the next page to load
                             sleep(3)
                         else:
                             print("Next button is disabled. No more pages to scrape.")
@@ -508,3 +524,8 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Error in main LinkedIn scraping process: {e}")
         raise
+
+
+if __name__ == "__main__":
+    # Run scraping directly when script is executed
+    start_linkedin_scraping()

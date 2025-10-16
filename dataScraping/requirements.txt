@@ -1,0 +1,13 @@
+# Core dependencies
+python-dotenv
+
+# Database
+SQLAlchemy
+
+# Web scraping dependencies
+selenium
+webdriver-manager
+
+# AI dependencies
+openai==0.28
+requests
