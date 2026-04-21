@@ -18,9 +18,7 @@ def addJob(
     timeStamp: str,
     jobType: str,
     jobDescription: str,
-    applied: str,
-    aiProcessed: bool = False,
-    aiTags: list = None
+    applied: str
 ):
     try:
         result = dbAddJob(
@@ -33,9 +31,7 @@ def addJob(
             timeStamp=timeStamp,
             jobType=jobType,
             jobDescription=jobDescription,
-            applied=applied,
-            aiProcessed=aiProcessed,
-            aiTags=aiTags
+            applied=applied
         )
         if result:
             print(f"Entry with ID {jobId} added.")

@@ -1,7 +1,6 @@
 import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from dotenv import load_dotenv
 import random
 
@@ -12,7 +11,6 @@ def start_chrome_session():
     # Set up configuration for scraping
     chrome_dir = os.getenv('SCRAPING_CHROME_DIR')
     port = os.getenv('SCRAPING_PORT')
-    chrome_driver_path = os.getenv('CHROME_DRIVER_PATH')
     chrome_app_path = os.getenv('CHROME_APP_PATH')
     
     # Ensure Chrome data directory exists
@@ -25,6 +23,7 @@ def start_chrome_session():
     options.add_argument(f'--user-data-dir={chrome_dir}')
     options.add_argument(f'--remote-debugging-port={port}')
     options.binary_location = chrome_app_path
+    options.add_experimental_option('detach', True)
     
     # Add anti-detection options
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -41,9 +40,8 @@ def start_chrome_session():
     ]
     options.add_argument(f'--user-agent={random.choice(user_agents)}')
     
-    # Initialize Chrome driver
-    service = Service(executable_path=chrome_driver_path)
-    driver = webdriver.Chrome(service=service, options=options)
+    # Initialize Chrome driver (Selenium Manager resolves driver automatically)
+    driver = webdriver.Chrome(options=options)
     
     # Execute CDP commands to avoid detection
     driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {

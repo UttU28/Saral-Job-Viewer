@@ -19,6 +19,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 
+from startChrome import start_chrome_session
 from utils.utilsDataScraping import checkJob, addJob, getSearchKeywords, createDummyKeywords
 from utils.utilsDatabase import DbConfig, getSession
 
@@ -170,11 +171,20 @@ def waitForPageLoad(driver):
         print("Timeout waiting for job listings to load")
         return False
 
+def wait_for_user_to_continue():
+    """Pause after scraping one job and wait for user confirmation."""
+    try:
+        input("\nScraped one job. Press Enter to continue to the next job...")
+    except EOFError:
+        # Non-interactive environments may not support input()
+        print("No interactive input available; continuing automatically.")
+
 def readJobListingsPage(driver, excludedCompanies):
-    """Scrape job postings from the current page."""
+    """Scrape one new job posting from the current page."""
     try:
         currentPageData = driver.find_element(By.CLASS_NAME, "scaffold-layout__list")
         jobPostings = currentPageData.find_elements(By.CLASS_NAME, "job-card-container--clickable")
+        processed_one_job = False
 
         for posting in jobPostings:
             try:
@@ -220,13 +230,15 @@ def readJobListingsPage(driver, excludedCompanies):
                         if result:
                             markJobAsProcessed(jobId)
                             print(f"Entry with ID {jobId} added.")
+                            processed_one_job = True
+                            break
                     except Exception as e:
                         print(f"Error processing job description: {e}")
 
             except Exception as e:
                 print(f"Error in readJobListingsPage for a specific job: {e}")
-        
-        return True
+
+        return processed_one_job
     except Exception as e:
         print(f"Error in readJobListingsPage: {e}")
         return False
@@ -337,7 +349,7 @@ def cleanupChrome(driver, chrome_process):
             print("Closing WebDriver...")
             driver.quit()
             print("WebDriver closed successfully")
-        except Exception as e:
+        except BaseException as e:
             print(f"Error closing WebDriver: {e}")
     
     # Terminate the Chrome process
@@ -386,7 +398,7 @@ def cleanupChrome(driver, chrome_process):
 def main_scraping_process():
     """Main LinkedIn scraping process function"""
     # Set up logging
-    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'linkedin_scraping.log')
+    log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'zzz.log')
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
@@ -431,26 +443,15 @@ def main_scraping_process():
         for keyword in jobKeywords:
             logger.info(f"\nStarting search for keyword: {keyword}")
             
-            # Initialize driver and chrome_app as None
+            # Initialize driver as None
             driver = None
-            chromeApp = None
             
             try:
-                # Start Chrome process
-                logger.info("Starting Chrome...")
+                # Start Chrome session using shared startup helper
+                logger.info("Starting Chrome session...")
                 start_time = time.time()
-                chromeApp = subprocess.Popen([
-                    chromeAppPath,
-                    f'--remote-debugging-port={debuggingPort}',
-                    f'--user-data-dir={chromeUserDataDir}'
-                ])
-                sleep(2)
-
-                options = Options()
-                options.add_experimental_option("debuggerAddress", f"localhost:{debuggingPort}")
-                options.add_argument(f"webdriver.chrome.driver={chromeDriverPath}")
-                options.add_argument("--disable-notifications")
-                driver = webdriver.Chrome(options=options)
+                driver = start_chrome_session()
+                driver.implicitly_wait(2)
 
                 searchUrl = buildLinkedinUrl(keyword.strip())
                 logger.info(f"Navigating to: {searchUrl}")
@@ -488,8 +489,17 @@ def main_scraping_process():
                             print(f"Error finding list container: {e}")
                             
                         # Process the job listings
-                        if not readJobListingsPage(driver, excludedCompanies):
-                            print("Failed to process job listings. Moving to next page.")
+                        processed_one_job = readJobListingsPage(driver, excludedCompanies)
+                        if processed_one_job:
+                            wait_for_user_to_continue()
+                            try:
+                                driver.execute_script("window.scrollTo(0, 0);")
+                            except Exception:
+                                pass
+                            # Stay on the current page and process only one job per Enter press.
+                            continue
+                        else:
+                            print("No new jobs processed on this page. Moving to next page.")
                     except Exception as error:
                         print(f"Error navigating page: {error}")
 
@@ -511,10 +521,7 @@ def main_scraping_process():
             except Exception as e:
                 logger.error(f"Error during scraping for keyword '{keyword}': {e}")
             finally:
-                # Ensure cleanup happens regardless of any exceptions
-                logger.info("Cleaning up Chrome processes...")
-                cleanupChrome(driver, chromeApp)
-                
+                logger.info("Keeping browser open as requested; skipping WebDriver/Chrome cleanup.")
                 logger.info(f"Finished keyword: {keyword}")
                 logger.info("Waiting 30 seconds before next keyword...")
                 sleep(30)

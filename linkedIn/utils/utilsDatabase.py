@@ -1,5 +1,5 @@
 import logging
-from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime, Float, Boolean
+from sqlalchemy import create_engine, Column, String, Text, Enum, Integer, DateTime, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import time
 import sqlite3
-import json
 from typing import Optional, Dict, Any
 
 # Load environment variables
@@ -70,8 +69,6 @@ class JobPosting(Base):
     jobType = Column(Text)
     jobDescription = Column(Text)
     applied = Column(Text)
-    aiProcessed = Column(Boolean, default=False, nullable=False)
-    aiTags = Column(Text, default=None, nullable=True)
 
 class Keyword(Base):
     __tablename__ = "linkedInKeywords"
@@ -153,16 +150,12 @@ def addJob(
     timeStamp: str,
     jobType: str,
     jobDescription: str,
-    applied: str,
-    aiProcessed: bool = False,
-    aiTags: list = None
+    applied: str
 ):
     session = getSession()
     try:
         existingEntry = session.query(JobPosting).filter_by(id=jobId).first()
         if not existingEntry:
-            aiTagsJson = json.dumps(aiTags) if aiTags is not None else None
-            
             newEntry = JobPosting(
                 id=jobId,
                 link=jobLink,
@@ -173,9 +166,7 @@ def addJob(
                 timeStamp=timeStamp,
                 jobType=jobType,
                 jobDescription=jobDescription,
-                applied=applied,
-                aiProcessed=aiProcessed,
-                aiTags=aiTagsJson,
+                applied=applied
             )
             session.add(newEntry)
             session.commit()
@@ -324,98 +315,4 @@ def updateJobStatus(jobId: str, appliedStatus: str):
     finally:
         session.close()
 
-# AI-related helper functions
-def getJobTags(jobId: str):
-    """Get AI tags for a specific job"""
-    session = getSession()
-    try:
-        job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
-        if job and job.aiTags:
-            return json.loads(job.aiTags)
-        return []
-    except Exception as e:
-        logging.error(f"Error getting job tags: {e}")
-        return []
-    finally:
-        session.close()
-
-def setJobTags(jobId: str, tags: list):
-    """Set AI tags for a specific job"""
-    session = getSession()
-    try:
-        job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
-        if job:
-            job.aiTags = json.dumps(tags) if tags is not None else None
-            session.commit()
-            return True
-        return False
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Error setting job tags: {e}")
-        return False
-    finally:
-        session.close()
-
-def updateJobAIResponse(jobId: str, aiResponse: str):
-    """Update job with AI classification response"""
-    session = getSession()
-    try:
-        job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
-        if not job:
-            return False
-        
-        cleaned_response = aiResponse.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response.replace("```json", "").replace("```", "").strip()
-        elif cleaned_response.startswith("```"):
-            cleaned_response = cleaned_response.replace("```", "").strip()
-        
-        # Validate JSON
-        try:
-            json_data = json.loads(cleaned_response)
-            job.aiTags = cleaned_response
-            job.aiProcessed = True
-            session.commit()
-            return True
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in AI response for job {jobId}")
-            return False
-            
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Error updating job AI response: {e}")
-        return False
-    finally:
-        session.close()
-
-def markJobAsAiProcessed(jobId: str):
-    """Mark a job as AI processed"""
-    session = getSession()
-    try:
-        job = session.query(JobPosting).filter(JobPosting.id == jobId).first()
-        if job:
-            job.aiProcessed = True
-            session.commit()
-            return True
-        return False
-    except Exception as e:
-        session.rollback()
-        logging.error(f"Error marking job as AI processed: {e}")
-        return False
-    finally:
-        session.close()
-
-def getUnprocessedJobsForAI():
-    """Get jobs that haven't been processed by AI yet"""
-    session = getSession()
-    try:
-        jobs = session.query(JobPosting).filter(
-            JobPosting.aiProcessed == False
-        ).all()
-        return jobs
-    except Exception as e:
-        logging.error(f"Error fetching unprocessed AI jobs: {e}")
-        return []
-    finally:
-        session.close()
 
