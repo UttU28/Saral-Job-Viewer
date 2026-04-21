@@ -50,8 +50,7 @@ params = {
 
 easyApplyText = "Easy Apply"
 
-# Persisted list of job-card-* ids we skip (Quick/Easy/1-click apply); merged into seenIds on load.
-zipSkippedHostedApplyIdsKey = "zipSkippedHostedApplyIds"
+skippedOriginalUrlIdsKey = "skippedOriginalUrlIds"
 
 # List-card badges: skip opening detail / scraping (Zip-hosted apply flows).
 _zipCardHostedApplyPhrases: tuple[tuple[str, str], ...] = (
@@ -75,6 +74,13 @@ def cardShowsZipHostedApply(card) -> str | None:
         if needle.casefold() in collapsed:
             return label
     return None
+
+
+def ensureSkippedOriginalUrlIds(data: dict) -> None:
+    bucket = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(bucket, list):
+        return
+    data[skippedOriginalUrlIdsKey] = []
 
 
 def resolveZipRecruiterOutputPath():
@@ -360,10 +366,10 @@ def scrapeCurrentPageJobs(
 
         hosted_label = cardShowsZipHostedApply(card)
         if hosted_label:
-            skip_bucket = data.setdefault(zipSkippedHostedApplyIdsKey, [])
+            skip_bucket = data.setdefault(skippedOriginalUrlIdsKey, [])
             if not isinstance(skip_bucket, list):
-                data[zipSkippedHostedApplyIdsKey] = []
-                skip_bucket = data[zipSkippedHostedApplyIdsKey]
+                data[skippedOriginalUrlIdsKey] = []
+                skip_bucket = data[skippedOriginalUrlIdsKey]
             if cardId not in skip_bucket:
                 skip_bucket.append(cardId)
                 document_dirty = True
@@ -444,7 +450,7 @@ def seedSeenIdsFromDocument(data: dict) -> set[str]:
                 jid = j.get("jobId")
                 if isinstance(jid, str) and jid:
                     out.add(jid)
-    skip_ids = data.get(zipSkippedHostedApplyIdsKey)
+    skip_ids = data.get(skippedOriginalUrlIdsKey)
     if isinstance(skip_ids, list):
         for sid in skip_ids:
             if isinstance(sid, str) and sid.strip():
@@ -462,6 +468,7 @@ def scrapeAllResultPages(
     time.sleep(1.0)
 
     data = loadJobsDocumentOrEmpty(outputPath)
+    ensureSkippedOriginalUrlIds(data)
     seenIds = seedSeenIdsFromDocument(data)
     if seenIds:
         print(

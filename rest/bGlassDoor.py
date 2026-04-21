@@ -88,15 +88,26 @@ def glassdoorJobIdToJobId(glassdoorJobId: str | None) -> str:
 def existingJobIdsFromOutputData(data: dict) -> set[str]:
     """jobId values already stored (e.g. gdj_1010106816170) so we can skip re-scraping."""
     jobs = data.get("jobs")
-    if not isinstance(jobs, list):
-        return set()
     out: set[str] = set()
-    for j in jobs:
-        if isinstance(j, dict):
-            jid = j.get("jobId")
-            if isinstance(jid, str) and jid.strip():
-                out.add(jid.strip())
+    if isinstance(jobs, list):
+        for j in jobs:
+            if isinstance(j, dict):
+                jid = j.get("jobId")
+                if isinstance(jid, str) and jid.strip():
+                    out.add(jid.strip())
+    skip_ids = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(skip_ids, list):
+        for sid in skip_ids:
+            if isinstance(sid, str) and sid.strip():
+                out.add(sid.strip())
     return out
+
+
+def ensureSkippedOriginalUrlIds(data: dict) -> None:
+    bucket = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(bucket, list):
+        return
+    data[skippedOriginalUrlIdsKey] = []
 
 
 def readIntEnv(name: str, default: int, *, minimum: int = 1) -> int:
@@ -116,6 +127,7 @@ loadMoreButton = 'button[data-test="load-more"]'
 
 easyApplyLabel = "Easy Apply"
 applyOnEmployerSiteLabel = "Apply on employer site"
+skippedOriginalUrlIdsKey = "skippedOriginalUrlIds"
 
 authModalClose = '[data-test="auth-modal-close-button"]'
 
@@ -275,6 +287,17 @@ def cardFields(li) -> dict[str, str | None]:
         "postedAgo": age,
         "qualificationTags": skills,
     }
+
+
+def cardShowsGlassdoorEasyApply(li) -> bool:
+    # Prefer structural badge check; fallback to card text match.
+    try:
+        if li.find_elements(By.CSS_SELECTOR, '[class*="easyApplyTag"]'):
+            return True
+    except Exception:
+        pass
+    blob = (li.text or "").strip().lower()
+    return "easy apply" in blob
 
 
 def buildJobRecord(
@@ -449,6 +472,7 @@ def expandGlassdoorJobList(driver) -> int:
 def scrapeGlassdoorSearch(
     driver,
     existingJobIds: set[str] | None = None,
+    data: dict | None = None,
 ) -> list[dict]:
     """
     Scrape list + detail pane for jobs whose jobId is not in existingJobIds
@@ -511,6 +535,22 @@ def scrapeGlassdoorSearch(
                 )
                 continue
 
+            if cardShowsGlassdoorEasyApply(li):
+                if isinstance(data, dict):
+                    skip_bucket = data.setdefault(skippedOriginalUrlIdsKey, [])
+                    if not isinstance(skip_bucket, list):
+                        data[skippedOriginalUrlIdsKey] = []
+                        skip_bucket = data[skippedOriginalUrlIdsKey]
+                    if job_id and job_id not in skip_bucket:
+                        skip_bucket.append(job_id)
+                if job_id:
+                    seen.add(job_id)
+                print(
+                    f"[{idx + 1}/{n}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
+                    file=sys.stderr,
+                )
+                continue
+
             clickJobCard(driver, idx)
             time.sleep(0.9)
 
@@ -542,6 +582,8 @@ def scrapeGlassdoorSearch(
 
 
 def main() -> None:
+    os.environ["USE_UNDETECTED_CHROME"] = "1"
+
     searchUrl = resolveGlassdoorSearchUrl(None)
     try:
         outputPath = resolveGlassdoorOutputPath()
@@ -550,6 +592,7 @@ def main() -> None:
         raise SystemExit(1) from exc
 
     data = loadJobsDocumentOrEmpty(outputPath)
+    ensureSkippedOriginalUrlIds(data)
     existing_ids = existingJobIdsFromOutputData(data)
     if existing_ids:
         print(
@@ -567,7 +610,7 @@ def main() -> None:
     try:
         driver.set_page_load_timeout(120)
         driver.get(searchUrl)
-        rows = scrapeGlassdoorSearch(driver, existing_ids)
+        rows = scrapeGlassdoorSearch(driver, existing_ids, data)
 
         added, skipped = mergeNewJobsIntoDocument(data, rows)
         saveOutputDocument(outputPath, data)

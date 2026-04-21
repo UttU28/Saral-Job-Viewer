@@ -108,12 +108,6 @@ def _createUndetectedChromeDriver(
 
 
 def createScrapingChromeDriver(*, headless: bool = True, quiet: bool = True):
-    """
-    Build a Chrome WebDriver for scraping (any origin). Caller must .quit().
-
-    Uses SCRAPING_CHROME_DIR for profile (default under repo ``data/chromeData/irangarick``),
-    optional SCRAPING_PORT for debugging, random desktop UA and common anti-detection flags.
-    """
     load_dotenv()
 
     chromeDir = resolveScrapingChromeDir()

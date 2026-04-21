@@ -98,6 +98,14 @@ def buildSearchUrl(overrides: dict[str, SearchParamValue] | None = None) -> str:
 
 
 defaultSearchUrl = buildSearchUrl()
+skippedOriginalUrlIdsKey = "skippedOriginalUrlIds"
+
+
+def ensureSkippedOriginalUrlIds(data: dict) -> None:
+    bucket = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(bucket, list):
+        return
+    data[skippedOriginalUrlIdsKey] = []
 
 
 def resolveJobrightOutputPath() -> Path:
@@ -215,6 +223,7 @@ def fetchAndMergeSearchHtml(
         existing, meta = loadExistingJobsAndMeta(outputPath)
         merged, skipped, appended = mergeFetchedJobs(existing, fetched)
         data = {**meta, "jobs": merged, "count": len(merged)}
+        ensureSkippedOriginalUrlIds(data)
         try:
             saveOutputDocument(outputPath, data)
         except OSError as exc:
@@ -570,6 +579,7 @@ def fetchAndMergeSearchSelenium(
     existing, meta = loadExistingJobsAndMeta(outputPath)
     merged, skipped, appended = mergeFetchedJobs(existing, fetched)
     data = {**meta, "jobs": merged, "count": len(merged)}
+    ensureSkippedOriginalUrlIds(data)
     try:
         saveOutputDocument(outputPath, data)
     except OSError as exc:
@@ -1018,6 +1028,8 @@ def main() -> None:
         except (OSError, ValueError) as exc:
             print(exc, file=sys.stderr)
             raise SystemExit(1)
+        ensureSkippedOriginalUrlIds(data)
+        saveOutputDocument(jsonPath, data)
 
         jobs = data["jobs"]
         total = len(jobs)
