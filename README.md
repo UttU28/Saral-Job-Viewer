@@ -1,128 +1,114 @@
-# Saral Job Getter
+# Saral Job Viewer
 
-A LinkedIn job scraping and management system with AI integration capabilities.
+DB-first job scraping, storage, and viewing pipeline for multiple sources (JobRight, GlassDoor, ZipRecruiter), with a FastAPI backend and frontend UI.
 
-## Project Structure
+## Current Architecture
 
-```
-Saral-Job-Getter/
-├── backend/                    # Backend API and scraping functionality
-│   ├── app.py                 # FastAPI application
-│   ├── linkedInScraping.py    # LinkedIn scraper
-│   ├── requirements.txt       # Python dependencies
-│   ├── .env.example          # Environment variables template
-│   └── utils/                # Utility modules
-│       ├── utilsDatabase.py  # Database operations
-│       └── utilsDataScraping.py # Scraping utilities
-├── data/                      # Database and data files
-│   └── localDb.sqlite        # SQLite database
-├── frontend/                  # React + Vite + TypeScript UI
-│   ├── src/                  # React components
-│   ├── package.json          # Frontend dependencies
-│   └── vite.config.ts        # Vite configuration
-├── env/                       # Python virtual environment
-├── .env                       # Environment variables (not in git)
-└── .gitignore                # Git ignore file
-```
+- **Scrapers**
+  - `aJobRight.py`
+  - `bGlassDoor.py`
+  - `cZipRecruiter.py`
+- **Automation helper**
+  - `dFillForm.py`
+- **Backend API**
+  - `server.py` (FastAPI)
+- **Core utilities**
+  - `utils/fileManagement.py` (normalization, dedupe flow, DB-write orchestration)
+  - `utils/dataManager.py` (SQLite schema + CRUD helpers + scrape logging)
+- **Maintenance**
+  - `zClean.py` (delete `__pycache__` and temp/cache files)
+- **Data storage**
+  - `data/saralJobViewer.db`
+  - `data/logs/`
 
-## Quick Start
+## Key Behavior
 
-### Backend Setup
-
-1. **Navigate to backend directory:**
-   ```bash
-   cd backend
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Run the API server:**
-   ```bash
-   python app.py
-   ```
-   The API will be available at `http://localhost:5000`
-
-4. **Run LinkedIn scraper:**
-   ```bash
-   python linkedInScraping.py
-   ```
-
-### Frontend Setup
-
-1. **Navigate to frontend directory:**
-   ```bash
-   cd frontend
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
-
-3. **Run the development server:**
-   ```bash
-   npm run dev
-   ```
-   The frontend will be available at `http://localhost:5173`
-
-## API Endpoints
-
-### Core Functionality
-- `GET /` - API status
-- `GET /scrapeLinkedIn` - Trigger LinkedIn scraping
-- `GET /getData` - Get unprocessed LinkedIn jobs
-
-### Job Management
-- `GET /getAllJobs` - Get all jobs
-- `POST /getHoursOfData` - Get jobs from last X hours
-- `GET /getCountForAcceptDeny` - Job statistics
-- `POST /updateJobStatus` - Update job status (YES/NO/NEVER)
-
-### Keyword Management
-- `GET /getKeywords` - Get search keywords
-- `POST /addKeyword` - Add search keyword
-- `POST /removeKeyword` - Remove search keyword
+- JSON output files are not used for persistence.
+- Jobs are normalized and saved to SQLite.
+- Logs are written to `data/logs/scrape-YYYY-MM-DD.log`.
+- Deduplication is DB-first (`jobData` + `pastData` by platform).
+- Blocked domains are skipped from `jobData` and tracked in `pastData`.
 
 ## Database Schema
 
-### Jobs Table (`allLinkedInJobs`)
-- Basic job info: `id`, `title`, `companyName`, `location`, `jobDescription`
-- Status: `applied` (YES/NO/NEVER)
-- **AI Integration**: `aiProcessed` (boolean), `aiTags` (JSON array)
+### `jobData`
 
-### Keywords Table (`linkedInKeywords`)
-- `name`: Keyword text
-- `type`: "SearchList" or "NoCompany"
+- `jobId` (PRIMARY KEY, NOT NULL)
+- `title`
+- `jobUrl` (NOT NULL)
+- `location`
+- `employmentType`
+- `workModel`
+- `seniority`
+- `experience`
+- `originalJobPostUrl` (NOT NULL)
+- `companyName` (NOT NULL)
+- `jobDescription` (NOT NULL)
+- `timestamp`
+- `applyStatus`
+- `platform` (NOT NULL)
 
-## AI Integration
+### `pastData`
 
-The system includes AI-ready columns for future enhancements:
-- `aiProcessed`: Track which jobs have been analyzed by AI
-- `aiTags`: Store AI-generated tags as JSON array
+- `jobId` (PRIMARY KEY, NOT NULL)
+- `platform` (NOT NULL)
+- `timestamp`
+- `companyName` (NOT NULL)
 
-### AI Helper Functions
-- `getJobTags(jobId)` - Get AI tags for a job
-- `setJobTags(jobId, tags)` - Set AI tags for a job
-- `markJobAsAiProcessed(jobId)` - Mark job as AI processed
-- `getUnprocessedJobsForAI()` - Get jobs needing AI analysis
+## API Endpoints (`server.py`)
 
-## Environment Variables
+- `GET /health`
+- `GET /api/jobs`
+  - Query params: `platform`, `company`, `q`, `limit`, `offset`
+- `GET /api/jobs/{job_id}`
+- `GET /api/past-data`
+  - Query params: `platform`, `limit`, `offset`
+- `GET /api/stats`
 
-Copy `.env.example` to `.env` and configure:
-- `DB_TYPE` - Database type (sqlite/mysql)
-- `SQLITE_DB_PATH` - SQLite database path
-- Chrome and scraping configuration variables
+## Setup
 
-## Development
+### 1) Python environment
 
-The codebase is clean and focused on LinkedIn job scraping with:
-- ✅ Job scraping and storage
-- ✅ Keyword-based filtering  
-- ✅ Job status management
-- ✅ AI integration ready
-- ❌ No user management complexity
-- ❌ No file upload systems
-- ❌ No easy apply automation
+```bash
+python -m env env
+env\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2) Environment file
+
+Copy `.env.example` to `.env` and set values you need (Chrome path/profile/port and scraping behavior flags).
+
+### 3) Run API server
+
+```bash
+python server.py
+```
+
+FastAPI runs on `http://127.0.0.1:8000` by default.
+
+### 4) Run scrapers
+
+```bash
+python aJobRight.py
+python bGlassDoor.py
+python cZipRecruiter.py
+```
+
+## Frontend
+
+Frontend source is under `frontend/src` and is built to consume the API from `server.py`.
+
+## Cleanup Script
+
+Use `zClean.py` to delete temp/cache files.
+
+```bash
+python zClean.py --dry-run
+python zClean.py
+```
+
+## Notes
+
+- Some scraper failures are expected in live browser automation (timeouts, non-interactable rows, closed windows) and should be handled by reruns/retries.
+- Keep `linkedIn/` scripts isolated if you use them for separate experiments; core flow is the root scraper + `utils/` pipeline above.

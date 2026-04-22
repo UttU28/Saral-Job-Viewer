@@ -6,5 +6,5 @@
 *.db
 *.pdf
 *.log
-venv/
+env/
 *.html
