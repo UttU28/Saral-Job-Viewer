@@ -1,11 +1,10 @@
 **/__pycache__/*
 **/env/*
-**/chromeData/*
-*-lock.json
+**/data/*
+**/irangarick/*
 *.env
 *.db
 *.pdf
 *.log
-*.json
 venv/
 *.html

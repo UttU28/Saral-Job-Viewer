@@ -1,9 +1,0 @@
-# Core FastAPI dependencies
-fastapi
-uvicorn
-pydantic
-python-dotenv
-
-# Database
-SQLAlchemy
-
