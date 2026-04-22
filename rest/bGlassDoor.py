@@ -473,6 +473,7 @@ def scrapeGlassdoorSearch(
     driver,
     existingJobIds: set[str] | None = None,
     data: dict | None = None,
+    outputPath = None,
 ) -> list[dict]:
     """
     Scrape list + detail pane for jobs whose jobId is not in existingJobIds
@@ -543,6 +544,8 @@ def scrapeGlassdoorSearch(
                         skip_bucket = data[skippedOriginalUrlIdsKey]
                     if job_id and job_id not in skip_bucket:
                         skip_bucket.append(job_id)
+                        if outputPath is not None:
+                            saveOutputDocument(outputPath, data)
                 if job_id:
                     seen.add(job_id)
                 print(
@@ -568,7 +571,13 @@ def scrapeGlassdoorSearch(
                 applyLabel,
                 jobUrl,
             )
-            out.append(rec)
+            if isinstance(data, dict) and outputPath is not None:
+                added, _ = mergeNewJobsIntoDocument(data, [rec])
+                if added:
+                    saveOutputDocument(outputPath, data)
+                    out.append(rec)
+            else:
+                out.append(rec)
             seen.add(job_id)
             print(
                 f"[{idx + 1}/{n}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
@@ -610,10 +619,10 @@ def main() -> None:
     try:
         driver.set_page_load_timeout(120)
         driver.get(searchUrl)
-        rows = scrapeGlassdoorSearch(driver, existing_ids, data)
+        rows = scrapeGlassdoorSearch(driver, existing_ids, data, outputPath)
 
-        added, skipped = mergeNewJobsIntoDocument(data, rows)
-        saveOutputDocument(outputPath, data)
+        added = len(rows)
+        skipped = 0
         print(
             f"Merged into {outputPath.resolve()}: +{added} new, {skipped} skipped duplicates.",
             file=sys.stderr,

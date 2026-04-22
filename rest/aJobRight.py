@@ -27,7 +27,9 @@ from startChrome import (
 )
 from fileManagement import (
     loadExistingJobsAndMeta,
+    loadJobsDocumentOrEmpty,
     loadOutputDocument,
+    mergeNewJobsIntoDocument,
     mergeFetchedJobs,
     resolveOutputJsonPath,
     saveJsonPayload,
@@ -576,14 +578,20 @@ def fetchAndMergeSearchSelenium(
     except Exception as exc:
         return False, str(exc)
 
-    existing, meta = loadExistingJobsAndMeta(outputPath)
-    merged, skipped, appended = mergeFetchedJobs(existing, fetched)
-    data = {**meta, "jobs": merged, "count": len(merged)}
+    data = loadJobsDocumentOrEmpty(outputPath)
     ensureSkippedOriginalUrlIds(data)
-    try:
-        saveOutputDocument(outputPath, data)
-    except OSError as exc:
-        return False, f"Failed to save merged jobs: {exc}"
+    appended = 0
+    skipped = 0
+    for row in fetched:
+        added, skipped_one = mergeNewJobsIntoDocument(data, [row])
+        if added:
+            appended += 1
+            try:
+                saveOutputDocument(outputPath, data)
+            except OSError as exc:
+                return False, f"Failed to save merged jobs: {exc}"
+        else:
+            skipped += skipped_one
     return (
         True,
         f"Merged into {outputPath.resolve()}: +{appended} new, {skipped} skipped duplicates.",

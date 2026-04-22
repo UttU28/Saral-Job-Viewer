@@ -338,10 +338,11 @@ def scrapeCurrentPageJobs(
     globalSeenIds: set[str],
     pageNumber: int,
     data: dict,
-) -> tuple[list[dict[str, str | None]], int, bool]:
-    scraped: list[dict[str, str | None]] = []
+    outputPath: Path,
+) -> tuple[int, int, int]:
+    added_count = 0
+    skipped_merge = 0
     skipped_known = 0
-    document_dirty = False
     cards = getCardElementsOnPage(driver)
     n = len(cards)
     print(
@@ -372,7 +373,7 @@ def scrapeCurrentPageJobs(
                 skip_bucket = data[skippedOriginalUrlIdsKey]
             if cardId not in skip_bucket:
                 skip_bucket.append(cardId)
-                document_dirty = True
+                saveOutputDocument(outputPath, data)
             globalSeenIds.add(cardId)
             print(
                 f"[{idx + 1}/{n}] skip ({hosted_label}): {company_preview} — {cardId}",
@@ -418,7 +419,12 @@ def scrapeCurrentPageJobs(
             "jobResponsibility": detail.get("jobResponsibility") or "",
             "postedAgo": detail.get("postedAgo"),
         }
-        scraped.append(jobRecord)
+        added, skipped = mergeNewJobsIntoDocument(data, [jobRecord])
+        if added:
+            saveOutputDocument(outputPath, data)
+            added_count += added
+        else:
+            skipped_merge += skipped
         globalSeenIds.add(cardId)
         label = jobRecord.get("companyName") or company_preview or "?"
         preview = str(jobRecord.get("jobUrl") or "").strip()[:70]
@@ -426,7 +432,7 @@ def scrapeCurrentPageJobs(
             f"[{idx + 1}/{n}] {label} — {preview}…",
             file=sys.stderr,
         )
-    return scraped, skipped_known, document_dirty
+    return added_count, skipped_merge, skipped_known
 
 
 def goToNextResultsPage(driver: webdriver.Chrome) -> bool:
@@ -482,21 +488,17 @@ def scrapeAllResultPages(
     total_skipped_known_cards = 0
     pageNumber = 1
     while True:
-        pageJobs, skipped_known, doc_dirty = scrapeCurrentPageJobs(
-            driver, seenIds, pageNumber, data
+        added, skipped_merge, skipped_known = scrapeCurrentPageJobs(
+            driver, seenIds, pageNumber, data, outputPath
         )
+        total_added += added
+        total_skipped_merge += skipped_merge
         total_skipped_known_cards += skipped_known
-        if pageJobs:
-            added, skipped = mergeNewJobsIntoDocument(data, pageJobs)
-            total_added += added
-            total_skipped_merge += skipped
-            saveOutputDocument(outputPath, data)
+        if added or skipped_merge:
             print(
-                f"Merged into {outputPath.resolve()}: +{added} new, {skipped} skipped duplicates.",
+                f"Merged into {outputPath.resolve()}: +{added} new, {skipped_merge} skipped duplicates.",
                 file=sys.stderr,
             )
-        elif doc_dirty:
-            saveOutputDocument(outputPath, data)
 
         if not goToNextResultsPage(driver):
             break
@@ -525,6 +527,7 @@ def main() -> int:
         print(exc, file=sys.stderr)
         return 1
     headless = envBool("SCRAPING_HEADLESS", default=True)
+    os.environ["USE_UNDETECTED_CHROME"] = "1"
 
     try:
         driver = createScrapingChromeDriver(headless=headless, quiet=True)
