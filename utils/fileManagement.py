@@ -270,8 +270,10 @@ def _preferRicherJob(existing: dict, candidate: dict) -> dict:
         candidateVal = _strOrBlank(val)
         if not existingVal and candidateVal:
             merged[key] = val
-    # Explicitly prefer non-empty original apply URL and richer description.
-    if _strOrBlank(candidate.get("originalJobPostUrl")):
+    # Prefer real http(s) apply URLs over placeholder text; never replace a URL with a label.
+    ex_url = _strOrBlank(merged.get("originalJobPostUrl"))
+    cand_url = _strOrBlank(candidate.get("originalJobPostUrl"))
+    if cand_url.startswith("http") or (cand_url and not ex_url.startswith("http")):
         merged["originalJobPostUrl"] = candidate.get("originalJobPostUrl")
     if len(_strOrBlank(candidate.get("jobDescription"))) > len(
         _strOrBlank(merged.get("jobDescription"))

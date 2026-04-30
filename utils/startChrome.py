@@ -176,6 +176,8 @@ def start_chrome_session():
 
 
 if __name__ == "__main__":
+    # For direct/manual runs, default to undetected-chromedriver unless explicitly set.
+    os.environ.setdefault("USE_UNDETECTED_CHROME", "1")
     chromeDriver = startInteractiveChrome()
     try:
         input("Press Enter to close the browser...")

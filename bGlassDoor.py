@@ -20,7 +20,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from utils.startChrome import (
     createScrapingChromeDriver,
     envBool,
-    promptBeforeClosingBrowserIfHeaded,
 )
 from utils.fileManagement import (
     loadJobsDocumentOrEmpty,
@@ -37,7 +36,6 @@ def getDefaultGlassdoorSearchParams() -> dict[str, str]:
         "role": "devops",
         "fromAge": "1",          # show jobs posted in the last N days
         "sortBy": "date_desc",   # newest first
-        # add more parameters as needed
     }
 
 
@@ -121,23 +119,365 @@ applyOnEmployerSiteLabel = "Apply on employer site"
 skippedOriginalUrlIdsKey = "skippedOriginalUrlIds"
 
 authModalClose = '[data-test="auth-modal-close-button"]'
+jobAlertModalClose = '[data-test="job-alert-modal-close"]'
+indeedArbitrationAccept = (
+    '[data-test="indeed-arbitration-modal-cta"] button[data-role-variant="primary"]'
+)
 JS_CLICK = "arguments[0].click();"
 
 
-def dismissUnifiedAuthModalIfPresent(driver) -> bool:
+def httpJobUrl(u: str) -> bool:
+    s = (u or "").strip()
+    return s.startswith("http") and "about:blank" not in s.lower()
+
+
+def waitNewTabUrlFullyLoaded(driver, max_wait: float) -> str:
     """
-    Close Glassdoor / Indeed 'Never Miss an Opportunity' modal if it blocks the page.
-    Returns True if the close button was clicked.
+    Wait for a real HTTP URL, document.readyState complete (bounded), then URL
+    stability so SPAs / redirects finish before we read the final address.
     """
+    max_wait = max(10.0, min(float(max_wait), 90.0))
+    try:
+        WebDriverWait(driver, int(max_wait)).until(
+            lambda d: httpJobUrl((d.current_url or "").strip())
+        )
+    except TimeoutException:
+        u = (driver.current_url or "").strip()
+        return u if httpJobUrl(u) else ""
+
+    try:
+        WebDriverWait(driver, min(25, int(max_wait))).until(
+            lambda d: d.execute_script("return document.readyState") == "complete"
+        )
+    except TimeoutException:
+        pass
+
+    deadline = time.monotonic() + min(18.0, max_wait)
+    last = (driver.current_url or "").strip()
+    while time.monotonic() < deadline:
+        time.sleep(0.45)
+        cur = (driver.current_url or "").strip()
+        if httpJobUrl(cur) and cur == last:
+            time.sleep(0.5)
+            if (driver.current_url or "").strip() == cur:
+                return cur
+        last = cur
+    u = (driver.current_url or "").strip()
+    return u if httpJobUrl(u) else ""
+
+
+def normalizeUrlForCompare(url: str) -> str:
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    try:
+        p = urlparse(raw)
+        path = (p.path or "").rstrip("/")
+        return f"{p.scheme.lower()}://{(p.netloc or '').lower()}{path}"
+    except Exception:
+        return raw.rstrip("/").lower()
+
+
+def urlsLookSame(urlA: str, urlB: str) -> bool:
+    a = normalizeUrlForCompare(urlA)
+    b = normalizeUrlForCompare(urlB)
+    return bool(a and b and a == b)
+
+
+def isRobotChallengePage(driver) -> bool:
+    try:
+        urlBlob = (driver.current_url or "").lower()
+    except Exception:
+        urlBlob = ""
+    try:
+        bodyBlob = (driver.page_source or "").lower()
+    except Exception:
+        bodyBlob = ""
+    blob = f"{urlBlob}\n{bodyBlob}"
+    markers = (
+        "are you a robot",
+        "verify you are human",
+        "verify you're human",
+        "captcha",
+        "recaptcha",
+        "hcaptcha",
+        "turnstile",
+        "cf-challenge",
+    )
+    return any(m in blob for m in markers)
+
+
+def clickRobotChallengeCheckbox(driver) -> bool:
+    selectors = (
+        'input[type="checkbox"]',
+        '[role="checkbox"]',
+        '#recaptcha-anchor',
+        '.recaptcha-checkbox-border',
+        'label[for*="captcha"]',
+    )
+    for sel in selectors:
+        for el in driver.find_elements(By.CSS_SELECTOR, sel):
+            try:
+                if not el.is_displayed():
+                    continue
+                driver.execute_script(
+                    "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                    el,
+                )
+                time.sleep(0.2)
+                try:
+                    el.click()
+                except Exception:
+                    driver.execute_script(JS_CLICK, el)
+                return True
+            except Exception:
+                continue
+
+    try:
+        iframes = driver.find_elements(By.CSS_SELECTOR, "iframe")
+    except Exception:
+        iframes = []
+    for frame in iframes:
+        try:
+            driver.switch_to.frame(frame)
+            for sel in selectors:
+                for el in driver.find_elements(By.CSS_SELECTOR, sel):
+                    try:
+                        if not el.is_displayed():
+                            continue
+                        driver.execute_script(
+                            "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                            el,
+                        )
+                        time.sleep(0.2)
+                        try:
+                            el.click()
+                        except Exception:
+                            driver.execute_script(JS_CLICK, el)
+                        driver.switch_to.default_content()
+                        return True
+                    except Exception:
+                        continue
+            driver.switch_to.default_content()
+        except Exception:
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+            continue
+    return False
+
+
+def resolveRobotChallengeUrl(
+    driver,
+    currentUrl: str,
+    glassdoorUrl: str,
+    waitSec: float,
+) -> str:
+    """
+    If apply URL still looks like Glassdoor or challenge page, try robot checkbox,
+    wait for navigation, then return latest loaded URL.
+    """
+    needsRobotCheck = urlsLookSame(currentUrl, glassdoorUrl) or isRobotChallengePage(driver)
+    if not needsRobotCheck:
+        return currentUrl
+
+    clicked = clickRobotChallengeCheckbox(driver)
+    if clicked:
+        time.sleep(0.6)
+    try:
+        WebDriverWait(driver, int(max(6.0, min(waitSec, 30.0)))).until(
+            lambda d: (
+                httpJobUrl((d.current_url or "").strip())
+                and not urlsLookSame((d.current_url or "").strip(), glassdoorUrl)
+            )
+            or not isRobotChallengePage(d)
+        )
+    except TimeoutException:
+        pass
+
+    return waitNewTabUrlFullyLoaded(driver, waitSec)
+
+
+def captureNewTabUrlThenClose(
+    driver,
+    handles_before: set[str],
+    return_to_handle: str,
+    *,
+    wait_sec: float = 22.0,
+) -> str | None:
+    """
+    If Accept TNC (or similar) opened a new window, switch to it, read the URL,
+    close that tab, and return focus to the Glassdoor tab.
+    """
+    deadline = time.monotonic() + wait_sec
+    new_handle: str | None = None
+    while time.monotonic() < deadline:
+        now = set(driver.window_handles)
+        fresh = [h for h in now if h not in handles_before]
+        if fresh:
+            new_handle = fresh[-1]
+            break
+        time.sleep(0.12)
+    if not new_handle:
+        return None
+
+    url = ""
+    try:
+        driver.switch_to.window(new_handle)
+        url = waitNewTabUrlFullyLoaded(driver, wait_sec)
+    finally:
+        try:
+            driver.close()
+        except Exception:
+            pass
+        try:
+            driver.switch_to.window(return_to_handle)
+        except Exception:
+            if driver.window_handles:
+                driver.switch_to.window(driver.window_handles[0])
+    if httpJobUrl(url):
+        return url
+    return None
+
+
+def acceptIndeedArbitrationModalIfPresent(driver) -> tuple[bool, str | None]:
+    """
+    Glassdoor (Indeed) sometimes shows 'Important updates to Indeed's Terms of Service'.
+    Click 'Accept Terms and continue' when that modal is present.
+    """
+    containers = driver.find_elements(
+        By.CSS_SELECTOR, '[data-test="indeed-arbitration-modal-container"]'
+    )
+    visible = False
+    for c in containers:
+        try:
+            if c.is_displayed():
+                visible = True
+                break
+        except StaleElementReferenceException:
+            continue
+    if not visible:
+        return False, None
+
+    def _try_click(btn) -> bool:
+        try:
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                btn,
+            )
+            time.sleep(0.15)
+            try:
+                btn.click()
+            except Exception:
+                driver.execute_script(JS_CLICK, btn)
+            time.sleep(1.0)
+            return True
+        except StaleElementReferenceException:
+            return False
+
+    try:
+        btn = WebDriverWait(driver, 5).until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, indeedArbitrationAccept))
+        )
+        handles_before = set(driver.window_handles)
+        return_handle = driver.current_window_handle
+        if _try_click(btn):
+            tnc_url = captureNewTabUrlThenClose(
+                driver, handles_before, return_handle
+            )
+            return True, tnc_url
+    except TimeoutException:
+        pass
+
+    for xp in (
+        "//div[@data-test='indeed-arbitration-modal-cta']//button[@data-role-variant='primary']",
+        "//button[.//span[contains(normalize-space(.), 'Accept Terms and continue')]]",
+    ):
+        try:
+            btn = driver.find_element(By.XPATH, xp)
+            if not btn.is_displayed():
+                continue
+            handles_before = set(driver.window_handles)
+            return_handle = driver.current_window_handle
+            if _try_click(btn):
+                tnc_url = captureNewTabUrlThenClose(
+                    driver, handles_before, return_handle
+                )
+                return True, tnc_url
+        except NoSuchElementException:
+            continue
+        except StaleElementReferenceException:
+            continue
+    return False, None
+
+
+def closeJobAlertModalIfPresent(driver) -> bool:
+    for btn in driver.find_elements(By.CSS_SELECTOR, jobAlertModalClose):
+        try:
+            if not btn.is_displayed():
+                continue
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                btn,
+            )
+            time.sleep(0.1)
+            try:
+                btn.click()
+            except Exception:
+                driver.execute_script(JS_CLICK, btn)
+            time.sleep(0.35)
+            return True
+        except StaleElementReferenceException:
+            continue
+    return False
+
+
+def dismissUnifiedAuthModalIfPresent(driver) -> tuple[bool, str | None]:
+    """
+    Accept Indeed ToS / arbitration modal if shown, then close Glassdoor / Indeed
+    'Never Miss an Opportunity' modal if it blocks the page.
+    Returns (whether any action was taken, employer URL if Accept TNC opened a new tab).
+    """
+    took_action, tnc_url = acceptIndeedArbitrationModalIfPresent(driver)
+    if closeJobAlertModalIfPresent(driver):
+        took_action = True
     for btn in driver.find_elements(By.CSS_SELECTOR, authModalClose):
         try:
             if btn.is_displayed():
                 driver.execute_script(JS_CLICK, btn)
                 time.sleep(0.5)
-                return True
+                return True, tnc_url
         except StaleElementReferenceException:
             continue
-    return False
+    return took_action, tnc_url
+
+
+def drainBlockingGlassdoorModals(driver, max_rounds: int = 8) -> list[str]:
+    """Dismiss Indeed ToS / auth nag repeatedly; collect employer URLs from new tabs."""
+    collected: list[str] = []
+    for _ in range(max_rounds):
+        took, url = dismissUnifiedAuthModalIfPresent(driver)
+        if url:
+            collected.append(url)
+        if not took:
+            break
+        time.sleep(0.35)
+    return collected
+
+
+def resolveEmployerApplyUrl(primary: str | None, extra_http_urls: list[str]) -> str:
+    """Prefer apply-flow URL; else last http URL from TNC / drain (new-tab capture)."""
+    if primary and primary.startswith("http"):
+        return primary
+    if primary == easyApplyLabel:
+        return easyApplyLabel
+    for u in reversed(extra_http_urls):
+        if u.startswith("http"):
+            return u
+    if primary:
+        return primary
+    return applyOnEmployerSiteLabel
 
 
 def elementText(root, selector: str) -> str:
@@ -176,23 +516,129 @@ def absoluteUrl(driver, href: str | None) -> str | None:
     return urljoin(base, href)
 
 
-def originalApplyValue(driver) -> str | None:
-    """Per product choice: Easy Apply vs Apply on employer site (not a real URL)."""
+def originalApplyValue(driver) -> tuple[str | None, list[str]]:
+    """
+    Resolve external apply URL from Glassdoor apply flow when possible.
+    Returns (primary label or URL, extra http URLs from post-flow modal drain / TNC tabs).
+    """
+    primary: str | None = None
     try:
-        el = driver.find_element(By.CSS_SELECTOR, '[data-test="easyApply"]')
-        if el.is_displayed():
-            t = (el.text or "").strip().lower()
-            if "sign in" in t or "easy" in t:
-                return easyApplyLabel
-    except NoSuchElementException:
-        pass
-    try:
-        el = driver.find_element(By.CSS_SELECTOR, '[data-test="applyButton"]')
-        if el.is_displayed():
-            return applyOnEmployerSiteLabel
-    except NoSuchElementException:
-        pass
-    return None
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, '[data-test="easyApply"]')
+            if el.is_displayed():
+                t = (el.text or "").strip().lower()
+                if "sign in" in t or "easy" in t:
+                    primary = easyApplyLabel
+        except NoSuchElementException:
+            pass
+
+        def _uncheckPreApplyBoxes() -> None:
+            try:
+                checked_boxes = driver.find_elements(
+                    By.CSS_SELECTOR,
+                    'dialog[open] input[type="checkbox"]:checked',
+                )
+            except Exception:
+                checked_boxes = []
+            for box in checked_boxes:
+                try:
+                    driver.execute_script(
+                        """
+                        arguments[0].checked = false;
+                        arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
+                        arguments[0].dispatchEvent(new Event('change', {bubbles:true}));
+                        """,
+                        box,
+                    )
+                except Exception:
+                    continue
+
+        def _extractUrlFromStartButton(btn) -> str | None:
+            for attr in ("href", "data-href", "data-url", "formaction"):
+                value = (btn.get_attribute(attr) or "").strip()
+                if value.startswith("http"):
+                    return value
+            return None
+
+        if primary != easyApplyLabel:
+            try:
+                el = driver.find_element(By.CSS_SELECTOR, '[data-test="applyButton"]')
+                if el.is_displayed():
+                    beforeUrl = driver.current_url
+                    beforeHandles = set(driver.window_handles)
+                    driver.execute_script(JS_CLICK, el)
+                    time.sleep(0.5)
+
+                    startBtn = None
+                    try:
+                        startBtn = WebDriverWait(driver, 6).until(
+                            EC.presence_of_element_located(
+                                (By.CSS_SELECTOR, '[data-test="start-application-button"]')
+                            )
+                        )
+                    except TimeoutException:
+                        startBtn = None
+
+                    got_url = False
+                    if startBtn is not None:
+                        _uncheckPreApplyBoxes()
+
+                        directUrl = _extractUrlFromStartButton(startBtn)
+                        if directUrl:
+                            primary = directUrl
+                            got_url = True
+                        else:
+                            driver.execute_script(JS_CLICK, startBtn)
+                            time.sleep(1.5)
+
+                            afterHandles = set(driver.window_handles)
+                            newHandles = list(afterHandles - beforeHandles)
+                            if newHandles:
+                                newHandle = newHandles[0]
+                                driver.switch_to.window(newHandle)
+                                externalUrl = waitNewTabUrlFullyLoaded(
+                                    driver, float(detailWaitSec) * 2.5
+                                )
+                                externalUrl = resolveRobotChallengeUrl(
+                                    driver,
+                                    externalUrl,
+                                    beforeUrl,
+                                    float(detailWaitSec) * 2.5,
+                                )
+                                try:
+                                    driver.close()
+                                except Exception:
+                                    pass
+                                remaining = list(beforeHandles)
+                                if remaining:
+                                    driver.switch_to.window(remaining[0])
+                                time.sleep(0.5)
+                                if externalUrl:
+                                    primary = externalUrl
+                                    got_url = True
+
+                            if not got_url:
+                                redirectedUrl = (driver.current_url or "").strip()
+                                if (
+                                    redirectedUrl
+                                    and redirectedUrl != beforeUrl
+                                    and redirectedUrl.startswith("http")
+                                ):
+                                    try:
+                                        driver.back()
+                                        time.sleep(0.4)
+                                    except Exception:
+                                        pass
+                                    primary = redirectedUrl
+                                    got_url = True
+
+                    if not got_url:
+                        primary = applyOnEmployerSiteLabel
+            except NoSuchElementException:
+                pass
+    finally:
+        post_urls = drainBlockingGlassdoorModals(driver, max_rounds=8)
+    return primary, post_urls
 
 
 def clickShowMoreIfPresent(driver) -> None:
@@ -270,7 +716,6 @@ def cardFields(li) -> dict[str, str | None]:
 
 
 def cardShowsGlassdoorEasyApply(li) -> bool:
-    # Prefer structural badge check; fallback to card text match.
     try:
         if li.find_elements(By.CSS_SELECTOR, '[class*="easyApplyTag"]'):
             return True
@@ -294,6 +739,7 @@ def buildJobRecord(
 
     return {
         "jobId": f"gdj_{card['glassdoorJobId']}",
+        "title": (card.get("title") or "").strip(),
         "jobUrl": jobUrl or "",
         "visaOrMatchNote": None,
         "location": card.get("location") or None,
@@ -447,6 +893,87 @@ def expandGlassdoorJobList(driver) -> int:
     return clicks
 
 
+def scrollGlassdoorJobsList(
+    driver, *, fraction: float | None = None, delta_px: int | None = None
+) -> bool:
+    """Scroll the left jobs list so virtualized rows can mount. fraction in [0,1] or nudge by delta_px."""
+    for sel in (
+        jobsListUl,
+        '[class*="JobsList_jobsList"]',
+        '[class*="JobsList_wrapper"]',
+    ):
+        try:
+            el = driver.find_element(By.CSS_SELECTOR, sel)
+            if fraction is not None:
+                f = min(1.0, max(0.0, float(fraction)))
+                driver.execute_script(
+                    """
+                    var el = arguments[0], f = arguments[1];
+                    var max = Math.max(0, el.scrollHeight - el.clientHeight);
+                    el.scrollTop = Math.floor(max * f);
+                    """,
+                    el,
+                    f,
+                )
+            elif delta_px is not None:
+                driver.execute_script(
+                    """
+                    var el = arguments[0], d = arguments[1];
+                    var max = Math.max(0, el.scrollHeight - el.clientHeight);
+                    el.scrollTop = Math.min(max, el.scrollTop + d);
+                    """,
+                    el,
+                    int(delta_px),
+                )
+            else:
+                return False
+            return True
+        except NoSuchElementException:
+            continue
+    return False
+
+
+def findJobListingIndexAndLi(driver, glassdoor_data_jobid: str) -> tuple[int, object] | None:
+    """
+    Re-locate a list row after DOM reflows. The jobs list is often virtualized: only a
+    window of rows exists until the panel is scrolled, so we scan then sweep scroll.
+    """
+    raw = (glassdoor_data_jobid or "").strip()
+    if not raw:
+        return None
+
+    def _scan() -> tuple[int, object] | None:
+        items = driver.find_elements(By.CSS_SELECTOR, jobListItem)
+        for j, li in enumerate(items):
+            if (li.get_attribute("data-jobid") or "").strip() == raw:
+                return (j, li)
+        return None
+
+    found = _scan()
+    if found is not None:
+        return found
+
+    fractions = [step / 20 for step in range(21)]
+    for frac in fractions:
+        if not scrollGlassdoorJobsList(driver, fraction=frac):
+            break
+        time.sleep(0.3)
+        found = _scan()
+        if found is not None:
+            return found
+
+    if scrollGlassdoorJobsList(driver, fraction=0.0):
+        for _ in range(40):
+            if not scrollGlassdoorJobsList(driver, delta_px=280):
+                break
+            time.sleep(0.22)
+            found = _scan()
+            if found is not None:
+                return found
+
+    return None
+
+
 def scrapeGlassdoorSearch(
     driver,
     existingJobIds: set[str] | None = None,
@@ -482,26 +1009,41 @@ def scrapeGlassdoorSearch(
 
     out: list[dict] = []
     n = len(items)
+    snapshot: list[tuple[str, str]] = []
+    for li in items:
+        gid = (li.get_attribute("data-jobid") or "").strip()
+        if not gid:
+            continue
+        jid = glassdoorJobIdToJobId(gid)
+        if not jid:
+            continue
+        snapshot.append((gid, jid))
+
+    n_snap = len(snapshot)
     print(
-        f"Found {n} list items; skipping jobIds already in output, opening detail for the rest…",
+        f"Found {n} list items ({n_snap} with job id); skipping jobIds already in output, opening detail for the rest…",
         file=sys.stderr,
     )
 
-    for idx in range(n):
+    for pos, (gid_raw, job_id) in enumerate(snapshot):
         try:
             dismissUnifiedAuthModalIfPresent(driver)
-            items = driver.find_elements(By.CSS_SELECTOR, jobListItem)
-            if idx >= len(items):
-                break
-            li = items[idx]
+            located = findJobListingIndexAndLi(driver, gid_raw)
+            if located is None:
+                print(
+                    f"[{pos + 1}/{n_snap}] skip (row not in DOM): {job_id}",
+                    file=sys.stderr,
+                )
+                continue
+
+            list_index, li = located
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", li)
             time.sleep(0.2)
             card = cardFields(li)
             if not card.get("glassdoorJobId"):
-                print(f"[{idx + 1}] skip: no data-jobid", file=sys.stderr)
+                print(f"[{pos + 1}] skip: no data-jobid", file=sys.stderr)
                 continue
 
-            job_id = glassdoorJobIdToJobId(card.get("glassdoorJobId"))
             if job_id and job_id in seen:
                 where = (
                     "on disk"
@@ -509,7 +1051,7 @@ def scrapeGlassdoorSearch(
                     else "earlier in this list"
                 )
                 print(
-                    f"[{idx + 1}/{n}] skip ({where}): {card.get('companyName') or '?'} — {job_id}",
+                    f"[{pos + 1}/{n_snap}] skip ({where}): {card.get('companyName') or '?'} — {job_id}",
                     file=sys.stderr,
                 )
                 continue
@@ -527,18 +1069,17 @@ def scrapeGlassdoorSearch(
                 if job_id:
                     seen.add(job_id)
                 print(
-                    f"[{idx + 1}/{n}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
+                    f"[{pos + 1}/{n_snap}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
                     file=sys.stderr,
                 )
                 continue
 
-            clickJobCard(driver, idx)
+            clickJobCard(driver, list_index)
             time.sleep(0.9)
 
             description, companyHdr = scrapeDetailPane(driver)
-            applyLabel = originalApplyValue(driver)
-            if not applyLabel:
-                applyLabel = applyOnEmployerSiteLabel
+            apply_primary, post_urls = originalApplyValue(driver)
+            applyLabel = resolveEmployerApplyUrl(apply_primary, post_urls)
 
             jobUrl = absoluteUrl(driver, card.get("titleHref"))
             rec = buildJobRecord(
@@ -557,11 +1098,11 @@ def scrapeGlassdoorSearch(
                 out.append(rec)
             seen.add(job_id)
             print(
-                f"[{idx + 1}/{n}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
+                f"[{pos + 1}/{n_snap}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
                 file=sys.stderr,
             )
         except Exception as exc:
-            print(f"[{idx + 1}] error: {exc}", file=sys.stderr)
+            print(f"[{pos + 1}] error: {exc}", file=sys.stderr)
             continue
 
     return out
@@ -593,6 +1134,7 @@ def main() -> None:
     except ValueError as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from exc
+
     try:
         driver.set_page_load_timeout(120)
         driver.get(searchUrl)
@@ -604,7 +1146,6 @@ def main() -> None:
             f"Merged into {outputPath.resolve()}: +{added} new, {skipped} skipped duplicates.",
             file=sys.stderr,
         )
-        promptBeforeClosingBrowserIfHeaded()
     finally:
         driver.quit()
 
