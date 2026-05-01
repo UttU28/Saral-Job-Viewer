@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import base64
+import binascii
+import gzip
 import json
 import os
+import zlib
 import sys
 import time
 from pathlib import Path
@@ -98,6 +101,61 @@ def buildDefaultZipRecruiterUrl() -> str:
     return f"{baseUrl}?{urlencode(params)}"
 
 
+def _b64DecodeMatchTokenSegment(segment: str) -> bytes | None:
+    pad = "=" * (-len(segment) % 4)
+    blob = segment + pad
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        try:
+            return decoder(blob)
+        except binascii.Error:
+            continue
+    return None
+
+
+def _jsonDictFromBytes(blob: bytes) -> dict | None:
+    if not blob:
+        return None
+    for encoding in ("utf-8", "utf-8-sig"):
+        try:
+            parsed = json.loads(blob.decode(encoding))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        return parsed if isinstance(parsed, dict) else None
+    if len(blob) >= 2 and blob[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        enc = "utf-16-le" if blob[:2] == b"\xff\xfe" else "utf-16-be"
+        try:
+            parsed = json.loads(blob.decode(enc))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _externalUrlFromTokenDict(payload: dict) -> str | None:
+    return payload.get("ExternalApplyUrl") or payload.get("SeoJobPageUrl")
+
+
+def _parseMatchTokenPayload(blob: bytes) -> str | None:
+    d = _jsonDictFromBytes(blob)
+    if d is not None:
+        return _externalUrlFromTokenDict(d)
+    if blob.startswith(b"\x1f\x8b"):
+        try:
+            d = _jsonDictFromBytes(gzip.decompress(blob))
+        except (OSError, EOFError):
+            d = None
+        if d is not None:
+            return _externalUrlFromTokenDict(d)
+    for wbits in (zlib.MAX_WBITS | 16, zlib.MAX_WBITS, -zlib.MAX_WBITS):
+        try:
+            d = _jsonDictFromBytes(zlib.decompress(blob, wbits))
+        except zlib.error:
+            continue
+        if d is not None:
+            return _externalUrlFromTokenDict(d)
+    return None
+
+
 def extractTargetUrlFromMatchToken(url: str) -> str | None:
     parsedUrl = urlparse(url)
     queryParams = parse_qs(parsedUrl.query)
@@ -106,10 +164,24 @@ def extractTargetUrlFromMatchToken(url: str) -> str | None:
         return None
 
     decodedToken = unquote(rawToken)
-    padding = "=" * (-len(decodedToken) % 4)
-    tokenBytes = base64.b64decode(decodedToken + padding)
-    tokenPayload = json.loads(tokenBytes.decode("utf-8"))
-    return tokenPayload.get("ExternalApplyUrl") or tokenPayload.get("SeoJobPageUrl")
+    tokenBytes = _b64DecodeMatchTokenSegment(decodedToken)
+    if tokenBytes is None:
+        return None
+
+    resolved = _parseMatchTokenPayload(tokenBytes)
+    if resolved:
+        return resolved
+
+    try:
+        inner = tokenBytes.decode("ascii").strip()
+    except UnicodeDecodeError:
+        inner = ""
+    if inner:
+        innerBytes = _b64DecodeMatchTokenSegment(inner)
+        if innerBytes is not None:
+            return _parseMatchTokenPayload(innerBytes)
+
+    return None
 
 
 def resolveOriginalApplyUrl(originalValue: str | None) -> str | None:

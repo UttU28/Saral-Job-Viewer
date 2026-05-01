@@ -14,6 +14,7 @@ from utils.dataManager import (
     loadJobsWithEmptyApplyStatus,
     updateApplyStatusByJobId,
 )
+from utils.urlCleaner import normalizeCompanyName
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -236,6 +237,7 @@ def extractPostedOnDate(job: dict) -> str:
 def buildCheckPayload(job: dict) -> dict:
     jobDescription = buildJobDescription(job)
     originalOrSourceUrl = job.get("originalJobPostUrl") or job.get("jobUrl") or ""
+    normalizedCompanyName = normalizeCompanyName(job.get("companyName") or "")
     inferBlob = " ".join(
         part for part in ((job.get("title") or "").strip(), jobDescription) if part
     )
@@ -244,7 +246,7 @@ def buildCheckPayload(job: dict) -> dict:
         "title": str(job.get("title") or ""),
         "requirement_key": f"JR-{job.get('jobId', 'unknown')}",
         "url": str(originalOrSourceUrl),
-        "company_name": str(job.get("companyName") or ""),
+        "company_name": normalizedCompanyName,
         "location_work_type": buildLocationWorkType(job),
         "cloud_specialization": inferCloudSpecialization(inferBlob),
         "seniority": mapSenioritySelect(job.get("seniority")),

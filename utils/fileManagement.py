@@ -13,6 +13,7 @@ from .dataManager import (
     recordPastData,
     upsertJobs,
 )
+from .urlCleaner import cleanUrl, normalizeCompanyName
 
 # Project root = parent of utils/ folder.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -242,6 +243,9 @@ def normalizeJobRecord(job: dict) -> dict:
                 value = job.get(sourceKey)
                 break
         normalized[key] = _strOrBlank(value)
+    normalized["companyName"] = normalizeCompanyName(normalized.get("companyName"))
+    normalized["jobUrl"] = cleanUrl(normalized.get("jobUrl"))
+    normalized["originalJobPostUrl"] = cleanUrl(normalized.get("originalJobPostUrl"))
 
     for key in OPTIONAL_JOB_FIELDS:
         if key in job:
@@ -303,7 +307,11 @@ def _isCompleteForDb(job: dict) -> bool:
         "jobDescription",
         "originalJobPostUrl",
     )
-    return all(_strOrBlank(job.get(key)) for key in required)
+    if not all(_strOrBlank(job.get(key)) for key in required):
+        return False
+    return bool(cleanUrl(job.get("jobUrl"))) and bool(
+        cleanUrl(job.get("originalJobPostUrl"))
+    )
 
 
 def _missingCompleteFields(job: dict) -> list[str]:
@@ -318,6 +326,12 @@ def _missingCompleteFields(job: dict) -> list[str]:
     for key in required:
         if not _strOrBlank(job.get(key)):
             missing.append(key)
+    if "jobUrl" not in missing and not bool(cleanUrl(job.get("jobUrl"))):
+        missing.append("jobUrl(invalid_url)")
+    if "originalJobPostUrl" not in missing and not bool(
+        cleanUrl(job.get("originalJobPostUrl"))
+    ):
+        missing.append("originalJobPostUrl(invalid_url)")
     return missing
 
 
@@ -385,6 +399,11 @@ def mergeJobListsById(
             continue
         normalized["platform"] = normalized.get("platform") or platform
         normalized["timestamp"] = normalized.get("timestamp") or _utcNowIso()
+        if not bool(cleanUrl(normalized.get("jobUrl"))) or not bool(
+            cleanUrl(normalized.get("originalJobPostUrl"))
+        ):
+            skipped += 1
+            continue
         if shouldSkipJob(normalized):
             filteredSkipRows.append(normalized)
             skipped += 1
@@ -433,6 +452,11 @@ def mergeNewJobsIntoDocument(
             continue
         row["platform"] = row.get("platform") or platform
         row["timestamp"] = row.get("timestamp") or _utcNowIso()
+        if not bool(cleanUrl(row.get("jobUrl"))) or not bool(
+            cleanUrl(row.get("originalJobPostUrl"))
+        ):
+            skipped += 1
+            continue
         if shouldSkipJob(row):
             addJobIdToSkipBucket(data, row, idKey=id_key, skipKey=ORIGINAL_URL_SKIP_KEY)
             filteredSkipRows.append(row)
@@ -466,6 +490,10 @@ def saveOutputDocument(path: Path, data: dict) -> None:
                 normalized["platform"] = sourcePlatform
             if not normalized.get("timestamp"):
                 normalized["timestamp"] = scrapeTimestamp
+            if not bool(cleanUrl(normalized.get("jobUrl"))) or not bool(
+                cleanUrl(normalized.get("originalJobPostUrl"))
+            ):
+                continue
             if shouldSkipJob(normalized):
                 addJobIdToSkipBucket(
                     data, normalized, idKey="jobId", skipKey=ORIGINAL_URL_SKIP_KEY
