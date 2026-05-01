@@ -950,6 +950,11 @@ def main() -> None:
         raise SystemExit(1) from exc
 
     existing_jobs, _ = loadExistingJobsAndMeta(out_path)
+    knownJobIdsBeforeRun: set[str] = {
+        str(j.get("jobId") or "").strip()
+        for j in existing_jobs
+        if isinstance(j, dict) and str(j.get("jobId") or "").strip()
+    }
     if existing_jobs:
         print(
             f"{len(existing_jobs)} jobId(s) already in {out_path.name}; "
@@ -988,6 +993,14 @@ def main() -> None:
         for index, job in enumerate(jobs):
             if not isinstance(job, dict):
                 print(f"[{index + 1}/{total}] skip: not an object", file=sys.stderr)
+                continue
+
+            currentJobId = str(job.get("jobId") or "").strip()
+            if currentJobId and currentJobId in knownJobIdsBeforeRun:
+                print(
+                    f"[{index + 1}/{total}] skip: already in DB/source",
+                    file=sys.stderr,
+                )
                 continue
 
             jobUrl = job.get("jobUrl")

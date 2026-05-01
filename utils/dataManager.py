@@ -86,12 +86,23 @@ def createTables(*, recreate: bool = False) -> Path:
     return dbPath
 
 
+def _applyStatusSqlParam(row: dict) -> str | None:
+    """Unset / blank -> SQL NULL; classifier or manual statuses stay as non-empty strings."""
+    if "applyStatus" not in row:
+        return None
+    raw = row.get("applyStatus")
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
+
+
 def upsertJobs(rows: list[dict]) -> int:
     if not rows:
         return 0
 
     dbPath = createTables(recreate=False)
-    values: list[tuple[str, ...]] = []
+    values: list[tuple] = []
     for row in rows:
         if not isinstance(row, dict):
             continue
@@ -109,7 +120,7 @@ def upsertJobs(rows: list[dict]) -> int:
                 str(row.get("companyName") or ""),
                 str(row.get("jobDescription") or ""),
                 str(row.get("timestamp") or _utcNowIso()),
-                str(row.get("applyStatus") or ""),
+                _applyStatusSqlParam(row),
                 str(row.get("platform") or "Unknown"),
             )
         )
@@ -134,7 +145,7 @@ def upsertJobs(rows: list[dict]) -> int:
                 companyName = excluded.companyName,
                 jobDescription = excluded.jobDescription,
                 timestamp = excluded.timestamp,
-                applyStatus = excluded.applyStatus,
+                applyStatus = COALESCE(excluded.applyStatus, jobData.applyStatus),
                 platform = excluded.platform
             """,
             values,
@@ -159,6 +170,86 @@ def loadJobsByPlatform(platform: str) -> list[dict]:
             (platform,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def loadAllJobs() -> list[dict]:
+    """All rows in jobData, FIFO by timestamp (oldest first), then jobId."""
+    dbPath = createTables(recreate=False)
+    with sqlite3.connect(dbPath) as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        rows = cursor.execute(
+            """
+            SELECT
+                jobId, title, jobUrl, location, employmentType, workModel, seniority, experience,
+                originalJobPostUrl, companyName, jobDescription, timestamp, applyStatus, platform
+            FROM jobData
+            ORDER BY
+                CASE WHEN timestamp IS NULL OR TRIM(COALESCE(timestamp, '')) = '' THEN 1 ELSE 0 END,
+                timestamp ASC,
+                jobId
+            """
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def sortJobsFifoByTimestamp(jobs: list[dict]) -> list[dict]:
+    """Oldest timestamp first; jobs with no timestamp last; tie-break jobId."""
+
+    def sort_key(row: dict) -> tuple[int, str, str]:
+        ts = str(row.get("timestamp") or "").strip()
+        return (1 if not ts else 0, ts, str(row.get("jobId") or ""))
+
+    return sorted(jobs, key=sort_key)
+
+
+def loadJobsWithEmptyApplyStatus(platform: str | None = None) -> list[dict]:
+    """
+    Jobs where applyStatus is NULL only (not yet classified / not set).
+    Rows with APPLY, EXISTING, DO_NOT_APPLY, legacy '', etc. are skipped.
+    If platform is set, restrict to that platform.
+    Ordered FIFO: oldest timestamp first; rows with no timestamp sort last, then jobId.
+    """
+    dbPath = createTables(recreate=False)
+    sql = """
+        SELECT
+            jobId, title, jobUrl, location, employmentType, workModel, seniority, experience,
+            originalJobPostUrl, companyName, jobDescription, timestamp, applyStatus, platform
+        FROM jobData
+        WHERE applyStatus IS NULL
+    """
+    params: tuple[str, ...] = ()
+    if platform:
+        sql += " AND platform = ?"
+        params = (platform,)
+    sql += """
+        ORDER BY
+            CASE WHEN timestamp IS NULL OR TRIM(COALESCE(timestamp, '')) = '' THEN 1 ELSE 0 END,
+            timestamp ASC,
+            jobId
+    """
+    with sqlite3.connect(dbPath) as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        rows = cursor.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def updateApplyStatusByJobId(job_id: str, apply_status: str) -> bool:
+    """Set applyStatus for one row. Returns True if a row was updated."""
+    jid = str(job_id or "").strip()
+    status = str(apply_status or "").strip()
+    if not jid:
+        return False
+    dbPath = createTables(recreate=False)
+    with sqlite3.connect(dbPath) as connection:
+        cursor = connection.cursor()
+        cursor.execute(
+            "UPDATE jobData SET applyStatus = ? WHERE jobId = ?",
+            (status, jid),
+        )
+        connection.commit()
+        return cursor.rowcount > 0
 
 
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:

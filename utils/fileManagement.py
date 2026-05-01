@@ -177,6 +177,14 @@ def _strOrBlank(value: object) -> str:
     return str(value).strip()
 
 
+MIN_JOB_TITLE_LENGTH = 5
+
+
+def isAcceptableJobTitle(title: object) -> bool:
+    """Titles must be non-empty after strip and at least MIN_JOB_TITLE_LENGTH characters."""
+    return len(_strOrBlank(title)) >= MIN_JOB_TITLE_LENGTH
+
+
 def normalizeQualificationTags(value: object) -> str:
     if value is None:
         return ""
@@ -237,7 +245,12 @@ def normalizeJobRecord(job: dict) -> dict:
 
     for key in OPTIONAL_JOB_FIELDS:
         if key in job:
-            normalized[key] = _strOrBlank(job.get(key))
+            if key == "applyStatus":
+                st = _strOrBlank(job.get(key))
+                if st:
+                    normalized[key] = st
+            else:
+                normalized[key] = _strOrBlank(job.get(key))
     if not _strOrBlank(normalized.get("timestamp")):
         estimated = _estimateTimestampFromPostedAgo(
             _strOrBlank(normalized.get("postedAgo"))
@@ -376,6 +389,9 @@ def mergeJobListsById(
             filteredSkipRows.append(normalized)
             skipped += 1
             continue
+        if not isAcceptableJobTitle(normalized.get("title")):
+            skipped += 1
+            continue
         if jid in seen:
             skipped += 1
             continue
@@ -420,6 +436,9 @@ def mergeNewJobsIntoDocument(
         if shouldSkipJob(row):
             addJobIdToSkipBucket(data, row, idKey=id_key, skipKey=ORIGINAL_URL_SKIP_KEY)
             filteredSkipRows.append(row)
+            skipped += 1
+            continue
+        if not isAcceptableJobTitle(row.get("title")):
             skipped += 1
             continue
         jobs.append(row)
@@ -478,7 +497,9 @@ def saveOutputDocument(path: Path, data: dict) -> None:
         completeRows = [
             j
             for j in data.get("jobs", [])
-            if isinstance(j, dict) and _isCompleteForDb(j)
+            if isinstance(j, dict)
+            and _isCompleteForDb(j)
+            and isAcceptableJobTitle(j.get("title"))
         ]
         incompleteRows = [
             j

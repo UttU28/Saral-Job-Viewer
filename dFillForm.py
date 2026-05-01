@@ -1,16 +1,22 @@
+import json
 import os
 import re
+import time
+import traceback
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 import requests
 from dotenv import load_dotenv
 
-from utils.fileManagement import loadJobsDocumentOrEmpty, resolveOutputJsonPath
+from utils.dataManager import (
+    loadAllJobs,
+    loadJobsWithEmptyApplyStatus,
+    updateApplyStatusByJobId,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-JOBRIGHT_SOURCE_PATH = resolveOutputJsonPath("jobright.source")
 
 
 def loadEnvironment() -> None:
@@ -19,17 +25,78 @@ def loadEnvironment() -> None:
 
 
 def loadJobAtIndex(jobIndex: int = 0) -> dict:
-    path = JOBRIGHT_SOURCE_PATH
-    data = loadJobsDocumentOrEmpty(path)
-    jobs = data.get("jobs")
-    if not isinstance(jobs, list) or not jobs:
-        raise ValueError("No jobs found in DB-backed source.")
+    jobs = loadAllJobs()
+    if not jobs:
+        raise ValueError("No jobs found in database (jobData).")
     if jobIndex < 0 or jobIndex >= len(jobs):
         raise ValueError(f"job index out of range: {jobIndex} (jobs: {len(jobs)})")
     job = jobs[jobIndex]
     if not isinstance(job, dict):
         raise ValueError(f"Job at index {jobIndex} must be an object")
     return job
+
+
+def classifierApplyStatusFromResponse(parsed: dict) -> str:
+    """Prefer classifier_decision; fall back to decision."""
+    for key in ("classifier_decision", "decision"):
+        raw = parsed.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return ""
+
+
+def normalizeClassifierDecisionForDb(raw: str) -> str:
+    """Canonical labels in DB (apply -> APPLY; hold / do_not_apply -> DO_NOT_APPLY)."""
+    s = (raw or "").strip()
+    if not s:
+        return ""
+    key = s.lower().replace(" ", "_").replace("-", "_")
+    if key == "apply":
+        return "APPLY"
+    if key in ("do_not_apply", "donotapply", "hold"):
+        return "DO_NOT_APPLY"
+    return s.upper().replace(" ", "_")
+
+
+def _flattenDrfErrors(errs: object) -> list[str]:
+    if not isinstance(errs, dict):
+        return []
+    out: list[str] = []
+    for v in errs.values():
+        if isinstance(v, list):
+            for item in v:
+                if item is not None:
+                    t = str(item).strip()
+                    if t:
+                        out.append(t)
+        else:
+            if v is not None:
+                t = str(v).strip()
+                if t:
+                    out.append(t)
+    return out
+
+
+def errorsIndicateMaasExistingOrDuplicate(errs: object) -> bool:
+    """MAAS /check/ validation: job or suggestion already exists."""
+    needles = (
+        "already exists in maas",
+        "job already exists for this company and title",
+        "duplicate suggestion detected",
+        "this job url was already suggested",
+        "this job url already exists",
+    )
+    for msg in _flattenDrfErrors(errs):
+        low = msg.lower()
+        if any(n in low for n in needles):
+            return True
+    return False
+
+
+APPLY_STATUS_EXISTING = "EXISTING"
 
 
 def inferCloudSpecialization(blobText: str) -> str:
@@ -240,7 +307,11 @@ def findCheckEndpoint(baseUrl: str, suggestUrl: str, html: str) -> str:
     return urljoin(suggestUrl.rstrip("/") + "/", "check/")
 
 
-def loginAndCheck() -> None:
+def authenticateMidhtechSession() -> tuple[requests.Session, str, str, str, str]:
+    """
+    Log in and open the suggest page. Returns
+    (session, base_url, suggest_url, check_url, csrf_token).
+    """
     loadEnvironment()
 
     baseUrl = os.getenv("MIDHTECH_BASE_URL", "https://midhtech.in/")
@@ -301,68 +372,241 @@ def loginAndCheck() -> None:
         raise ValueError("Could not find CSRF token on suggest page.")
 
     checkUrl = findCheckEndpoint(baseUrl, suggestUrl, suggestGet.text)
+    return session, baseUrl, suggestUrl, checkUrl, csrfToken
 
-    job = loadJobAtIndex(0)
+
+def postJobCheck(
+    session: requests.Session,
+    checkUrl: str,
+    suggestUrl: str,
+    csrfToken: str,
+    job: dict,
+) -> tuple[requests.Response, object]:
     checkPayload = buildCheckPayload(job)
     checkPayload["csrfmiddlewaretoken"] = csrfToken
-
     checkHeaders = {
         "Referer": suggestUrl,
         "X-CSRFToken": csrfToken,
         "X-Requested-With": "XMLHttpRequest",
         "Accept": "application/json, text/plain, */*",
     }
-
-    print("Check request:")
-    print(
-        json.dumps(
-            {
-                "endpoint": checkUrl,
-                "title": checkPayload.get("title", ""),
-                "company_name": checkPayload.get("company_name", ""),
-                "url": checkPayload.get("url", ""),
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
-    )
-
     checkResp = session.post(
         checkUrl,
         data=checkPayload,
         headers=checkHeaders,
         timeout=30,
     )
-
+    parsed: object = None
     try:
         parsed = checkResp.json()
-        ok = bool(parsed.get("ok")) if isinstance(parsed, dict) else None
-        statusLabel = "success" if ok else "error"
-        print("Check response:")
-        summary = {
-            "http_status": checkResp.status_code,
-            "status": statusLabel,
-            "ok": parsed.get("ok") if isinstance(parsed, dict) else None,
-            "errors": parsed.get("errors", {}) if isinstance(parsed, dict) else {},
-        }
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
-        if isinstance(parsed, dict) and parsed:
-            print("Check response full_json:")
-            print(json.dumps(parsed, indent=2, ensure_ascii=False))
     except Exception:
-        print("Check response:")
-        print(
-            json.dumps(
-                {
-                    "http_status": checkResp.status_code,
-                    "status": "raw",
-                    "body": (checkResp.text.strip() or "<empty>"),
-                },
-                indent=2,
-                ensure_ascii=False,
-            )
+        parsed = None
+    return checkResp, parsed
+
+
+def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
+    try:
+        if isinstance(parsed, dict):
+            ok = bool(parsed.get("ok"))
+            statusLabel = "success" if ok else "error"
+            print("Check response:")
+            summary: dict[str, object] = {
+                "http_status": checkResp.status_code,
+                "status": statusLabel,
+                "ok": parsed.get("ok"),
+            }
+            summary["decision"] = parsed.get("decision", "")
+            summary["classifier_decision"] = parsed.get("classifier_decision", "")
+            summary["intake_route"] = parsed.get("intake_route", "")
+            summary["cloud_specialization"] = parsed.get("cloud_specialization", "")
+            summary["seniority"] = parsed.get("seniority", "")
+            summary["block_codes"] = parsed.get("block_codes", []) or []
+            summary["red_flags"] = parsed.get("red_flags", []) or []
+            summary["next_steps"] = parsed.get("next_steps", []) or []
+
+            readiness = parsed.get("readiness_summary")
+            if isinstance(readiness, dict):
+                summary["readiness"] = {
+                    "percent": readiness.get("percent"),
+                    "passed": readiness.get("passed"),
+                    "total": readiness.get("total"),
+                    "blocking_ok": readiness.get("blocking_ok"),
+                    "matched_roles": readiness.get("matched_roles", []) or [],
+                }
+            else:
+                summary["readiness"] = {}
+            summary["errors"] = parsed.get("errors", {}) or {}
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            return
+    except Exception:
+        pass
+    print("Check response:")
+    print(
+        json.dumps(
+            {
+                "http_status": checkResp.status_code,
+                "status": "raw",
+                "body": (checkResp.text.strip() or "<empty>"),
+            },
+            indent=2,
+            ensure_ascii=False,
         )
+    )
+
+
+def maybePersistClassifierApplyStatus(
+    job: dict, parsed: dict, *, quiet: bool = False
+) -> bool:
+    """
+    If the check JSON is OK and we have a classifier decision string, write applyStatus in SQLite.
+    Decisions are normalized (e.g. apply -> APPLY).
+    """
+    if not isinstance(parsed, dict) or not bool(parsed.get("ok")):
+        return False
+    raw = classifierApplyStatusFromResponse(parsed)
+    apply_status = normalizeClassifierDecisionForDb(raw)
+    if not apply_status:
+        return False
+    job_id = str(job.get("jobId") or "").strip()
+    if not job_id:
+        return False
+    if updateApplyStatusByJobId(job_id, apply_status):
+        if quiet:
+            print(f"  {apply_status}")
+        else:
+            print(f"Updated applyStatus for jobId={job_id!r} -> {apply_status!r}")
+        return True
+    if not quiet:
+        print(f"No DB row updated for jobId={job_id!r} (missing job?)")
+    return False
+
+
+def maybePersistExistingFromMaasErrors(job: dict, parsed: dict, *, quiet: bool = False) -> bool:
+    """When /check/ returns duplicate/existing MAAS errors, set applyStatus to EXISTING."""
+    if not isinstance(parsed, dict) or bool(parsed.get("ok")):
+        return False
+    errs = parsed.get("errors")
+    if not errorsIndicateMaasExistingOrDuplicate(errs):
+        return False
+    job_id = str(job.get("jobId") or "").strip()
+    if not job_id:
+        return False
+    if updateApplyStatusByJobId(job_id, APPLY_STATUS_EXISTING):
+        if quiet:
+            print(f"  {APPLY_STATUS_EXISTING}")
+        else:
+            print(
+                f"Updated applyStatus for jobId={job_id!r} -> {APPLY_STATUS_EXISTING!r} "
+                "(MAAS duplicate / already exists)"
+            )
+        return True
+    if not quiet:
+        print(f"No DB row updated for jobId={job_id!r} (missing job?)")
+    return False
+
+
+def loginAndCheck(job_index: int = 0) -> None:
+    """Log in, POST one job (FIFO index in jobData), print summary, persist applyStatus if ok."""
+    session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
+
+    job = loadJobAtIndex(job_index)
+    print("Check request:")
+    preview = buildCheckPayload(job)
+    print(
+        json.dumps(
+            {
+                "endpoint": checkUrl,
+                "jobId": job.get("jobId"),
+                "platform": job.get("platform"),
+                "title": preview.get("title", ""),
+                "company_name": preview.get("company_name", ""),
+                "url": preview.get("url", ""),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+
+    checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
+    printCheckSummary(checkResp, parsed)
+    if isinstance(parsed, dict):
+        maybePersistClassifierApplyStatus(job, parsed, quiet=False)
+        maybePersistExistingFromMaasErrors(job, parsed, quiet=False)
+
+
+def syncEmptyApplyStatuses() -> None:
+    """
+    FIFO (oldest timestamp first): every job in jobData with applyStatus IS NULL,
+    all platforms. Optional delay between requests: MIDHTECH_SYNC_DELAY_SEC in .env.
+    """
+    delay_sec = _parse_delay(os.getenv("MIDHTECH_SYNC_DELAY_SEC"))
+    pending = loadJobsWithEmptyApplyStatus(None)
+    if not pending:
+        print("No jobs with applyStatus NULL (nothing pending).")
+        return
+
+    session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
+    print(f"Syncing applyStatus for {len(pending)} job(s) with NULL applyStatus (FIFO, all platforms)…")
+
+    written = 0
+    for i, job in enumerate(pending):
+        jid = str(job.get("jobId") or "")
+        plat = str(job.get("platform") or "")
+        print(f"[{i + 1}/{len(pending)}] {plat} {jid}")
+        try:
+            checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
+            if not isinstance(parsed, dict):
+                print(f"  error: non-JSON HTTP {checkResp.status_code}")
+                body = (checkResp.text or "").strip()
+                if body:
+                    print(f"  response body:\n{body}")
+                continue
+            if not bool(parsed.get("ok")):
+                if maybePersistExistingFromMaasErrors(job, parsed, quiet=True):
+                    written += 1
+                    continue
+                print(f"  error: HTTP {checkResp.status_code} ok=false")
+                errs = parsed.get("errors")
+                if isinstance(errs, dict) and errs:
+                    print(f"  {json.dumps(errs, indent=2, ensure_ascii=False)}")
+                else:
+                    detail = parsed.get("detail") or parsed.get("message") or parsed.get("error")
+                    if detail:
+                        print(f"  detail: {detail!r}")
+                    else:
+                        raw = (checkResp.text or "").strip()
+                        if raw:
+                            print(f"  response body:\n{raw}")
+                continue
+            if maybePersistClassifierApplyStatus(job, parsed, quiet=True):
+                written += 1
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            print(f"  exception for jobId={jid!r} (full traceback follows):")
+            traceback.print_exc()
+        if delay_sec > 0:
+            time.sleep(delay_sec)
+
+    print(f"Done. Wrote applyStatus for {written} job(s).")
+
+
+def _parse_delay(raw: str | None) -> float:
+    if not raw:
+        return 0.0
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 0.0
+
+
+def _env_flag(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in ("1", "true", "yes")
 
 
 if __name__ == "__main__":
-    loginAndCheck()
+    # Default: FIFO sync jobs where applyStatus IS NULL. MIDHTECH_SINGLE_JOB=1: one login + check (index 0).
+    if _env_flag("MIDHTECH_SINGLE_JOB"):
+        loginAndCheck(0)
+    else:
+        syncEmptyApplyStatuses()
