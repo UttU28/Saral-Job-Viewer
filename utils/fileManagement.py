@@ -98,7 +98,7 @@ def addJobIdToSkipBucket(
 
 def resolveJobsOutputDirectory() -> Path:
     # DB-only mode: this is just a lightweight source-label directory.
-    return _PROJECT_ROOT / "data" / "sources"
+    return _PROJECT_ROOT / "zata" / "sources"
 
 
 def resolveOutputJsonPath(path: Path | str) -> Path:

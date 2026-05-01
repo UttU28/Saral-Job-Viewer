@@ -34,7 +34,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 def resolveScrapingChromeDir() -> str:
     raw = os.getenv("SCRAPING_CHROME_DIR")
     if not raw or not str(raw).strip():
-        return str((_REPO_ROOT / "data" / "chromeData" / "irangarick").resolve())
+        return str((_REPO_ROOT / "zata" / "chromeData" / "irangarick").resolve())
     p = Path(raw.strip()).expanduser()
     if not p.is_absolute():
         p = _REPO_ROOT / p

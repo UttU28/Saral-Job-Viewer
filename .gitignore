@@ -1,10 +1,10 @@
 **/__pycache__/*
-**/env/*
-**/data/*
+**/venv/*
+**/zata/*
 **/irangarick/*
 *.env
 *.db
 *.pdf
 *.log
-env/
+venv/
 *.html

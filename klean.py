@@ -11,8 +11,8 @@ rootPath = Path(__file__).resolve().parent
 tempDirNames = { "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".cache", }
 tempFileNames = { ".DS_Store", "Thumbs.db", ".coverage", }
 tempFileSuffixes = { ".pyc", ".pyo", ".pyd", ".tmp", ".temp", ".bak", ".swp", ".swo", }
-skipDirNames = { ".git", "env", "env", "node_modules", }
-cleanupRootRelative = Path("data") / "cleanup"
+skipDirNames = { ".git", "venv", "venv", "node_modules", }
+cleanupRootRelative = Path("zata") / "cleanup"
 
 
 def isTempFile(path: Path) -> bool:

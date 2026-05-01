@@ -18,14 +18,14 @@ DB-first job scraping, storage, and viewing pipeline for multiple sources (JobRi
 - **Maintenance**
   - `zClean.py` (delete `__pycache__` and temp/cache files)
 - **Data storage**
-  - `data/saralJobViewer.db`
-  - `data/logs/`
+  - `zata/saralJobViewer.db`
+  - `zata/logs/`
 
 ## Key Behavior
 
 - JSON output files are not used for persistence.
 - Jobs are normalized and saved to SQLite.
-- Logs are written to `data/logs/scrape-YYYY-MM-DD.log`.
+- Logs are written to `zata/logs/scrape-YYYY-MM-DD.log`.
 - Deduplication is DB-first (`jobData` + `pastData` by platform).
 - Blocked domains are skipped from `jobData` and tracked in `pastData`.
 
@@ -70,8 +70,8 @@ DB-first job scraping, storage, and viewing pipeline for multiple sources (JobRi
 ### 1) Python environment
 
 ```bash
-python -m env env
-env\Scripts\activate
+python -m venv env
+venv\Scripts\activate
 pip install -r requirements.txt
 ```
 

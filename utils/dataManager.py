@@ -13,11 +13,11 @@ def _projectRoot() -> Path:
 
 
 def getDatabasePath() -> Path:
-    return _projectRoot() / "data" / DB_FILE_NAME
+    return _projectRoot() / "zata" / DB_FILE_NAME
 
 
 def _logsDirectory() -> Path:
-    return _projectRoot() / "data" / "logs"
+    return _projectRoot() / "zata" / "logs"
 
 
 def _utcNowIso() -> str:
@@ -250,6 +250,59 @@ def updateApplyStatusByJobId(job_id: str, apply_status: str) -> bool:
         )
         connection.commit()
         return cursor.rowcount > 0
+
+
+def loadJobsByApplyStatus(apply_status: str) -> list[dict]:
+    """Return jobs whose applyStatus matches exactly."""
+    status = str(apply_status or "").strip()
+    if not status:
+        return []
+    dbPath = createTables(recreate=False)
+    with sqlite3.connect(dbPath) as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        rows = cursor.execute(
+            """
+            SELECT
+                jobId, title, jobUrl, location, employmentType, workModel, seniority, experience,
+                originalJobPostUrl, companyName, jobDescription, timestamp, applyStatus, platform
+            FROM jobData
+            WHERE applyStatus = ?
+            ORDER BY
+                CASE WHEN timestamp IS NULL OR TRIM(COALESCE(timestamp, '')) = '' THEN 1 ELSE 0 END,
+                timestamp ASC,
+                jobId
+            """,
+            (status,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def deleteJobsByApplyStatusNotIn(allowed_statuses: list[str] | tuple[str, ...]) -> int:
+    """
+    Delete rows where applyStatus is NULL/blank or not in allowed_statuses.
+    Returns number of deleted rows.
+    """
+    normalized = sorted(
+        {str(item or "").strip() for item in allowed_statuses if str(item or "").strip()}
+    )
+    if not normalized:
+        raise ValueError("allowed_statuses must include at least one non-empty status")
+
+    placeholders = ", ".join("?" for _ in normalized)
+    sql = f"""
+        DELETE FROM jobData
+        WHERE applyStatus IS NULL
+           OR TRIM(COALESCE(applyStatus, '')) = ''
+           OR applyStatus NOT IN ({placeholders})
+    """
+    dbPath = createTables(recreate=False)
+    with sqlite3.connect(dbPath) as connection:
+        cursor = connection.cursor()
+        cursor.execute(sql, tuple(normalized))
+        deleted = int(cursor.rowcount or 0)
+        connection.commit()
+    return deleted
 
 
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:
