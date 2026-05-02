@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import re
@@ -10,7 +11,9 @@ import requests
 from dotenv import load_dotenv
 
 from utils.dataManager import (
+    deleteJobsByApplyStatusNotIn,
     loadAllJobs,
+    loadJobsByApplyStatus,
     loadJobsWithEmptyApplyStatus,
     updateApplyStatusByJobId,
 )
@@ -98,6 +101,9 @@ def errorsIndicateMaasExistingOrDuplicate(errs: object) -> bool:
 
 
 APPLY_STATUS_EXISTING = "EXISTING"
+KEEP_STATUS = "APPLY"
+STATUS_APPLIED = "APPLIED"
+STATUS_REDO = "REDO"
 
 
 def inferCloudSpecialization(blobText: str) -> str:
@@ -406,6 +412,39 @@ def postJobCheck(
     return checkResp, parsed
 
 
+def _responseLooksSuccessful(resp: requests.Response) -> bool:
+    if resp.status_code < 200 or resp.status_code >= 400:
+        return False
+    return "/login" not in (resp.url or "")
+
+
+def submitJobSuggestion(
+    session: requests.Session,
+    suggest_url: str,
+    csrf_token: str,
+    job: dict,
+) -> tuple[bool, str]:
+    payload = buildCheckPayload(job)
+    payload["csrfmiddlewaretoken"] = csrf_token
+    headers = {
+        "Referer": suggest_url,
+        "X-CSRFToken": csrf_token,
+    }
+    response = session.post(
+        suggest_url,
+        data=payload,
+        headers=headers,
+        allow_redirects=True,
+        timeout=30,
+    )
+    ok = _responseLooksSuccessful(response)
+    body = (response.text or "").strip()
+    if not ok:
+        preview = body[:300] if body else "<empty>"
+        return False, f"HTTP {response.status_code} at {response.url} :: {preview}"
+    return True, f"HTTP {response.status_code}"
+
+
 def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
     try:
         if isinstance(parsed, dict):
@@ -593,6 +632,83 @@ def syncEmptyApplyStatuses() -> None:
     print(f"Done. Wrote applyStatus for {written} job(s).")
 
 
+def cleanupKeepOnlyApply() -> int:
+    """Delete rows that are not APPLY (keeps only APPLY in jobData)."""
+    deleted = deleteJobsByApplyStatusNotIn((KEEP_STATUS,))
+    kept_after = loadJobsByApplyStatus(KEEP_STATUS)
+    print(
+        f"Cleanup complete: deleted {deleted} non-{KEEP_STATUS} job(s), "
+        f"kept {len(kept_after)} {KEEP_STATUS} job(s)."
+    )
+    return deleted
+
+
+def pushApplyJobsAfterValidate() -> int:
+    """Submit rows with applyStatus APPLY to suggest endpoint; set APPLIED or REDO."""
+    apply_jobs = loadJobsByApplyStatus(KEEP_STATUS)
+    if not apply_jobs:
+        print("No APPLY jobs found to submit.")
+        return 0
+
+    print(f"Submitting {len(apply_jobs)} APPLY job(s) to suggest endpoint...")
+    session, _base_url, suggest_url, _check_url, csrf_token = authenticateMidhtechSession()
+
+    applied = 0
+    redo = 0
+    for i, job in enumerate(apply_jobs, start=1):
+        job_id = str(job.get("jobId") or "").strip()
+        title = str(job.get("title") or "").strip()
+        company = str(job.get("companyName") or "").strip()
+        prefix = f"[{i}/{len(apply_jobs)}] submit {job_id} :: {company} :: {title}"
+        try:
+            success, info = submitJobSuggestion(
+                session=session,
+                suggest_url=suggest_url,
+                csrf_token=csrf_token,
+                job=job,
+            )
+        except Exception as exc:
+            success = False
+            info = f"exception: {exc}"
+
+        if success:
+            updateApplyStatusByJobId(job_id, STATUS_APPLIED)
+            applied += 1
+            print(f"{prefix} -> {STATUS_APPLIED} ({info})")
+        else:
+            updateApplyStatusByJobId(job_id, STATUS_REDO)
+            redo += 1
+            print(f"{prefix} -> {STATUS_REDO} ({info})")
+
+    print(
+        json.dumps(
+            {
+                "total": len(apply_jobs),
+                "applied": applied,
+                "redo": redo,
+                "status_on_success": STATUS_APPLIED,
+                "status_on_failure": STATUS_REDO,
+            },
+            indent=2,
+        )
+    )
+    return applied
+
+
+def runValidatePushCleanupPipeline() -> None:
+    """
+    1) Validate all pending (applyStatus NULL) via check API.
+    2) Push all APPLY rows to midhtech suggest.
+    3) Delete all jobData rows except APPLY (drops APPLIED, REDO, etc.).
+    """
+    print("--- Phase 1: validate (NULL applyStatus) ---")
+    syncEmptyApplyStatuses()
+    print("--- Phase 2: push APPLY to midhtech.in ---")
+    pushApplyJobsAfterValidate()
+    print("--- Phase 3: cleanup jobData (keep only APPLY) ---")
+    cleanupKeepOnlyApply()
+
+
 def _parse_delay(raw: str | None) -> float:
     if not raw:
         return 0.0
@@ -602,13 +718,35 @@ def _parse_delay(raw: str | None) -> float:
         return 0.0
 
 
-def _env_flag(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in ("1", "true", "yes")
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Default: validate NULL applyStatus, push APPLY to midhtech, then keep only APPLY rows."
+        )
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "-d",
+        "--delete",
+        action="store_true",
+        help="Only delete non-APPLY rows (keep APPLY only); no API calls.",
+    )
+    mode.add_argument(
+        "-s",
+        "--single",
+        action="store_true",
+        help="One login + check only the first job in DB (FIFO index 0).",
+    )
+    args = parser.parse_args()
+
+    if args.delete:
+        cleanupKeepOnlyApply()
+    elif args.single:
+        loginAndCheck(0)
+    else:
+        runValidatePushCleanupPipeline()
+    return 0
 
 
 if __name__ == "__main__":
-    # Default: FIFO sync jobs where applyStatus IS NULL. MIDHTECH_SINGLE_JOB=1: one login + check (index 0).
-    if _env_flag("MIDHTECH_SINGLE_JOB"):
-        loginAndCheck(0)
-    else:
-        syncEmptyApplyStatuses()
+    raise SystemExit(main())

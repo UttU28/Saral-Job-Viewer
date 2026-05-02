@@ -17,6 +17,7 @@ DB-first job scraping, storage, and viewing pipeline for multiple sources (JobRi
   - `utils/dataManager.py` (SQLite schema + CRUD helpers + scrape logging)
 - **Maintenance**
   - `zClean.py` (delete `__pycache__` and temp/cache files)
+  - `dValidate.py` (Midhtech: validate pending jobs → push APPLY → trim DB to APPLY-only; `-d` cleanup-only; `-s` single-job check)
 - **Data storage**
   - `zata/saralJobViewer.db`
   - `zata/logs/`

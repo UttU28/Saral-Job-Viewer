@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import argparse
 import shutil
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 from utils.dataManager import createTables, getDatabasePath
@@ -11,10 +11,21 @@ from utils.dataManager import createTables, getDatabasePath
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 MAIN_DB_PATH = getDatabasePath()
-DEFAULT_SOURCE_DB_PATH = PROJECT_ROOT / "otherData.db"
 TABLES = ("jobData", "pastData")
+
 REMOTE_HOST_ALIAS = "MidhTech"
-REMOTE_TARGET_PATH = "/home/midhtechadmin/Desktop/Saral-Job-Viewer/otherData.db"
+# Canonical DB on the SSH host (same layout as local zata/saralJobViewer.db).
+REMOTE_DB_PATH = "/home/midhtechadmin/Desktop/Saral-Job-Viewer/zata/saralJobViewer.db"
+TEMP_REMOTE_SNAPSHOT = MAIN_DB_PATH.parent / ".remote_pull_for_merge.db"
+
+
+def _require_scp() -> None:
+    if shutil.which("scp") is None:
+        raise RuntimeError("scp not found in PATH.")
+
+
+def _remote_spec() -> str:
+    return f"{REMOTE_HOST_ALIAS}:{REMOTE_DB_PATH}"
 
 
 def tableExists(connection: sqlite3.Connection, schema: str, table: str) -> bool:
@@ -77,7 +88,7 @@ def mergeTable(connection: sqlite3.Connection, table: str) -> int:
 
 
 def mergeDatabases(sourceDbPath: Path) -> None:
-    createTables(recreate=False)  # Ensure target DB + tables exist.
+    createTables(recreate=False)
     if not sourceDbPath.exists():
         raise FileNotFoundError(f"Source DB not found: {sourceDbPath}")
 
@@ -100,47 +111,81 @@ def mergeDatabases(sourceDbPath: Path) -> None:
             connection.execute("DETACH DATABASE src")
 
 
-def sendMainDbViaScp() -> None:
-    mainResolved = MAIN_DB_PATH.resolve()
-    if not mainResolved.exists():
-        raise FileNotFoundError(f"Main DB not found: {mainResolved}")
-    if shutil.which("scp") is None:
-        raise RuntimeError("scp command not found in PATH.")
+def pullRemoteReplaceLocal() -> None:
+    """Download remote saralJobViewer.db and replace local file entirely."""
+    _require_scp()
+    main = MAIN_DB_PATH.resolve()
+    main.parent.mkdir(parents=True, exist_ok=True)
+    if main.exists():
+        main.unlink()
+    spec = _remote_spec()
+    print(f"pull (replace local): {spec} -> {main}")
+    subprocess.run(["scp", spec, str(main)], check=True)
+    print("Local DB replaced with remote copy.")
 
-    remoteSpec = f"{REMOTE_HOST_ALIAS}:{REMOTE_TARGET_PATH}"
-    cmd = ["scp", str(mainResolved), remoteSpec]
-    print(f"sending: {mainResolved} -> {remoteSpec}")
-    subprocess.run(cmd, check=True)
-    print("send complete.")
+
+def pullMergePushRemote() -> None:
+    """Pull remote DB, merge into local, push merged file back to remote (replace)."""
+    _require_scp()
+    createTables(recreate=False)
+    temp = TEMP_REMOTE_SNAPSHOT.resolve()
+    spec = _remote_spec()
+    try:
+        print(f"pull: {spec} -> {temp}")
+        subprocess.run(["scp", spec, str(temp)], check=True)
+        mergeDatabases(temp)
+        print(f"push: {MAIN_DB_PATH.resolve()} -> {spec}")
+        subprocess.run(["scp", str(MAIN_DB_PATH.resolve()), spec], check=True)
+        print("Remote DB replaced with merged copy.")
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+def pushLocalReplaceRemote() -> None:
+    """Upload local saralJobViewer.db and replace remote file (no merge)."""
+    _require_scp()
+    main = MAIN_DB_PATH.resolve()
+    if not main.exists():
+        raise FileNotFoundError(f"Local DB not found: {main}")
+    spec = _remote_spec()
+    print(f"push: {main} -> {spec}")
+    subprocess.run(["scp", str(main), spec], check=True)
+    print("Remote DB replaced with local copy.")
+
+
+def prompt_choice() -> str | None:
+    print()
+    print("  1  Pull remote DB → delete local DB → replace with remote copy")
+    print("  2  Pull remote → merge into local → push merged DB to remote (replace there)")
+    print("  3  Push local DB → replace remote (no pull / no merge)")
+    print("  q  Quit")
+    while True:
+        raw = input("Choose 1, 2, 3, or q: ").strip().lower()
+        if raw in ("q", "quit", ""):
+            return None
+        if raw in ("1", "2", "3"):
+            return raw
+        print("Invalid choice. Enter 1, 2, 3, or q.")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Merge source DB into fixed main DB (jobData + pastData). "
-            "If source_db is omitted and --send is not used, defaults to ./otherData.db."
-        )
-    )
-    parser.add_argument(
-        "source_db",
-        nargs="?",
-        help="Path to second DB file (default: ./otherData.db).",
-    )
-    parser.add_argument(
-        "-s",
-        "--send",
-        action="store_true",
-        help="Send main DB via SCP. If source_db is also provided, merge first then send.",
-    )
-    args = parser.parse_args()
-    shouldMerge = bool(args.source_db) or (not args.send)
-    if shouldMerge:
-        sourcePath = (
-            Path(args.source_db).expanduser() if args.source_db else DEFAULT_SOURCE_DB_PATH
-        )
-        mergeDatabases(sourcePath)
-    if args.send:
-        sendMainDbViaScp()
+    choice = prompt_choice()
+    if choice is None:
+        print("Cancelled.")
+        return 0
+    try:
+        if choice == "1":
+            pullRemoteReplaceLocal()
+        elif choice == "2":
+            pullMergePushRemote()
+        else:
+            pushLocalReplaceRemote()
+    except subprocess.CalledProcessError as exc:
+        print(f"Command failed (exit {exc.returncode}).", file=sys.stderr)
+        return exc.returncode or 1
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(exc, file=sys.stderr)
+        return 1
     return 0
 
 

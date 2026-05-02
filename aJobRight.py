@@ -60,7 +60,7 @@ fetchHeaders = {
 
 def getDefaultSearchParams() -> dict[str, SearchParamValue]:
     return {
-        "value": "devops",
+        "value": ["devops", "cloud engineer"],
         "searchType": "job_title",
         "country": "US",
         "jobTaxonomyList": [

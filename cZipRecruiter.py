@@ -326,8 +326,39 @@ def clickCardById(driver: webdriver.Chrome, cardId: str) -> bool:
     return True
 
 
+def _normalizeTitleMatch(value: str | None) -> str:
+    if not value:
+        return ""
+    return " ".join(value.strip().lower().split())
+
+
+def _detailPaneTitleMatches(expected: str | None, actual: str | None) -> bool:
+    """List card title (often aria-label) can differ from detail h2; allow substring / prefix overlap."""
+    e = _normalizeTitleMatch(expected)
+    a = _normalizeTitleMatch(actual)
+    if not e:
+        return bool(a)
+    if not a:
+        return False
+    if e in a or a in e:
+        return True
+    for prefix in ("view ", "view job: ", "job: "):
+        if e.startswith(prefix):
+            e2 = e[len(prefix) :].strip()
+            if e2 and (e2 in a or a in e2):
+                return True
+    n = min(len(e), len(a), 28)
+    if n >= 12 and e[:n] == a[:n]:
+        return True
+    if len(e) >= 14 and e[:22] in a:
+        return True
+    if len(a) >= 14 and a[:22] in e:
+        return True
+    return False
+
+
 def waitForDetailsPane(driver: webdriver.Chrome, expectedTitle: str | None) -> None:
-    WebDriverWait(driver, 12).until(
+    WebDriverWait(driver, 20).until(
         EC.presence_of_element_located(
             (By.CSS_SELECTOR, "div[data-testid='right-pane'], div[data-testid='job-details-scroll-container']")
         )
@@ -335,10 +366,23 @@ def waitForDetailsPane(driver: webdriver.Chrome, expectedTitle: str | None) -> N
     if not expectedTitle:
         time.sleep(0.5)
         return
-    WebDriverWait(driver, 8).until(
-        lambda d: expectedTitle.lower()
-        in (safeText(d, "div[data-testid='job-details-scroll-container'] h2") or "").lower()
-    )
+
+    def title_ready(d: webdriver.Chrome) -> bool:
+        h2 = safeText(d, "div[data-testid='job-details-scroll-container'] h2")
+        return _detailPaneTitleMatches(expectedTitle, h2)
+
+    try:
+        WebDriverWait(driver, 18).until(title_ready)
+    except TimeoutException:
+        h2 = safeText(driver, "div[data-testid='job-details-scroll-container'] h2")
+        if h2:
+            print(
+                f"waitForDetailsPane: title did not match list preview within timeout "
+                f"(list={expectedTitle!r}, detail={h2!r}); continuing with detail pane.",
+                file=sys.stderr,
+            )
+            return
+        raise
 
 
 def scrapeSelectedJobDetails(driver: webdriver.Chrome, fallback: dict[str, str | None]) -> dict[str, str | None]:
@@ -459,8 +503,20 @@ def scrapeCurrentPageJobs(
             "workModel": None,
         }
 
-        clickCardById(driver, cardId)
-        waitForDetailsPane(driver, fallback.get("title"))
+        for attempt in range(2):
+            try:
+                clickCardById(driver, cardId)
+                waitForDetailsPane(driver, fallback.get("title"))
+                break
+            except TimeoutException:
+                if attempt == 0:
+                    print(
+                        f"[{idx + 1}/{n}] detail pane wait failed, retry click: {cardId}",
+                        file=sys.stderr,
+                    )
+                    time.sleep(0.75)
+                    continue
+                raise
         detail = scrapeSelectedJobDetails(driver, fallback)
 
         jobRecord = {
