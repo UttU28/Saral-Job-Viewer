@@ -22,21 +22,30 @@ from utils.startChrome import (
     envBool,
 )
 from utils.fileManagement import (
+    DEFAULT_SCRAPER_SEARCH_KEYWORDS,
     loadJobsDocumentOrEmpty,
     mergeNewJobsIntoDocument,
     resolveOutputJsonPath,
+    resolveScraperSearchKeywords,
     saveOutputDocument,
 )
 
 load_dotenv()
 
+
 def getDefaultGlassdoorSearchParams() -> dict[str, str]:
+    primary = DEFAULT_SCRAPER_SEARCH_KEYWORDS[0]
     return {
         "location": "united-states",
-        "role": "devops",
-        "fromAge": "1",          # show jobs posted in the last N days
-        "sortBy": "date_desc",   # newest first
+        "role": primary,
+        "fromAge": "1",  # show jobs posted in the last N days
+        "sortBy": "date_desc",  # newest first
     }
+
+
+def glassdoorRolePathSegment(role: str) -> str:
+    """Glassdoor job URLs use hyphenated role slugs (e.g. assembly developer → assembly-developer)."""
+    return "-".join((role or "").strip().lower().split())
 
 
 def buildDefaultGlassdoorSearchUrl(params: dict[str, str] | None = None) -> str:
@@ -44,10 +53,11 @@ def buildDefaultGlassdoorSearchUrl(params: dict[str, str] | None = None) -> str:
         params = getDefaultGlassdoorSearchParams()
     base = "https://www.glassdoor.ca/Job"
     location = params.get("location", "united-states")
-    role = params.get("role", "devops")
+    role_raw = params.get("role", "devops")
+    role_slug = glassdoorRolePathSegment(role_raw)
     ko_start = len(location) + 1
-    ko_end = ko_start + len(role)
-    path = f"{location}-{role}-jobs-SRCH_IL.0,13_IN1_KO{ko_start},{ko_end}.htm"
+    ko_end = ko_start + len(role_slug)
+    path = f"{location}-{role_slug}-jobs-SRCH_IL.0,13_IN1_KO{ko_start},{ko_end}.htm"
     query = {k: v for k, v in params.items() if k not in ("location", "role")}
     from urllib.parse import urlencode
     url = f"{base}/{path}"
@@ -59,14 +69,33 @@ defaultGlassdoorSearchUrl = buildDefaultGlassdoorSearchUrl()
 GLASSDOOR_SOURCE_PATH = resolveOutputJsonPath("glassdoor.source")
 
 
+def buildGlassdoorSearchUrlForKeyword(keyword: str) -> str:
+    kw = keyword.strip()
+    if not kw:
+        raise ValueError("Glassdoor search keyword must be non-empty")
+    params = {**getDefaultGlassdoorSearchParams(), "role": kw}
+    return buildDefaultGlassdoorSearchUrl(params)
+
+
 def resolveGlassdoorSearchUrl(cliUrl: str | None = None) -> str:
-    """GLASSDOOR_SEARCH_URL env, optional URL arg, else default Glassdoor search URL."""
-    envUrl = os.getenv("GLASSDOOR_SEARCH_URL")
-    if isinstance(envUrl, str) and envUrl.strip():
-        return envUrl.strip()
+    """Optional URL arg, else default Glassdoor search URL."""
     if cliUrl and str(cliUrl).strip():
         return str(cliUrl).strip()
     return defaultGlassdoorSearchUrl
+
+
+def resolveGlassdoorSearchPhases(cliUrl: str | None = None) -> list[tuple[str, str]]:
+    """
+    Each phase is (search_url, label). One phase finishes list + detail scrape
+    before the next. Optional cliUrl forces a single phase.
+    Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
+    """
+    if cliUrl and str(cliUrl).strip():
+        return [(str(cliUrl).strip(), "cli")]
+    keywords = resolveScraperSearchKeywords()
+    if not keywords:
+        return []
+    return [(buildGlassdoorSearchUrlForKeyword(kw), kw) for kw in keywords]
 
 
 def glassdoorJobIdToJobId(glassdoorJobId: str | None) -> str:
@@ -979,11 +1008,14 @@ def scrapeGlassdoorSearch(
     existingJobIds: set[str] | None = None,
     data: dict | None = None,
     outputPath = None,
+    *,
+    phaseLabel: str = "",
 ) -> list[dict]:
     """
     Scrape list + detail pane for jobs whose jobId is not in existingJobIds
     (from prior DB-backed source). Rows already saved are not clicked.
     """
+    tag = f"[{phaseLabel}] " if phaseLabel else ""
     wait = WebDriverWait(driver, listWaitSec)
     try:
         wait.until(
@@ -992,7 +1024,7 @@ def scrapeGlassdoorSearch(
             )
         )
     except TimeoutException:
-        print("Timed out waiting for Jobs List.", file=sys.stderr)
+        print(f"{tag}Timed out waiting for Jobs List.", file=sys.stderr)
         return []
 
     time.sleep(1.0)
@@ -1001,7 +1033,7 @@ def scrapeGlassdoorSearch(
 
     items = driver.find_elements(By.CSS_SELECTOR, jobListItem)
     if not items:
-        print("No job listings found.", file=sys.stderr)
+        print(f"{tag}No job listings found.", file=sys.stderr)
         return []
 
     file_job_ids = frozenset(existingJobIds) if existingJobIds else frozenset()
@@ -1021,7 +1053,7 @@ def scrapeGlassdoorSearch(
 
     n_snap = len(snapshot)
     print(
-        f"Found {n} list items ({n_snap} with job id); skipping jobIds already in output, opening detail for the rest…",
+        f"{tag}Found {n} list items ({n_snap} with job id); skipping jobIds already in output, opening detail for the rest…",
         file=sys.stderr,
     )
 
@@ -1031,7 +1063,7 @@ def scrapeGlassdoorSearch(
             located = findJobListingIndexAndLi(driver, gid_raw)
             if located is None:
                 print(
-                    f"[{pos + 1}/{n_snap}] skip (row not in DOM): {job_id}",
+                    f"{tag}[{pos + 1}/{n_snap}] skip (row not in DOM): {job_id}",
                     file=sys.stderr,
                 )
                 continue
@@ -1041,7 +1073,7 @@ def scrapeGlassdoorSearch(
             time.sleep(0.2)
             card = cardFields(li)
             if not card.get("glassdoorJobId"):
-                print(f"[{pos + 1}] skip: no data-jobid", file=sys.stderr)
+                print(f"{tag}[{pos + 1}] skip: no data-jobid", file=sys.stderr)
                 continue
 
             if job_id and job_id in seen:
@@ -1051,7 +1083,7 @@ def scrapeGlassdoorSearch(
                     else "earlier in this list"
                 )
                 print(
-                    f"[{pos + 1}/{n_snap}] skip ({where}): {card.get('companyName') or '?'} — {job_id}",
+                    f"{tag}[{pos + 1}/{n_snap}] skip ({where}): {card.get('companyName') or '?'} — {job_id}",
                     file=sys.stderr,
                 )
                 continue
@@ -1069,7 +1101,7 @@ def scrapeGlassdoorSearch(
                 if job_id:
                     seen.add(job_id)
                 print(
-                    f"[{pos + 1}/{n_snap}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
+                    f"{tag}[{pos + 1}/{n_snap}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
                     file=sys.stderr,
                 )
                 continue
@@ -1098,11 +1130,11 @@ def scrapeGlassdoorSearch(
                 out.append(rec)
             seen.add(job_id)
             print(
-                f"[{pos + 1}/{n_snap}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
+                f"{tag}[{pos + 1}/{n_snap}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
                 file=sys.stderr,
             )
         except Exception as exc:
-            print(f"[{pos + 1}] error: {exc}", file=sys.stderr)
+            print(f"{tag}[{pos + 1}] error: {exc}", file=sys.stderr)
             continue
 
     return out
@@ -1111,21 +1143,16 @@ def scrapeGlassdoorSearch(
 def main() -> None:
     os.environ["USE_UNDETECTED_CHROME"] = "1"
 
-    searchUrl = resolveGlassdoorSearchUrl(None)
     try:
         outputPath = GLASSDOOR_SOURCE_PATH
     except ValueError as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(1) from exc
 
-    data = loadJobsDocumentOrEmpty(outputPath)
-    ensureSkippedOriginalUrlIds(data)
-    existing_ids = existingJobIdsFromOutputData(data)
-    if existing_ids:
-        print(
-            f"{len(existing_ids)} jobId(s) already in {outputPath.name}; those list rows will be skipped.",
-            file=sys.stderr,
-        )
+    phases = resolveGlassdoorSearchPhases(None)
+    if not phases:
+        print("No Glassdoor search keywords or URLs configured.", file=sys.stderr)
+        raise SystemExit(1)
 
     headless = envBool("SCRAPING_HEADLESS", default=True)
 
@@ -1137,13 +1164,40 @@ def main() -> None:
 
     try:
         driver.set_page_load_timeout(120)
-        driver.get(searchUrl)
-        rows = scrapeGlassdoorSearch(driver, existing_ids, data, outputPath)
+        totalNew = 0
+        for phaseNum, (searchUrl, phaseLabel) in enumerate(phases, start=1):
+            print(
+                f"--- Glassdoor phase {phaseNum}/{len(phases)}: {phaseLabel!r} "
+                f"(list + detail pane) ---",
+                file=sys.stderr,
+            )
+            data = loadJobsDocumentOrEmpty(outputPath)
+            ensureSkippedOriginalUrlIds(data)
+            existing_ids = existingJobIdsFromOutputData(data)
+            if existing_ids and phaseNum == 1:
+                print(
+                    f"{len(existing_ids)} jobId(s) already in {outputPath.name}; "
+                    "those list rows will be skipped.",
+                    file=sys.stderr,
+                )
 
-        added = len(rows)
-        skipped = 0
+            driver.get(searchUrl)
+            rows = scrapeGlassdoorSearch(
+                driver,
+                existing_ids,
+                data,
+                outputPath,
+                phaseLabel=phaseLabel,
+            )
+            phase_new = len(rows)
+            totalNew += phase_new
+            print(
+                f"Phase {phaseLabel!r}: +{phase_new} new job(s) into {outputPath.name}.",
+                file=sys.stderr,
+            )
         print(
-            f"Merged into {outputPath.resolve()}: +{added} new, {skipped} skipped duplicates.",
+            f"Done: +{totalNew} new job(s) total across {len(phases)} phase(s) → "
+            f"{outputPath.resolve()}",
             file=sys.stderr,
         )
     finally:

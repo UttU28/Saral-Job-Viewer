@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -303,6 +303,60 @@ def deleteJobsByApplyStatusNotIn(allowed_statuses: list[str] | tuple[str, ...]) 
         deleted = int(cursor.rowcount or 0)
         connection.commit()
     return deleted
+
+
+def _parseStoredTimestampToUtc(raw: object) -> datetime | None:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("Z") or s.endswith("z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except ValueError:
+        pass
+    try:
+        if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+            return datetime.strptime(s[:10], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        pass
+    return None
+
+
+def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
+    """
+    Delete pastData rows with a parseable timestamp older than `hours` (UTC).
+    Rows with NULL/blank or unparseable timestamps are kept.
+    """
+    if hours <= 0:
+        raise ValueError("hours must be positive")
+    dbPath = createTables(recreate=False)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    with sqlite3.connect(dbPath) as connection:
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        rows = cursor.execute(
+            "SELECT jobId, timestamp FROM pastData WHERE timestamp IS NOT NULL AND TRIM(timestamp) != ''"
+        ).fetchall()
+    stale_ids: list[str] = []
+    for row in rows:
+        jid = str(row["jobId"]).strip()
+        parsed = _parseStoredTimestampToUtc(row["timestamp"])
+        if parsed is not None and parsed < cutoff and jid:
+            stale_ids.append(jid)
+    if not stale_ids:
+        return 0
+    placeholders = ",".join("?" for _ in stale_ids)
+    with sqlite3.connect(dbPath) as connection:
+        cursor = connection.cursor()
+        cursor.execute(f"DELETE FROM pastData WHERE jobId IN ({placeholders})", stale_ids)
+        connection.commit()
+        return int(cursor.rowcount or 0)
 
 
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:

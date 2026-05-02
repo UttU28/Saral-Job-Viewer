@@ -26,11 +26,14 @@ from utils.startChrome import (
     promptBeforeClosingBrowserIfHeaded,
 )
 from utils.fileManagement import (
+    DEFAULT_SCRAPER_SEARCH_KEYWORDS,
+    isCompleteJobRow,
     loadExistingJobsAndMeta,
     loadJobsDocumentOrEmpty,
-    mergeNewJobsIntoDocument,
     mergeFetchedJobs,
+    mergeNewJobsIntoDocument,
     resolveOutputJsonPath,
+    resolveScraperSearchKeywords,
     saveJsonPayload,
     saveOutputDocument,
 )
@@ -59,12 +62,13 @@ fetchHeaders = {
 
 
 def getDefaultSearchParams() -> dict[str, SearchParamValue]:
+    primary = DEFAULT_SCRAPER_SEARCH_KEYWORDS[0]
     return {
-        "value": ["devops", "cloud engineer"],
+        "value": [primary],
         "searchType": "job_title",
         "country": "US",
         "jobTaxonomyList": [
-            {"taxonomyId": "00-00-00", "title": "devops"},
+            {"taxonomyId": "00-00-00", "title": primary},
         ],
         "isH1BOnly": False,
         "excludeStaffingAgency": True,
@@ -97,6 +101,18 @@ def buildSearchUrl(overrides: dict[str, SearchParamValue] | None = None) -> str:
         merged.update(overrides)
     query = flattenSearchParams(merged)
     return f"{jobsSearchPath}?{urlencode(query)}"
+
+
+def buildSearchUrlForKeyword(keyword: str) -> str:
+    kw = keyword.strip()
+    if not kw:
+        raise ValueError("Search keyword must be non-empty")
+    return buildSearchUrl(
+        {
+            "value": [kw],
+            "jobTaxonomyList": [{"taxonomyId": "00-00-00", "title": kw}],
+        }
+    )
 
 
 defaultSearchUrl = buildSearchUrl()
@@ -232,12 +248,23 @@ def fetchAndMergeSearchHtml(
 
 
 def resolveSearchUrl(cli_url: str | None) -> str:
-    env_url = os.getenv("JOBRIGHT_SEARCH_URL")
-    if isinstance(env_url, str) and env_url.strip():
-        return env_url.strip()
     if cli_url and cli_url.strip():
         return cli_url.strip()
     return defaultSearchUrl
+
+
+def resolveSearchPhases(cli_url: str | None) -> list[tuple[str, str]]:
+    """
+    Each phase is (search_url, label). One phase finishes list scroll + detail
+    scrape before the next. Optional cli_url forces a single phase.
+    Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
+    """
+    if cli_url and cli_url.strip():
+        return [(cli_url.strip(), "cli")]
+    keywords = resolveScraperSearchKeywords()
+    if not keywords:
+        return []
+    return [(buildSearchUrlForKeyword(kw), kw) for kw in keywords]
 
 
 # --- Job list fetch (Selenium scroll; matches live virtualized list) ------------
@@ -325,7 +352,7 @@ def _recommendation_notes(card) -> str | None:
         return None
 
 
-def extract_job_from_list_card(card) -> dict[str, str | None] | None:
+def extractJobFromListCard(card) -> dict[str, str | None] | None:
     """Parse one job row from the live list (same keys as parseJobCard)."""
     try:
         jid = (card.get_attribute("id") or "").strip() or None
@@ -401,7 +428,7 @@ def extract_job_from_list_card(card) -> dict[str, str | None] | None:
 def _extract_visible_jobs(driver) -> list[dict[str, str | None]]:
     out: list[dict[str, str | None]] = []
     for card in driver.find_elements(By.CSS_SELECTOR, JOB_CARD_CSS):
-        job = extract_job_from_list_card(card)
+        job = extractJobFromListCard(card)
         if job:
             out.append(job)
     return out
@@ -495,7 +522,7 @@ def _is_list_scrolled_to_bottom(driver) -> bool:
         return False
 
 
-def scroll_job_list_until_done(
+def scrollJobListUntilDone(
     driver,
     search_url: str,
     *,
@@ -565,7 +592,7 @@ def fetchAndMergeSearchSelenium(
         progress_path = Path(dbg.strip())
 
     try:
-        fetched = scroll_job_list_until_done(driver, url, progress_json_path=progress_path)
+        fetched = scrollJobListUntilDone(driver, url, progress_json_path=progress_path)
     except TimeoutException as exc:
         return False, f"Job list did not load in time: {exc}", None
     except Exception as exc:
@@ -587,7 +614,8 @@ def fetchAndMergeSearchSelenium(
             skipped += skipped_one
     return (
         True,
-        f"Merged into {outputPath.resolve()}: +{appended} new, {skipped} skipped duplicates.",
+        f"Merged into {outputPath.resolve()}: +{appended} new, {skipped} skipped "
+        "(duplicate jobId or invalid row).",
         data,
     )
 
@@ -942,6 +970,110 @@ def extractJobDetailPageWithRetries(driver, log_prefix: str = "") -> dict:
             time.sleep(stale_delay * attempt)
 
 
+def _driverGetWithRetries(
+    driver,
+    url: str,
+    *,
+    logPrefix: str = "",
+    maxAttempts: int = 3,
+) -> None:
+    """Navigate with retries after Chrome/WebDriver connection resets (WinError 10054)."""
+    delay = 1.0
+    for attempt in range(1, maxAttempts + 1):
+        try:
+            driver.get(url)
+            return
+        except Exception as exc:
+            if attempt >= maxAttempts:
+                raise
+            print(
+                f"{logPrefix}driver.get failed ({exc!r}); retry {attempt}/{maxAttempts - 1}…",
+                file=sys.stderr,
+            )
+            time.sleep(delay * attempt)
+
+
+def _jobNeedsDetailPass(job: object, knownJobIdsBeforeRun: set[str]) -> bool:
+    if not isinstance(job, dict):
+        return False
+    jid = str(job.get("jobId") or "").strip()
+    if jid and jid in knownJobIdsBeforeRun:
+        return False
+    if not job.get("jobUrl"):
+        return False
+    return not isCompleteJobRow(job)
+
+
+def scrapePendingJobDetails(
+    driver,
+    jsonPath: Path,
+    data: dict,
+    knownJobIdsBeforeRun: set[str],
+    phaseLabel: str,
+) -> None:
+    """Open each pending job URL, scrape detail DOM, merge into data, save after each job."""
+    jobs = data["jobs"]
+    tag = f"[{phaseLabel}] "
+    pending = [j for j in jobs if _jobNeedsDetailPass(j, knownJobIdsBeforeRun)]
+    totalPending = len(pending)
+    if not totalPending:
+        print(f"{tag}No jobs need a detail pass (all complete or skipped).", file=sys.stderr)
+        return
+
+    for index, job in enumerate(pending):
+        n = index + 1
+        jobUrl = job.get("jobUrl")
+        label = (job.get("company") or job.get("title") or "")[:60]
+        preview = str(jobUrl).strip()[:70]
+        print(
+            f"{tag}[{n}/{totalPending}] {label} — {preview}…",
+            file=sys.stderr,
+        )
+
+        _driverGetWithRetries(
+            driver,
+            str(jobUrl).strip(),
+            logPrefix=f"{tag}[{n}/{totalPending}] ",
+        )
+        try:
+            waitForJobOverview(driver)
+        except TimeoutException:
+            print(
+                f"{tag}[{n}/{totalPending}] Overview did not load in time.",
+                file=sys.stderr,
+            )
+
+        prefix = f"{tag}[{n}/{totalPending}] "
+        job["detailPage"] = extractJobDetailPageWithRetries(driver, prefix)
+
+        originalJobPostUrl = resolveOriginalJobPostUrl(driver)
+        if originalJobPostUrl:
+            job["originalJobPostUrl"] = originalJobPostUrl
+            print(
+                f"{tag}[{n}/{totalPending}] originalJobPostUrl: {originalJobPostUrl}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"{tag}[{n}/{totalPending}] originalJobPostUrl: <missing>",
+                file=sys.stderr,
+            )
+
+        postScrapeCleanJob(job)
+
+        currentJobId = (job.get("jobId") or "").strip()
+        if currentJobId:
+            for i, existingJob in enumerate(data.get("jobs", [])):
+                if (
+                    isinstance(existingJob, dict)
+                    and (existingJob.get("jobId") or "").strip() == currentJobId
+                ):
+                    data["jobs"][i] = job
+                    break
+
+        saveOutputDocument(jsonPath, data)
+
+
 def main() -> None:
     try:
         out_path = JOBRIGHT_SOURCE_PATH
@@ -962,7 +1094,10 @@ def main() -> None:
             file=sys.stderr,
         )
 
-    search_url = resolveSearchUrl(None)
+    phases = resolveSearchPhases(None)
+    if not phases:
+        print("No search keywords or URLs configured.", file=sys.stderr)
+        raise SystemExit(1)
 
     try:
         driver = createScrapingChromeDriver(
@@ -975,96 +1110,31 @@ def main() -> None:
 
     try:
         driver.set_page_load_timeout(120)
-
-        ok, msg, data = fetchAndMergeSearchSelenium(driver, out_path, search_url)
-        if not ok:
-            print(msg, file=sys.stderr)
-            raise SystemExit(1)
-        print(msg, file=sys.stderr)
-        if not isinstance(data, dict):
-            data = loadJobsDocumentOrEmpty(out_path)
         jsonPath = out_path
-        ensureSkippedOriginalUrlIds(data)
-        saveOutputDocument(jsonPath, data)
 
-        jobs = data["jobs"]
-        total = len(jobs)
-
-        for index, job in enumerate(jobs):
-            if not isinstance(job, dict):
-                print(f"[{index + 1}/{total}] skip: not an object", file=sys.stderr)
-                continue
-
-            currentJobId = str(job.get("jobId") or "").strip()
-            if currentJobId and currentJobId in knownJobIdsBeforeRun:
-                print(
-                    f"[{index + 1}/{total}] skip: already in DB/source",
-                    file=sys.stderr,
-                )
-                continue
-
-            jobUrl = job.get("jobUrl")
-            if not jobUrl:
-                print(f"[{index + 1}/{total}] skip: no jobUrl", file=sys.stderr)
-                continue
-
-            if (
-                job.get("jobResponsibility") is not None
-                or job.get("detailPage")
-            ):
-                print(
-                    f"[{index + 1}/{total}] skip: already scraped",
-                    file=sys.stderr,
-                )
-                continue
-
-            label = (job.get("company") or job.get("title") or "")[:60]
-            preview = str(jobUrl).strip()[:70]
+        for phaseNum, (searchUrl, phaseLabel) in enumerate(phases, start=1):
             print(
-                f"[{index + 1}/{total}] {label} — {preview}…",
+                f"--- JobRight phase {phaseNum}/{len(phases)}: {phaseLabel!r} "
+                f"(list scroll, then detail scrape) ---",
                 file=sys.stderr,
             )
-
-            driver.get(str(jobUrl).strip())
-            try:
-                waitForJobOverview(driver)
-            except TimeoutException:
-                print(
-                    f"[{index + 1}/{total}] Overview did not load in time.",
-                    file=sys.stderr,
-                )
-
-            prefix = f"[{index + 1}/{total}] "
-            job["detailPage"] = extractJobDetailPageWithRetries(driver, prefix)
-
-            originalJobPostUrl = resolveOriginalJobPostUrl(driver)
-            if originalJobPostUrl:
-                job["originalJobPostUrl"] = originalJobPostUrl
-                print(
-                    f"[{index + 1}/{total}] originalJobPostUrl: {originalJobPostUrl}",
-                    file=sys.stderr,
-                )
-            else:
-                print(
-                    f"[{index + 1}/{total}] originalJobPostUrl: <missing>",
-                    file=sys.stderr,
-                )
-
-            postScrapeCleanJob(job)
-
-            # saveOutputDocument normalizes/replaces data["jobs"], so keep the
-            # current scraped job synchronized by jobId before each save.
-            currentJobId = (job.get("jobId") or "").strip()
-            if currentJobId:
-                for i, existingJob in enumerate(data.get("jobs", [])):
-                    if (
-                        isinstance(existingJob, dict)
-                        and (existingJob.get("jobId") or "").strip() == currentJobId
-                    ):
-                        data["jobs"][i] = job
-                        break
-
+            ok, msg, data = fetchAndMergeSearchSelenium(driver, out_path, searchUrl)
+            if not ok:
+                print(msg, file=sys.stderr)
+                raise SystemExit(1)
+            print(msg, file=sys.stderr)
+            if not isinstance(data, dict):
+                data = loadJobsDocumentOrEmpty(out_path)
+            ensureSkippedOriginalUrlIds(data)
             saveOutputDocument(jsonPath, data)
+
+            scrapePendingJobDetails(
+                driver,
+                jsonPath,
+                data,
+                knownJobIdsBeforeRun,
+                phaseLabel=phaseLabel,
+            )
 
         promptBeforeClosingBrowserIfHeaded()
     finally:

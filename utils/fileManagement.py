@@ -18,6 +18,23 @@ from .urlCleaner import cleanUrl, normalizeCompanyName
 # Project root = parent of utils/ folder.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# Shared multi-keyword defaults for JobRight, Glassdoor, ZipRecruiter.
+DEFAULT_SCRAPER_SEARCH_KEYWORDS: list[str] = ["devops", "assembly developer"]
+
+
+def resolveScraperSearchKeywords() -> list[str]:
+    """
+    Comma- or pipe-separated terms from env SCRAPER_SEARCH_KEYWORDS.
+    Same list is used by all platform scrapers for sequential keyword phases.
+    """
+    raw = os.getenv("SCRAPER_SEARCH_KEYWORDS")
+    if isinstance(raw, str) and raw.strip():
+        parts = [p.strip() for p in re.split(r"[,|]", raw) if p.strip()]
+        if parts:
+            return parts
+    return list(DEFAULT_SCRAPER_SEARCH_KEYWORDS)
+
+
 CORE_JOB_FIELDS: tuple[str, ...] = (
     "jobId",
     "title",
@@ -314,6 +331,26 @@ def _isCompleteForDb(job: dict) -> bool:
     )
 
 
+def isCompleteJobRow(job: dict) -> bool:
+    """
+    True when detail scrape is done: either normalized for DB load, or still in
+    memory with jobResponsibility before saveOutputDocument copies it into
+    jobDescription.
+    """
+    if not isinstance(job, dict):
+        return False
+    if _isCompleteForDb(job):
+        return True
+    resp = str(job.get("jobResponsibility") or "").strip()
+    if len(resp) < 30:
+        return False
+    return bool(
+        cleanUrl(job.get("jobUrl"))
+        and cleanUrl(job.get("originalJobPostUrl"))
+        and _strOrBlank(job.get("companyName"))
+    )
+
+
 def _missingCompleteFields(job: dict) -> list[str]:
     required = (
         "jobId",
@@ -399,9 +436,7 @@ def mergeJobListsById(
             continue
         normalized["platform"] = normalized.get("platform") or platform
         normalized["timestamp"] = normalized.get("timestamp") or _utcNowIso()
-        if not bool(cleanUrl(normalized.get("jobUrl"))) or not bool(
-            cleanUrl(normalized.get("originalJobPostUrl"))
-        ):
+        if not bool(cleanUrl(normalized.get("jobUrl"))):
             skipped += 1
             continue
         if shouldSkipJob(normalized):
@@ -452,9 +487,7 @@ def mergeNewJobsIntoDocument(
             continue
         row["platform"] = row.get("platform") or platform
         row["timestamp"] = row.get("timestamp") or _utcNowIso()
-        if not bool(cleanUrl(row.get("jobUrl"))) or not bool(
-            cleanUrl(row.get("originalJobPostUrl"))
-        ):
+        if not bool(cleanUrl(row.get("jobUrl"))):
             skipped += 1
             continue
         if shouldSkipJob(row):
@@ -490,11 +523,11 @@ def saveOutputDocument(path: Path, data: dict) -> None:
                 normalized["platform"] = sourcePlatform
             if not normalized.get("timestamp"):
                 normalized["timestamp"] = scrapeTimestamp
-            if not bool(cleanUrl(normalized.get("jobUrl"))) or not bool(
-                cleanUrl(normalized.get("originalJobPostUrl"))
-            ):
+            if not bool(cleanUrl(normalized.get("jobUrl"))):
                 continue
-            if shouldSkipJob(normalized):
+            if bool(cleanUrl(normalized.get("originalJobPostUrl"))) and shouldSkipJob(
+                normalized
+            ):
                 addJobIdToSkipBucket(
                     data, normalized, idKey="jobId", skipKey=ORIGINAL_URL_SKIP_KEY
                 )

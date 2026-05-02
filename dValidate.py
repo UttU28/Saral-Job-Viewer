@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from utils.dataManager import (
     deleteJobsByApplyStatusNotIn,
+    deletePastDataOlderThanHours,
     loadAllJobs,
     loadJobsByApplyStatus,
     loadJobsWithEmptyApplyStatus,
@@ -104,6 +105,7 @@ APPLY_STATUS_EXISTING = "EXISTING"
 KEEP_STATUS = "APPLY"
 STATUS_APPLIED = "APPLIED"
 STATUS_REDO = "REDO"
+PAST_DATA_RETENTION_HOURS = 48
 
 
 def inferCloudSpecialization(blobText: str) -> str:
@@ -633,12 +635,17 @@ def syncEmptyApplyStatuses() -> None:
 
 
 def cleanupKeepOnlyApply() -> int:
-    """Delete rows that are not APPLY (keeps only APPLY in jobData)."""
+    """Delete rows that are not APPLY (keeps only APPLY in jobData); prune stale pastData."""
     deleted = deleteJobsByApplyStatusNotIn((KEEP_STATUS,))
     kept_after = loadJobsByApplyStatus(KEEP_STATUS)
     print(
         f"Cleanup complete: deleted {deleted} non-{KEEP_STATUS} job(s), "
         f"kept {len(kept_after)} {KEEP_STATUS} job(s)."
+    )
+    pruned = deletePastDataOlderThanHours(hours=PAST_DATA_RETENTION_HOURS)
+    print(
+        f"pastData: deleted {pruned} row(s) older than {PAST_DATA_RETENTION_HOURS}h (UTC), "
+        "unparseable or blank timestamps kept."
     )
     return deleted
 
@@ -699,13 +706,13 @@ def runValidatePushCleanupPipeline() -> None:
     """
     1) Validate all pending (applyStatus NULL) via check API.
     2) Push all APPLY rows to midhtech suggest.
-    3) Delete all jobData rows except APPLY (drops APPLIED, REDO, etc.).
+    3) Delete all jobData rows except APPLY; drop pastData older than 48h (UTC).
     """
     print("--- Phase 1: validate (NULL applyStatus) ---")
     syncEmptyApplyStatuses()
     print("--- Phase 2: push APPLY to midhtech.in ---")
     pushApplyJobsAfterValidate()
-    print("--- Phase 3: cleanup jobData (keep only APPLY) ---")
+    print("--- Phase 3: cleanup jobData + prune pastData ---")
     cleanupKeepOnlyApply()
 
 
