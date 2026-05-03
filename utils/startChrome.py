@@ -170,7 +170,7 @@ def startInteractiveChrome():
     return createScrapingChromeDriver(headless=False, quiet=False)
 
 
-def start_chrome_session():
+def startChromeSession():
     """Backwards-compatible alias used by legacy LinkedIn helper scripts."""
     return startInteractiveChrome()
 

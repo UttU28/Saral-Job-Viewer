@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -8,24 +9,34 @@ from pathlib import Path
 
 from utils.dataManager import createTables, getDatabasePath
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None  # type: ignore[misc, assignment]
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+if load_dotenv is not None:
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+
 MAIN_DB_PATH = getDatabasePath()
 TABLES = ("jobData", "pastData")
 
-REMOTE_HOST_ALIAS = "MidhTech"
+# Remote side of scp: SSH config Host name, or user@IP (bypasses flaky DNS/alias).
+# Example: SARAL_MERGE_SSH=midhtechadmin@192.168.1.149
+# Or keep Host MidhTech in ~/.ssh/config and set SARAL_MERGE_SSH=MidhTech (default).
+REMOTE_SSH = (os.environ.get("SARAL_MERGE_SSH") or "MidhTech").strip()
 # Canonical DB on the SSH host (same layout as local zata/saralJobViewer.db).
 REMOTE_DB_PATH = "/home/midhtechadmin/Desktop/Saral-Job-Viewer/zata/saralJobViewer.db"
 TEMP_REMOTE_SNAPSHOT = MAIN_DB_PATH.parent / ".remote_pull_for_merge.db"
 
 
-def _require_scp() -> None:
+def _requireScp() -> None:
     if shutil.which("scp") is None:
         raise RuntimeError("scp not found in PATH.")
 
 
-def _remote_spec() -> str:
-    return f"{REMOTE_HOST_ALIAS}:{REMOTE_DB_PATH}"
+def _remoteSpec() -> str:
+    return f"{REMOTE_SSH}:{REMOTE_DB_PATH}"
 
 
 def tableExists(connection: sqlite3.Connection, schema: str, table: str) -> bool:
@@ -113,12 +124,12 @@ def mergeDatabases(sourceDbPath: Path) -> None:
 
 def pullRemoteReplaceLocal() -> None:
     """Download remote saralJobViewer.db and replace local file entirely."""
-    _require_scp()
+    _requireScp()
     main = MAIN_DB_PATH.resolve()
     main.parent.mkdir(parents=True, exist_ok=True)
     if main.exists():
         main.unlink()
-    spec = _remote_spec()
+    spec = _remoteSpec()
     print(f"pull (replace local): {spec} -> {main}")
     subprocess.run(["scp", spec, str(main)], check=True)
     print("Local DB replaced with remote copy.")
@@ -126,10 +137,10 @@ def pullRemoteReplaceLocal() -> None:
 
 def pullMergePushRemote() -> None:
     """Pull remote DB, merge into local, push merged file back to remote (replace)."""
-    _require_scp()
+    _requireScp()
     createTables(recreate=False)
     temp = TEMP_REMOTE_SNAPSHOT.resolve()
-    spec = _remote_spec()
+    spec = _remoteSpec()
     try:
         print(f"pull: {spec} -> {temp}")
         subprocess.run(["scp", spec, str(temp)], check=True)
@@ -143,17 +154,17 @@ def pullMergePushRemote() -> None:
 
 def pushLocalReplaceRemote() -> None:
     """Upload local saralJobViewer.db and replace remote file (no merge)."""
-    _require_scp()
+    _requireScp()
     main = MAIN_DB_PATH.resolve()
     if not main.exists():
         raise FileNotFoundError(f"Local DB not found: {main}")
-    spec = _remote_spec()
+    spec = _remoteSpec()
     print(f"push: {main} -> {spec}")
     subprocess.run(["scp", str(main), spec], check=True)
     print("Remote DB replaced with local copy.")
 
 
-def prompt_choice() -> str | None:
+def promptChoice() -> str | None:
     print()
     print("  1  Pull remote DB → delete local DB → replace with remote copy")
     print("  2  Pull remote → merge into local → push merged DB to remote (replace there)")
@@ -169,7 +180,7 @@ def prompt_choice() -> str | None:
 
 
 def main() -> int:
-    choice = prompt_choice()
+    choice = promptChoice()
     if choice is None:
         print("Cancelled.")
         return 0

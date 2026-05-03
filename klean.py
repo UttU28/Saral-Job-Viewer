@@ -120,12 +120,13 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
+        dest="dryRun",
         help="Show what would be moved without changing anything.",
     )
     args = parser.parse_args()
 
     dirTargets, fileTargets = findCleanupTargets(rootPath)
-    moveTargets(rootPath, dirTargets, fileTargets, dryRun=args.dry_run)
+    moveTargets(rootPath, dirTargets, fileTargets, dryRun=args.dryRun)
 
 
 if __name__ == "__main__":

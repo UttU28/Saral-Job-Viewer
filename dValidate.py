@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import re
@@ -13,15 +12,29 @@ from dotenv import load_dotenv
 from utils.dataManager import (
     deleteJobsByApplyStatusNotIn,
     deletePastDataOlderThanHours,
+    jobDataApplyStatusSummary,
     loadAllJobs,
     loadJobsByApplyStatus,
     loadJobsWithEmptyApplyStatus,
     updateApplyStatusByJobId,
 )
+from utils.scraperTerminalLog import (
+    PLATFORM_MIDHTECH,
+    ScraperRunLog,
+    formatApplyStatusBadge,
+    formatPushResultSuffix,
+)
 from utils.urlCleaner import normalizeCompanyName
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def _displayJobId(jobId: str, maxLen: int = 44) -> str:
+    j = (jobId or "").strip()
+    if len(j) <= maxLen:
+        return j
+    return j[: maxLen - 1] + "…"
 
 
 def loadEnvironment() -> None:
@@ -320,7 +333,7 @@ def findCheckEndpoint(baseUrl: str, suggestUrl: str, html: str) -> str:
 def authenticateMidhtechSession() -> tuple[requests.Session, str, str, str, str]:
     """
     Log in and open the suggest page. Returns
-    (session, base_url, suggest_url, check_url, csrf_token).
+    (session, baseUrl, suggestUrl, checkUrl, csrfToken).
     """
     loadEnvironment()
 
@@ -422,18 +435,18 @@ def _responseLooksSuccessful(resp: requests.Response) -> bool:
 
 def submitJobSuggestion(
     session: requests.Session,
-    suggest_url: str,
-    csrf_token: str,
+    suggestUrl: str,
+    csrfToken: str,
     job: dict,
 ) -> tuple[bool, str]:
     payload = buildCheckPayload(job)
-    payload["csrfmiddlewaretoken"] = csrf_token
+    payload["csrfmiddlewaretoken"] = csrfToken
     headers = {
-        "Referer": suggest_url,
-        "X-CSRFToken": csrf_token,
+        "Referer": suggestUrl,
+        "X-CSRFToken": csrfToken,
     }
     response = session.post(
-        suggest_url,
+        suggestUrl,
         data=payload,
         headers=headers,
         allow_redirects=True,
@@ -499,60 +512,59 @@ def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
 
 def maybePersistClassifierApplyStatus(
     job: dict, parsed: dict, *, quiet: bool = False
-) -> bool:
+) -> tuple[bool, str | None]:
     """
     If the check JSON is OK and we have a classifier decision string, write applyStatus in SQLite.
     Decisions are normalized (e.g. apply -> APPLY).
+    Returns (updated_in_db, status_string_or_none).
     """
     if not isinstance(parsed, dict) or not bool(parsed.get("ok")):
-        return False
+        return False, None
     raw = classifierApplyStatusFromResponse(parsed)
-    apply_status = normalizeClassifierDecisionForDb(raw)
-    if not apply_status:
-        return False
-    job_id = str(job.get("jobId") or "").strip()
-    if not job_id:
-        return False
-    if updateApplyStatusByJobId(job_id, apply_status):
-        if quiet:
-            print(f"  {apply_status}")
-        else:
-            print(f"Updated applyStatus for jobId={job_id!r} -> {apply_status!r}")
-        return True
+    applyStatus = normalizeClassifierDecisionForDb(raw)
+    if not applyStatus:
+        return False, None
+    jobId = str(job.get("jobId") or "").strip()
+    if not jobId:
+        return False, None
+    if updateApplyStatusByJobId(jobId, applyStatus):
+        if not quiet:
+            print(f"Updated applyStatus for jobId={jobId!r} -> {applyStatus!r}")
+        return True, applyStatus
     if not quiet:
-        print(f"No DB row updated for jobId={job_id!r} (missing job?)")
-    return False
+        print(f"No DB row updated for jobId={jobId!r} (missing job?)")
+    return False, None
 
 
-def maybePersistExistingFromMaasErrors(job: dict, parsed: dict, *, quiet: bool = False) -> bool:
+def maybePersistExistingFromMaasErrors(
+    job: dict, parsed: dict, *, quiet: bool = False
+) -> tuple[bool, str | None]:
     """When /check/ returns duplicate/existing MAAS errors, set applyStatus to EXISTING."""
     if not isinstance(parsed, dict) or bool(parsed.get("ok")):
-        return False
+        return False, None
     errs = parsed.get("errors")
     if not errorsIndicateMaasExistingOrDuplicate(errs):
-        return False
-    job_id = str(job.get("jobId") or "").strip()
-    if not job_id:
-        return False
-    if updateApplyStatusByJobId(job_id, APPLY_STATUS_EXISTING):
-        if quiet:
-            print(f"  {APPLY_STATUS_EXISTING}")
-        else:
+        return False, None
+    jobId = str(job.get("jobId") or "").strip()
+    if not jobId:
+        return False, None
+    if updateApplyStatusByJobId(jobId, APPLY_STATUS_EXISTING):
+        if not quiet:
             print(
-                f"Updated applyStatus for jobId={job_id!r} -> {APPLY_STATUS_EXISTING!r} "
+                f"Updated applyStatus for jobId={jobId!r} -> {APPLY_STATUS_EXISTING!r} "
                 "(MAAS duplicate / already exists)"
             )
-        return True
+        return True, APPLY_STATUS_EXISTING
     if not quiet:
-        print(f"No DB row updated for jobId={job_id!r} (missing job?)")
-    return False
+        print(f"No DB row updated for jobId={jobId!r} (missing job?)")
+    return False, None
 
 
-def loginAndCheck(job_index: int = 0) -> None:
+def loginAndCheck(jobIndex: int = 0) -> None:
     """Log in, POST one job (FIFO index in jobData), print summary, persist applyStatus if ok."""
     session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
 
-    job = loadJobAtIndex(job_index)
+    job = loadJobAtIndex(jobIndex)
     print("Check request:")
     preview = buildCheckPayload(job)
     print(
@@ -582,65 +594,84 @@ def syncEmptyApplyStatuses() -> None:
     FIFO (oldest timestamp first): every job in jobData with applyStatus IS NULL,
     all platforms. Optional delay between requests: MIDHTECH_SYNC_DELAY_SEC in .env.
     """
-    delay_sec = _parse_delay(os.getenv("MIDHTECH_SYNC_DELAY_SEC"))
+    log = ScraperRunLog(PLATFORM_MIDHTECH, "validate", mirrorToScrapeLog=False)
+    delaySec = _parseDelay(os.getenv("MIDHTECH_SYNC_DELAY_SEC"))
     pending = loadJobsWithEmptyApplyStatus(None)
     if not pending:
-        print("No jobs with applyStatus NULL (nothing pending).")
+        log.info("No jobs with applyStatus NULL (nothing pending).")
         return
 
     session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
-    print(f"Syncing applyStatus for {len(pending)} job(s) with NULL applyStatus (FIFO, all platforms)…")
+    total = len(pending)
+    log.info(
+        f"Syncing applyStatus for {total} job(s) with NULL applyStatus (FIFO, all platforms)…",
+    )
 
     written = 0
     for i, job in enumerate(pending):
         jid = str(job.get("jobId") or "")
-        plat = str(job.get("platform") or "")
-        print(f"[{i + 1}/{len(pending)}] {plat} {jid}")
+        plat = (str(job.get("platform") or "") or "?").strip()
+        head = f"[{i + 1}/{total}] {plat} {_displayJobId(jid)}"
         try:
             checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
             if not isinstance(parsed, dict):
-                print(f"  error: non-JSON HTTP {checkResp.status_code}")
-                body = (checkResp.text or "").strip()
-                if body:
-                    print(f"  response body:\n{body}")
+                snippet = (checkResp.text or "").strip().replace("\n", " ")[:120]
+                extra = f" — {snippet}" if snippet else ""
+                log.warning(f"{head} → non-JSON HTTP {checkResp.status_code}{extra}")
                 continue
             if not bool(parsed.get("ok")):
-                if maybePersistExistingFromMaasErrors(job, parsed, quiet=True):
+                ex_ok, ex_st = maybePersistExistingFromMaasErrors(job, parsed, quiet=True)
+                if ex_ok:
                     written += 1
+                    badge = formatApplyStatusBadge(ex_st or APPLY_STATUS_EXISTING)
+                    log.info(f"{head} → {badge}")
                     continue
-                print(f"  error: HTTP {checkResp.status_code} ok=false")
                 errs = parsed.get("errors")
                 if isinstance(errs, dict) and errs:
-                    print(f"  {json.dumps(errs, indent=2, ensure_ascii=False)}")
+                    err_blob = json.dumps(errs, ensure_ascii=False)
+                    if len(err_blob) > 160:
+                        err_blob = err_blob[:157] + "…"
+                    log.warning(f"{head} → check ok=false {err_blob}")
                 else:
                     detail = parsed.get("detail") or parsed.get("message") or parsed.get("error")
                     if detail:
-                        print(f"  detail: {detail!r}")
+                        log.warning(f"{head} → check ok=false: {detail!r}")
                     else:
-                        raw = (checkResp.text or "").strip()
-                        if raw:
-                            print(f"  response body:\n{raw}")
+                        raw = (checkResp.text or "").strip().replace("\n", " ")[:160]
+                        log.warning(
+                            f"{head} → check ok=false HTTP {checkResp.status_code}"
+                            + (f" — {raw}" if raw else "")
+                        )
                 continue
-            if maybePersistClassifierApplyStatus(job, parsed, quiet=True):
+            cl_ok, cl_st = maybePersistClassifierApplyStatus(job, parsed, quiet=True)
+            if cl_ok:
                 written += 1
+                badge = formatApplyStatusBadge(cl_st or "")
+                log.info(f"{head} → {badge}")
+            else:
+                log.warning(f"{head} → ok response but no applyStatus written (no decision?)")
         except KeyboardInterrupt:
             raise
         except Exception:
-            print(f"  exception for jobId={jid!r} (full traceback follows):")
+            log.error(f"{head} → exception (traceback below)")
             traceback.print_exc()
-        if delay_sec > 0:
-            time.sleep(delay_sec)
+        if delaySec > 0:
+            time.sleep(delaySec)
 
-    print(f"Done. Wrote applyStatus for {written} job(s).")
+    log.info(f"Done. Wrote applyStatus for {written} job(s).")
 
 
 def cleanupKeepOnlyApply() -> int:
-    """Delete rows that are not APPLY (keeps only APPLY in jobData); prune stale pastData."""
+    """
+    Delete rows with a set applyStatus other than APPLY (e.g. DO_NOT_APPLY, EXISTING).
+    Keeps NULL/blank applyStatus (still pending) and APPLY. Prunes stale pastData.
+    """
     deleted = deleteJobsByApplyStatusNotIn((KEEP_STATUS,))
-    kept_after = loadJobsByApplyStatus(KEEP_STATUS)
+    keptAfter = loadJobsByApplyStatus(KEEP_STATUS)
     print(
-        f"Cleanup complete: deleted {deleted} non-{KEEP_STATUS} job(s), "
-        f"kept {len(kept_after)} {KEEP_STATUS} job(s)."
+        f"Cleanup complete: deleted {deleted} classified non-{KEEP_STATUS} row(s); "
+        f"{len(keptAfter)} {KEEP_STATUS} row(s) in jobData "
+        "(NULL/blank applyStatus rows were kept)."
     )
     pruned = deletePastDataOlderThanHours(hours=PAST_DATA_RETENTION_HOURS)
     print(
@@ -652,52 +683,52 @@ def cleanupKeepOnlyApply() -> int:
 
 def pushApplyJobsAfterValidate() -> int:
     """Submit rows with applyStatus APPLY to suggest endpoint; set APPLIED or REDO."""
-    apply_jobs = loadJobsByApplyStatus(KEEP_STATUS)
-    if not apply_jobs:
-        print("No APPLY jobs found to submit.")
+    log = ScraperRunLog(PLATFORM_MIDHTECH, "suggest", mirrorToScrapeLog=False)
+    applyJobs = loadJobsByApplyStatus(KEEP_STATUS)
+    if not applyJobs:
+        log.info("No APPLY jobs found to submit.")
         return 0
 
-    print(f"Submitting {len(apply_jobs)} APPLY job(s) to suggest endpoint...")
-    session, _base_url, suggest_url, _check_url, csrf_token = authenticateMidhtechSession()
+    log.info(f"Submitting {len(applyJobs)} APPLY job(s) to suggest endpoint...")
+    session, _baseUrl, suggestUrl, _checkUrl, csrfToken = authenticateMidhtechSession()
 
     applied = 0
     redo = 0
-    for i, job in enumerate(apply_jobs, start=1):
-        job_id = str(job.get("jobId") or "").strip()
+    total = len(applyJobs)
+    for i, job in enumerate(applyJobs, start=1):
+        jobId = str(job.get("jobId") or "").strip()
         title = str(job.get("title") or "").strip()
         company = str(job.get("companyName") or "").strip()
-        prefix = f"[{i}/{len(apply_jobs)}] submit {job_id} :: {company} :: {title}"
+        jid = _displayJobId(jobId)
+        head = f"[{i}/{total}] submit {jid} :: {company} :: {title}"
         try:
             success, info = submitJobSuggestion(
                 session=session,
-                suggest_url=suggest_url,
-                csrf_token=csrf_token,
+                suggestUrl=suggestUrl,
+                csrfToken=csrfToken,
                 job=job,
             )
         except Exception as exc:
             success = False
             info = f"exception: {exc}"
 
+        suffix = formatPushResultSuffix(info)
         if success:
-            updateApplyStatusByJobId(job_id, STATUS_APPLIED)
+            updateApplyStatusByJobId(jobId, STATUS_APPLIED)
             applied += 1
-            print(f"{prefix} -> {STATUS_APPLIED} ({info})")
+            badge = formatApplyStatusBadge(STATUS_APPLIED)
+            log.info(f"{head} → {badge} {suffix}")
         else:
-            updateApplyStatusByJobId(job_id, STATUS_REDO)
+            updateApplyStatusByJobId(jobId, STATUS_REDO)
             redo += 1
-            print(f"{prefix} -> {STATUS_REDO} ({info})")
+            badge = formatApplyStatusBadge(STATUS_REDO)
+            log.warning(f"{head} → {badge} {suffix}")
 
-    print(
-        json.dumps(
-            {
-                "total": len(apply_jobs),
-                "applied": applied,
-                "redo": redo,
-                "status_on_success": STATUS_APPLIED,
-                "status_on_failure": STATUS_REDO,
-            },
-            indent=2,
-        )
+    log.info("── suggest summary ──")
+    log.info(
+        f"  total: {total}  "
+        f"{formatApplyStatusBadge(STATUS_APPLIED)}: {applied}  "
+        f"{formatApplyStatusBadge(STATUS_REDO)}: {redo}"
     )
     return applied
 
@@ -706,7 +737,7 @@ def runValidatePushCleanupPipeline() -> None:
     """
     1) Validate all pending (applyStatus NULL) via check API.
     2) Push all APPLY rows to midhtech suggest.
-    3) Delete all jobData rows except APPLY; drop pastData older than 48h (UTC).
+    3) Delete classified non-APPLY rows (keep NULL/blank pending + APPLY); prune pastData.
     """
     print("--- Phase 1: validate (NULL applyStatus) ---")
     syncEmptyApplyStatuses()
@@ -716,7 +747,7 @@ def runValidatePushCleanupPipeline() -> None:
     cleanupKeepOnlyApply()
 
 
-def _parse_delay(raw: str | None) -> float:
+def _parseDelay(raw: str | None) -> float:
     if not raw:
         return 0.0
     try:
@@ -725,33 +756,61 @@ def _parse_delay(raw: str | None) -> float:
         return 0.0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description=(
-            "Default: validate NULL applyStatus, push APPLY to midhtech, then keep only APPLY rows."
-        )
+def showDatabaseStatusReport() -> None:
+    """Print jobData / pastData counts by applyStatus (option 4)."""
+    log = ScraperRunLog(PLATFORM_MIDHTECH, "stats", mirrorToScrapeLog=False)
+    s = jobDataApplyStatusSummary()
+    log.info("── jobData (saralJobViewer.db) ──")
+    log.info(f"  Total rows:           {s['total']}")
+    log.info(f"  NULL / pending:       {s['nullPending']}")
+    log.info(
+        f"  APPLY:                {s['apply']}  "
+        f"({formatApplyStatusBadge('APPLY')})"
     )
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "-d",
-        "--delete",
-        action="store_true",
-        help="Only delete non-APPLY rows (keep APPLY only); no API calls.",
+    log.info(
+        f"  DO_NOT_APPLY:         {s['doNotApply']}  "
+        f"({formatApplyStatusBadge('DO_NOT_APPLY')})"
     )
-    mode.add_argument(
-        "-s",
-        "--single",
-        action="store_true",
-        help="One login + check only the first job in DB (FIFO index 0).",
+    log.info(
+        f"  EXISTING:             {s['existing']}  "
+        f"({formatApplyStatusBadge('EXISTING')})"
     )
-    args = parser.parse_args()
+    if s["otherStatus"]:
+        log.info(f"  Other applyStatus:    {s['otherStatus']}  (APPLIED, REDO, legacy, …)")
+    log.info(f"── pastData ──")
+    log.info(f"  Total rows:           {s['pastDataRows']}")
 
-    if args.delete:
+
+def promptMenu() -> str | None:
+    print()
+    print("  1  Validate all pending (applyStatus NULL → check API, FIFO)")
+    print("  2  Delete classified non-APPLY rows (keep NULL / empty / APPLY; cleanup + pastData)")
+    print("  3  Push all APPLY jobs to API, then same cleanup as 2 (suggest + cleanup)")
+    print("  4  Show DB status (totals: jobs, APPLY, DO_NOT_APPLY, EXISTING, NULL, pastData)")
+    print("  q  Quit")
+    while True:
+        raw = input("Choose 1, 2, 3, 4, or q: ").strip().lower()
+        if raw in ("q", "quit", ""):
+            return None
+        if raw in ("1", "2", "3", "4"):
+            return raw
+        print("Invalid choice. Enter 1, 2, 3, 4, or q.")
+
+
+def main() -> int:
+    choice = promptMenu()
+    if choice is None:
+        print("Cancelled.")
+        return 0
+    if choice == "1":
+        syncEmptyApplyStatuses()
+    elif choice == "2":
         cleanupKeepOnlyApply()
-    elif args.single:
-        loginAndCheck(0)
+    elif choice == "3":
+        pushApplyJobsAfterValidate()
+        cleanupKeepOnlyApply()
     else:
-        runValidatePushCleanupPipeline()
+        showDatabaseStatusReport()
     return 0
 
 

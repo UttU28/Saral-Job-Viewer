@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlencode, urljoin
 
@@ -20,6 +21,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.dataManager import loadKnownJobIdsByPlatform
+from utils.scraperTerminalLog import PLATFORM_JOBRIGHT, ScraperRunLog
 from utils.startChrome import (
     createScrapingChromeDriver,
     envBool,
@@ -27,6 +30,7 @@ from utils.startChrome import (
 )
 from utils.fileManagement import (
     DEFAULT_SCRAPER_SEARCH_KEYWORDS,
+    inferPlatformFromPath,
     isCompleteJobRow,
     loadExistingJobsAndMeta,
     loadJobsDocumentOrEmpty,
@@ -194,7 +198,11 @@ def parseJobsFromSearchHtml(html: str) -> list[dict[str, str | None]]:
 
 
 def fetchAndMergeSearchHtml(
-    outputPath: Path, url: str, timeout: float = 30.0
+    outputPath: Path,
+    url: str,
+    timeout: float = 30.0,
+    *,
+    log: ScraperRunLog | None = None,
 ) -> tuple[bool, str]:
     """
     GET search URL; if HTML, parse cards and merge into outputPath.
@@ -207,10 +215,11 @@ def fetchAndMergeSearchHtml(
 
     if response.status_code >= 400:
         body = response.text[:8000]
-        print(
-            body + ("\n... [truncated]" if len(response.text) > 8000 else ""),
-            file=sys.stderr,
-        )
+        blob = body + ("\n... [truncated]" if len(response.text) > 8000 else "")
+        if log is not None:
+            log.httpErrorBody(blob)
+        else:
+            print(blob, file=sys.stderr, flush=True)
         return False, f"HTTP {response.status_code}"
 
     contentType = response.headers.get("Content-Type", "")
@@ -247,20 +256,20 @@ def fetchAndMergeSearchHtml(
     return saveJsonPayload(outputPath, response.text)
 
 
-def resolveSearchUrl(cli_url: str | None) -> str:
-    if cli_url and cli_url.strip():
-        return cli_url.strip()
+def resolveSearchUrl(cliUrl: str | None) -> str:
+    if cliUrl and cliUrl.strip():
+        return cliUrl.strip()
     return defaultSearchUrl
 
 
-def resolveSearchPhases(cli_url: str | None) -> list[tuple[str, str]]:
+def resolveSearchPhases(cliUrl: str | None) -> list[tuple[str, str]]:
     """
-    Each phase is (search_url, label). One phase finishes list scroll + detail
-    scrape before the next. Optional cli_url forces a single phase.
+    Each phase is (searchUrl, label). One phase finishes list scroll + detail
+    scrape before the next. Optional cliUrl forces a single phase.
     Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
     """
-    if cli_url and cli_url.strip():
-        return [(cli_url.strip(), "cli")]
+    if cliUrl and cliUrl.strip():
+        return [(cliUrl.strip(), "cli")]
     keywords = resolveScraperSearchKeywords()
     if not keywords:
         return []
@@ -274,37 +283,110 @@ JOBS_LIST_SCROLL_CSS = '[class*="jobs-list-scrollable"]'
 
 _INITIAL_LOAD_TIMEOUT = 45
 _SCROLL_PAUSE = 0.55
+_SCROLL_STATUS_TICK = 0.12
+_SCROLL_STATUS_LINE_PAD = 120
 
 
-def _scroll_max_rounds() -> int:
+def writeJobrightScrollTerminalStatus(
+    log: ScraperRunLog,
+    *,
+    scrollRound: int,
+    uniqueJobCount: int,
+    bannerTotal: int | None,
+    domCardCount: int,
+    activity: str,
+    sleepSecondsRemaining: float | None = None,
+    stagnantRounds: int = 0,
+    newIdsLastMerge: int | None = None,
+    finalize: bool = False,
+) -> None:
+    """
+    JobRight list-scroll progress: unique count, DOM cards, round, activity.
+    Uses shared ScraperRunLog PROGRESS line; carriage return on TTY.
+    """
+    label = (log.phaseLabel or "search").strip() or "search"
+    if bannerTotal is not None:
+        countPart = f"unique {uniqueJobCount}/{bannerTotal}"
+    else:
+        countPart = f"unique {uniqueJobCount}"
+    scrollPart = (
+        "initial capture"
+        if scrollRound == 0
+        else f"scroll #{scrollRound}"
+    )
+    parts = [
+        f"list {label[:36]}",
+        countPart,
+        f"DOM {domCardCount}",
+        scrollPart,
+        activity,
+    ]
+    if sleepSecondsRemaining is not None and sleepSecondsRemaining >= 0:
+        parts.append(f"sleep {sleepSecondsRemaining:.1f}s")
+    if stagnantRounds:
+        parts.append(f"no-new×{stagnantRounds}")
+    if newIdsLastMerge is not None and newIdsLastMerge > 0:
+        parts.append(f"+{newIdsLastMerge} new")
+
+    body = " | ".join(p for p in parts if p)
+    tty = sys.stderr.isatty()
+    isSleepTick = activity == "sleeping" and sleepSecondsRemaining is not None
+    if not tty and isSleepTick:
+        return
+
+    log.progressBodyLine(
+        body,
+        finalize=finalize,
+        pad=_SCROLL_STATUS_LINE_PAD,
+    )
+
+
+def _sleepChunkedWithStatus(
+    totalSec: float,
+    tick: float,
+    onRemain: Callable[[float], None],
+) -> None:
+    """Sleep in small steps while onRemain(remainingBeforeChunk) updates the terminal."""
+    rem = float(totalSec)
+    if rem <= 0:
+        return
+    step = max(0.05, min(float(tick), rem))
+    while rem > 1e-9:
+        chunk = min(step, rem)
+        onRemain(rem)
+        time.sleep(chunk)
+        rem -= chunk
+
+
+def _scrollMaxRounds() -> int:
     try:
         return max(1, int(os.getenv("JOBRIGHT_SCROLL_MAX_ROUNDS", "150")))
     except ValueError:
         return 150
 
 
-def _scroll_stagnant_limit() -> int:
+def _scrollStagnantLimit() -> int:
     try:
         return max(1, int(os.getenv("JOBRIGHT_SCROLL_STAGNANT_LIMIT", "6")))
     except ValueError:
         return 6
 
 
-def _count_job_cards(driver) -> int:
+def _countJobCards(driver) -> int:
     return len(driver.find_elements(By.CSS_SELECTOR, JOB_CARD_CSS))
 
 
-def _wait_for_first_job_cards(driver, timeout: float = _INITIAL_LOAD_TIMEOUT) -> None:
-    def _list_and_cards_ready(d) -> bool:
+def _waitForFirstJobCards(driver, timeout: float = _INITIAL_LOAD_TIMEOUT) -> None:
+    def _listAndCardsReady(d) -> bool:
         return bool(
             d.find_elements(By.CSS_SELECTOR, JOBS_LIST_SCROLL_CSS)
             and d.find_elements(By.CSS_SELECTOR, JOB_CARD_CSS)
         )
 
-    WebDriverWait(driver, timeout).until(_list_and_cards_ready)
+    WebDriverWait(driver, timeout).until(_listAndCardsReady)
 
 
-def _try_parse_results_banner_text(driver) -> str | None:
+def _tryParseResultsBannerText(driver) -> str | None:
     try:
         body = driver.find_element(By.TAG_NAME, "body").text
     except Exception:
@@ -313,7 +395,7 @@ def _try_parse_results_banner_text(driver) -> str | None:
     return m.group(0).strip() if m else None
 
 
-def _parse_results_total_from_banner(driver) -> int | None:
+def _parseResultsTotalFromBanner(driver) -> int | None:
     try:
         body = driver.find_element(By.TAG_NAME, "body").text
     except Exception:
@@ -322,7 +404,7 @@ def _parse_results_total_from_banner(driver) -> int | None:
     return int(m.group(1)) if m else None
 
 
-def _rel_text(root, selector: str) -> str | None:
+def _relText(root, selector: str) -> str | None:
     try:
         el = root.find_element(By.CSS_SELECTOR, selector)
         t = (el.text or "").strip()
@@ -331,8 +413,8 @@ def _rel_text(root, selector: str) -> str | None:
         return None
 
 
-def _recommendation_notes(card) -> str | None:
-    def from_root(root) -> str | None:
+def _recommendationNotes(card) -> str | None:
+    def fromRoot(root) -> str | None:
         try:
             els = root.find_elements(
                 By.CSS_SELECTOR, '[class*="recommendation-tag-text"]'
@@ -342,12 +424,12 @@ def _recommendation_notes(card) -> str | None:
         except StaleElementReferenceException:
             return None
 
-    n = from_root(card)
+    n = fromRoot(card)
     if n:
         return n
     try:
         parent = card.find_element(By.XPATH, "./..")
-        return from_root(parent)
+        return fromRoot(parent)
     except (NoSuchElementException, StaleElementReferenceException):
         return None
 
@@ -370,10 +452,10 @@ def extractJobFromListCard(card) -> dict[str, str | None] | None:
             return None
 
         path = href.split("?")[0] if href else f"/jobs/info/{jid}"
-        job_url = urljoin(jobrightOrigin, path) if path.startswith("/") else path
+        jobUrl = urljoin(jobrightOrigin, path) if path.startswith("/") else path
 
-        first_row: list[str] = []
-        second_row: list[str] = []
+        firstRow: list[str] = []
+        secondRow: list[str] = []
         rows = card.find_elements(By.CSS_SELECTOR, '[class*="job-metadata-row"]')
         if len(rows) >= 1:
             for item in rows[0].find_elements(
@@ -383,7 +465,7 @@ def extractJobFromListCard(card) -> dict[str, str | None] | None:
                     sp = item.find_element(By.CSS_SELECTOR, "span")
                     t = (sp.text or "").strip()
                     if t:
-                        first_row.append(t)
+                        firstRow.append(t)
                 except (NoSuchElementException, StaleElementReferenceException):
                     pass
         if len(rows) >= 2:
@@ -394,30 +476,30 @@ def extractJobFromListCard(card) -> dict[str, str | None] | None:
                     sp = item.find_element(By.CSS_SELECTOR, "span")
                     t = (sp.text or "").strip()
                     if t:
-                        second_row.append(t)
+                        secondRow.append(t)
                 except (NoSuchElementException, StaleElementReferenceException):
                     pass
 
-        location = first_row[0] if len(first_row) > 0 else None
-        employment_type = first_row[1] if len(first_row) > 1 else None
-        salary_range = first_row[2] if len(first_row) >= 3 else None
-        work_model = second_row[0] if len(second_row) > 0 else None
-        seniority = second_row[1] if len(second_row) > 1 else None
-        experience = second_row[2] if len(second_row) > 2 else None
+        location = firstRow[0] if len(firstRow) > 0 else None
+        employmentType = firstRow[1] if len(firstRow) > 1 else None
+        salaryRange = firstRow[2] if len(firstRow) >= 3 else None
+        workModel = secondRow[0] if len(secondRow) > 0 else None
+        seniority = secondRow[1] if len(secondRow) > 1 else None
+        experience = secondRow[2] if len(secondRow) > 2 else None
 
         return {
             "jobId": jid,
-            "jobUrl": job_url,
-            "title": _rel_text(card, '[class*="job-title"]'),
-            "postedAgo": _rel_text(card, '[class*="publish-time"]'),
-            "company": _rel_text(card, '[class*="company-name"]'),
-            "industryTag": _rel_text(card, '[class*="job-tag"]'),
-            "applicants": _rel_text(card, '[class*="apply-time"]'),
-            "visaOrMatchNote": _recommendation_notes(card),
+            "jobUrl": jobUrl,
+            "title": _relText(card, '[class*="job-title"]'),
+            "postedAgo": _relText(card, '[class*="publish-time"]'),
+            "company": _relText(card, '[class*="company-name"]'),
+            "industryTag": _relText(card, '[class*="job-tag"]'),
+            "applicants": _relText(card, '[class*="apply-time"]'),
+            "visaOrMatchNote": _recommendationNotes(card),
             "location": location,
-            "employmentType": employment_type,
-            "salaryRange": salary_range,
-            "workModel": work_model,
+            "employmentType": employmentType,
+            "salaryRange": salaryRange,
+            "workModel": workModel,
             "seniority": seniority,
             "experience": experience,
         }
@@ -425,7 +507,7 @@ def extractJobFromListCard(card) -> dict[str, str | None] | None:
         return None
 
 
-def _extract_visible_jobs(driver) -> list[dict[str, str | None]]:
+def _extractVisibleJobs(driver) -> list[dict[str, str | None]]:
     out: list[dict[str, str | None]] = []
     for card in driver.find_elements(By.CSS_SELECTOR, JOB_CARD_CSS):
         job = extractJobFromListCard(card)
@@ -434,20 +516,20 @@ def _extract_visible_jobs(driver) -> list[dict[str, str | None]]:
     return out
 
 
-def _save_scroll_debug_json(
+def _saveScrollDebugJson(
     path: Path,
-    by_id: dict[str, dict[str, str | None]],
+    byId: dict[str, dict[str, str | None]],
     *,
-    search_url: str,
-    banner_total: int | None,
+    searchUrl: str,
+    bannerTotal: int | None,
 ) -> None:
-    jobs = list(by_id.values())
+    jobs = list(byId.values())
     jobs.sort(key=lambda j: (j.get("company") or "", j.get("title") or ""))
     payload = {
         "source": "jobright_scroll_capture",
-        "searchUrl": search_url,
-        "bannerTotal": banner_total,
-        "uniqueCount": len(by_id),
+        "searchUrl": searchUrl,
+        "bannerTotal": bannerTotal,
+        "uniqueCount": len(byId),
         "jobs": jobs,
     }
     ok, msg = saveJsonPayload(path, payload)
@@ -455,38 +537,72 @@ def _save_scroll_debug_json(
         raise OSError(msg)
 
 
-def _merge_visible_into(
+def _mergeVisibleInto(
     driver,
-    by_id: dict[str, dict[str, str | None]],
+    byId: dict[str, dict[str, str | None]],
     *,
-    search_url: str,
-    banner_total: int | None,
+    searchUrl: str,
+    bannerTotal: int | None,
     path: Path | None,
 ) -> tuple[int, int]:
-    before = len(by_id)
-    for job in _extract_visible_jobs(driver):
+    before = len(byId)
+    for job in _extractVisibleJobs(driver):
         jid = job.get("jobId")
         if isinstance(jid, str) and jid:
-            by_id[jid] = job
+            byId[jid] = job
     if path is not None:
-        _save_scroll_debug_json(path, by_id, search_url=search_url, banner_total=banner_total)
-    return before, len(by_id) - before
+        _saveScrollDebugJson(
+            path, byId, searchUrl=searchUrl, bannerTotal=bannerTotal
+        )
+    return before, len(byId) - before
 
 
-def _scroll_job_list_to_end_once(driver) -> None:
+def _scrollJobListToEndOnce(
+    driver,
+    log: ScraperRunLog,
+    *,
+    scrollRound: int,
+    bannerTotal: int | None,
+    uniqueCount: Callable[[], int],
+    stagnant: int,
+) -> None:
+    def status(
+        activity: str,
+        sleepLeft: float | None = None,
+        finalize: bool = False,
+    ) -> None:
+        writeJobrightScrollTerminalStatus(
+            log,
+            scrollRound=scrollRound,
+            uniqueJobCount=uniqueCount(),
+            bannerTotal=bannerTotal,
+            domCardCount=_countJobCards(driver),
+            activity=activity,
+            sleepSecondsRemaining=sleepLeft,
+            stagnantRounds=stagnant,
+            finalize=finalize,
+        )
+
     cards = driver.find_elements(By.CSS_SELECTOR, JOB_CARD_CSS)
     if not cards:
+        status("scrolling (no cards visible)")
         return
-    last_card = cards[-1]
+    status("scrolling into view")
+    lastCard = cards[-1]
     driver.execute_script(
         """
         const card = arguments[0];
         card.scrollIntoView({ block: 'end', inline: 'nearest', behavior: 'auto' });
         """,
-        last_card,
+        lastCard,
     )
-    time.sleep(0.2)
-    list_el = driver.find_element(By.CSS_SELECTOR, JOBS_LIST_SCROLL_CSS)
+
+    def sleepTick(rem: float) -> None:
+        status("sleeping", sleepLeft=rem)
+
+    _sleepChunkedWithStatus(0.2, _SCROLL_STATUS_TICK, sleepTick)
+    status("scrolling list pane")
+    listEl = driver.find_element(By.CSS_SELECTOR, JOBS_LIST_SCROLL_CSS)
     driver.execute_script(
         """
         const pane = arguments[0];
@@ -501,21 +617,21 @@ def _scroll_job_list_to_end_once(driver) -> None:
         pane.scrollTop = pane.scrollHeight;
         pane.dispatchEvent(new Event('scroll', { bubbles: true }));
         """,
-        list_el,
+        listEl,
     )
-    time.sleep(_SCROLL_PAUSE)
+    _sleepChunkedWithStatus(_SCROLL_PAUSE, _SCROLL_STATUS_TICK, sleepTick)
 
 
-def _is_list_scrolled_to_bottom(driver) -> bool:
+def _isListScrolledToBottom(driver) -> bool:
     try:
-        list_el = driver.find_element(By.CSS_SELECTOR, JOBS_LIST_SCROLL_CSS)
+        listEl = driver.find_element(By.CSS_SELECTOR, JOBS_LIST_SCROLL_CSS)
         return bool(
             driver.execute_script(
                 """
                 const p = arguments[0];
                 return p.scrollTop + p.clientHeight >= p.scrollHeight - 4;
                 """,
-                list_el,
+                listEl,
             )
         )
     except NoSuchElementException:
@@ -524,75 +640,156 @@ def _is_list_scrolled_to_bottom(driver) -> bool:
 
 def scrollJobListUntilDone(
     driver,
-    search_url: str,
+    log: ScraperRunLog,
+    searchUrl: str,
     *,
-    progress_json_path: Path | None = None,
+    progressJsonPath: Path | None = None,
+    phaseLabel: str = "",
 ) -> list[dict[str, str | None]]:
     """
-    Load search_url, scroll the virtual job list, dedupe by jobId, return card rows.
-    If progress_json_path is set, writes the same debug snapshot after each merge
+    Load searchUrl, scroll the virtual job list, dedupe by jobId, return card rows.
+    If progressJsonPath is set, writes the same debug snapshot after each merge
     (for test.py / inspection).
     """
-    driver.get(search_url)
-    _wait_for_first_job_cards(driver)
-    time.sleep(0.8)
+    phase = phaseLabel.strip() or "search"
+    log.bindPhase(phase)
 
-    by_id: dict[str, dict[str, str | None]] = {}
-    banner_total = _parse_results_total_from_banner(driver)
+    driver.get(searchUrl)
+    writeJobrightScrollTerminalStatus(
+        log,
+        scrollRound=0,
+        uniqueJobCount=0,
+        bannerTotal=None,
+        domCardCount=0,
+        activity="loading page",
+    )
+    _waitForFirstJobCards(driver)
 
-    _merge_visible_into(
+    def settle(rem: float) -> None:
+        writeJobrightScrollTerminalStatus(
+            log,
+            scrollRound=0,
+            uniqueJobCount=0,
+            bannerTotal=None,
+            domCardCount=_countJobCards(driver),
+            activity="settling",
+            sleepSecondsRemaining=rem,
+        )
+
+    _sleepChunkedWithStatus(0.8, _SCROLL_STATUS_TICK, settle)
+
+    byId: dict[str, dict[str, str | None]] = {}
+    bannerTotal = _parseResultsTotalFromBanner(driver)
+    uniqueFn = lambda: len(byId)
+
+    writeJobrightScrollTerminalStatus(
+        log,
+        scrollRound=0,
+        uniqueJobCount=0,
+        bannerTotal=bannerTotal,
+        domCardCount=_countJobCards(driver),
+        activity="merging first viewport",
+    )
+    _, newFirst = _mergeVisibleInto(
         driver,
-        by_id,
-        search_url=search_url,
-        banner_total=banner_total,
-        path=progress_json_path,
+        byId,
+        searchUrl=searchUrl,
+        bannerTotal=bannerTotal,
+        path=progressJsonPath,
+    )
+    writeJobrightScrollTerminalStatus(
+        log,
+        scrollRound=0,
+        uniqueJobCount=uniqueFn(),
+        bannerTotal=bannerTotal,
+        domCardCount=_countJobCards(driver),
+        activity="merged viewport",
+        newIdsLastMerge=newFirst,
     )
 
-    max_rounds = _scroll_max_rounds()
-    stagnant_limit = _scroll_stagnant_limit()
+    maxRounds = _scrollMaxRounds()
+    stagnantLimit = _scrollStagnantLimit()
     stagnant = 0
-    for _ in range(1, max_rounds + 1):
-        if banner_total is not None and len(by_id) >= banner_total:
+    lastScrollRound = 0
+    for scrollRound in range(1, maxRounds + 1):
+        if bannerTotal is not None and len(byId) >= bannerTotal:
             break
 
-        _scroll_job_list_to_end_once(driver)
-        _, new_ids = _merge_visible_into(
+        lastScrollRound = scrollRound
+        _scrollJobListToEndOnce(
             driver,
-            by_id,
-            search_url=search_url,
-            banner_total=banner_total,
-            path=progress_json_path,
+            log,
+            scrollRound=scrollRound,
+            bannerTotal=bannerTotal,
+            uniqueCount=uniqueFn,
+            stagnant=stagnant,
         )
-        if banner_total is not None and len(by_id) >= banner_total:
+        _, newIds = _mergeVisibleInto(
+            driver,
+            byId,
+            searchUrl=searchUrl,
+            bannerTotal=bannerTotal,
+            path=progressJsonPath,
+        )
+        writeJobrightScrollTerminalStatus(
+            log,
+            scrollRound=scrollRound,
+            uniqueJobCount=uniqueFn(),
+            bannerTotal=bannerTotal,
+            domCardCount=_countJobCards(driver),
+            activity="merged after scroll",
+            stagnantRounds=stagnant,
+            newIdsLastMerge=newIds,
+        )
+        if bannerTotal is not None and len(byId) >= bannerTotal:
             break
 
-        if new_ids == 0:
+        if newIds == 0:
             stagnant += 1
         else:
             stagnant = 0
 
-        if stagnant >= stagnant_limit:
+        if stagnant >= stagnantLimit:
             break
 
-    return list(by_id.values())
+    writeJobrightScrollTerminalStatus(
+        log,
+        scrollRound=lastScrollRound,
+        uniqueJobCount=uniqueFn(),
+        bannerTotal=bannerTotal,
+        domCardCount=_countJobCards(driver),
+        activity="list scroll complete",
+        stagnantRounds=stagnant,
+        finalize=True,
+    )
+    return list(byId.values())
 
 
 def fetchAndMergeSearchSelenium(
     driver,
     outputPath: Path,
     url: str,
+    log: ScraperRunLog,
+    *,
+    phaseLabel: str = "",
 ) -> tuple[bool, str, dict | None]:
     """
     Scroll-capture the job list in the browser, merge new rows into outputPath
     (same semantics as fetchAndMergeSearchHtml for HTML cards).
     """
     dbg = os.getenv("JOBRIGHT_SCROLL_DEBUG_JSON")
-    progress_path: Path | None = None
+    progressPath: Path | None = None
     if isinstance(dbg, str) and dbg.strip():
-        progress_path = Path(dbg.strip())
+        progressPath = Path(dbg.strip())
 
     try:
-        fetched = scrollJobListUntilDone(driver, url, progress_json_path=progress_path)
+        fetched = scrollJobListUntilDone(
+            driver,
+            log,
+            url,
+            progressJsonPath=progressPath,
+            phaseLabel=phaseLabel,
+        )
     except TimeoutException as exc:
         return False, f"Job list did not load in time: {exc}", None
     except Exception as exc:
@@ -603,7 +800,7 @@ def fetchAndMergeSearchSelenium(
     appended = 0
     skipped = 0
     for row in fetched:
-        added, skipped_one = mergeNewJobsIntoDocument(data, [row])
+        added, skippedOne = mergeNewJobsIntoDocument(data, [row])
         if added:
             appended += 1
             try:
@@ -611,7 +808,7 @@ def fetchAndMergeSearchSelenium(
             except OSError as exc:
                 return False, f"Failed to save merged jobs: {exc}", None
         else:
-            skipped += skipped_one
+            skipped += skippedOne
     return (
         True,
         f"Merged into {outputPath.resolve()}: +{appended} new, {skipped} skipped "
@@ -750,7 +947,9 @@ def postScrapeCleanJob(job: dict) -> None:
     mergeIntoJobResponsibility(job)
 
 
-def dismissOrionCoverLetterTourIfPresent(driver) -> None:
+def dismissOrionCoverLetterTourIfPresent(
+    driver, log: ScraperRunLog | None = None
+) -> None:
     exitSelectors: list[tuple[str, str, float]] = [
         (By.CSS_SELECTOR, "[id*='cover-letter-tour-exit-button']", 8.0),
         (
@@ -766,7 +965,10 @@ def dismissOrionCoverLetterTourIfPresent(driver) -> None:
             )
             driver.execute_script("arguments[0].click();", btn)
             time.sleep(0.5)
-            print("Closed Orion cover-letter tour (EXIT).", file=sys.stderr)
+            if log is not None:
+                log.info("Closed Orion cover-letter tour (EXIT).")
+            else:
+                print("Closed Orion cover-letter tour (EXIT).", file=sys.stderr)
             return
         except TimeoutException:
             continue
@@ -794,13 +996,15 @@ def getOriginalJobPostUrl(driver) -> str | None:
     return None
 
 
-def resolveOriginalJobPostUrl(driver) -> str | None:
+def resolveOriginalJobPostUrl(
+    driver, log: ScraperRunLog | None = None
+) -> str | None:
     """Try the Original Job Post link first; only dismiss the Orion tour if not found, then retry."""
     time.sleep(0.3)
     url = getOriginalJobPostUrl(driver)
     if url:
         return url
-    dismissOrionCoverLetterTourIfPresent(driver)
+    dismissOrionCoverLetterTourIfPresent(driver, log)
     time.sleep(0.3)
     return getOriginalJobPostUrl(driver)
 
@@ -953,28 +1157,24 @@ def extractJobDetailPage(driver) -> dict:
     }
 
 
-def extractJobDetailPageWithRetries(driver, log_prefix: str = "") -> dict:
+def extractJobDetailPageWithRetries(driver) -> dict:
     """Run extractJobDetailPage with retries on StaleElementReferenceException."""
-    stale_retries = scrapingStaleRetries()
-    stale_delay = scrapingStaleDelaySec()
-    for attempt in range(1, stale_retries + 1):
+    staleRetries = scrapingStaleRetries()
+    staleDelay = scrapingStaleDelaySec()
+    for attempt in range(1, staleRetries + 1):
         try:
             return extractJobDetailPage(driver)
         except StaleElementReferenceException:
-            if attempt >= stale_retries:
-                print(
-                    f"{log_prefix}Stale element; giving up (empty detailPage).",
-                    file=sys.stderr,
-                )
+            if attempt >= staleRetries:
                 return {}
-            time.sleep(stale_delay * attempt)
+            time.sleep(staleDelay * attempt)
 
 
 def _driverGetWithRetries(
     driver,
     url: str,
     *,
-    logPrefix: str = "",
+    log: ScraperRunLog | None = None,
     maxAttempts: int = 3,
 ) -> None:
     """Navigate with retries after Chrome/WebDriver connection resets (WinError 10054)."""
@@ -986,10 +1186,14 @@ def _driverGetWithRetries(
         except Exception as exc:
             if attempt >= maxAttempts:
                 raise
-            print(
-                f"{logPrefix}driver.get failed ({exc!r}); retry {attempt}/{maxAttempts - 1}…",
-                file=sys.stderr,
-            )
+            if log is not None:
+                log.driverRetry(attempt, maxAttempts, exc)
+            else:
+                print(
+                    f"driver.get failed ({exc!r}); retry {attempt}/{maxAttempts - 1}…",
+                    file=sys.stderr,
+                    flush=True,
+                )
             time.sleep(delay * attempt)
 
 
@@ -1009,57 +1213,54 @@ def scrapePendingJobDetails(
     jsonPath: Path,
     data: dict,
     knownJobIdsBeforeRun: set[str],
+    log: ScraperRunLog,
     phaseLabel: str,
 ) -> None:
     """Open each pending job URL, scrape detail DOM, merge into data, save after each job."""
     jobs = data["jobs"]
-    tag = f"[{phaseLabel}] "
+    log.bindPhase(phaseLabel)
     pending = [j for j in jobs if _jobNeedsDetailPass(j, knownJobIdsBeforeRun)]
     totalPending = len(pending)
     if not totalPending:
-        print(f"{tag}No jobs need a detail pass (all complete or skipped).", file=sys.stderr)
+        log.info("No jobs need a detail pass (all complete or skipped).")
         return
 
     for index, job in enumerate(pending):
         n = index + 1
         jobUrl = job.get("jobUrl")
-        label = (job.get("company") or job.get("title") or "")[:60]
         preview = str(jobUrl).strip()[:70]
-        print(
-            f"{tag}[{n}/{totalPending}] {label} — {preview}…",
-            file=sys.stderr,
-        )
+        statusBits: list[str] = []
 
         _driverGetWithRetries(
             driver,
             str(jobUrl).strip(),
-            logPrefix=f"{tag}[{n}/{totalPending}] ",
+            log=log,
         )
         try:
             waitForJobOverview(driver)
         except TimeoutException:
-            print(
-                f"{tag}[{n}/{totalPending}] Overview did not load in time.",
-                file=sys.stderr,
-            )
+            statusBits.append("overview timeout")
 
-        prefix = f"{tag}[{n}/{totalPending}] "
-        job["detailPage"] = extractJobDetailPageWithRetries(driver, prefix)
+        job["detailPage"] = extractJobDetailPageWithRetries(driver)
 
-        originalJobPostUrl = resolveOriginalJobPostUrl(driver)
+        originalJobPostUrl = resolveOriginalJobPostUrl(driver, log)
         if originalJobPostUrl:
             job["originalJobPostUrl"] = originalJobPostUrl
-            print(
-                f"{tag}[{n}/{totalPending}] originalJobPostUrl: {originalJobPostUrl}",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"{tag}[{n}/{totalPending}] originalJobPostUrl: <missing>",
-                file=sys.stderr,
-            )
+        if not job.get("detailPage"):
+            statusBits.append("empty detailPage")
 
         postScrapeCleanJob(job)
+
+        label = (job.get("companyName") or job.get("title") or "")[:60] or "?"
+        applyShow = (originalJobPostUrl or "<missing>").strip()
+        if len(applyShow) > 90:
+            applyShow = applyShow[:87] + "…"
+        extra = f" [{'; '.join(statusBits)}]" if statusBits else ""
+        log.jobLine(
+            n,
+            totalPending,
+            f"{label} — {preview}… | apply: {applyShow}{extra}",
+        )
 
         currentJobId = (job.get("jobId") or "").strip()
         if currentJobId:
@@ -1075,28 +1276,20 @@ def scrapePendingJobDetails(
 
 
 def main() -> None:
+    runLog = ScraperRunLog(PLATFORM_JOBRIGHT)
     try:
-        out_path = JOBRIGHT_SOURCE_PATH
+        outPath = JOBRIGHT_SOURCE_PATH
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         raise SystemExit(1) from exc
 
-    existing_jobs, _ = loadExistingJobsAndMeta(out_path)
-    knownJobIdsBeforeRun: set[str] = {
-        str(j.get("jobId") or "").strip()
-        for j in existing_jobs
-        if isinstance(j, dict) and str(j.get("jobId") or "").strip()
-    }
-    if existing_jobs:
-        print(
-            f"{len(existing_jobs)} jobId(s) already in {out_path.name}; "
-            "those list rows will be skipped.",
-            file=sys.stderr,
-        )
+    platform = inferPlatformFromPath(outPath)
+    knownJobIdsBeforeRun = set(loadKnownJobIdsByPlatform(platform))
+    runLog.existingJobsNotice(len(knownJobIdsBeforeRun), outPath.name)
 
     phases = resolveSearchPhases(None)
     if not phases:
-        print("No search keywords or URLs configured.", file=sys.stderr)
+        runLog.error("No search keywords or URLs configured.")
         raise SystemExit(1)
 
     try:
@@ -1105,26 +1298,34 @@ def main() -> None:
             quiet=True,
         )
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         raise SystemExit(1)
 
     try:
         driver.set_page_load_timeout(120)
-        jsonPath = out_path
+        jsonPath = outPath
 
         for phaseNum, (searchUrl, phaseLabel) in enumerate(phases, start=1):
-            print(
-                f"--- JobRight phase {phaseNum}/{len(phases)}: {phaseLabel!r} "
-                f"(list scroll, then detail scrape) ---",
-                file=sys.stderr,
+            runLog.bindPhase(phaseLabel)
+            runLog.phaseStart(
+                phaseNum,
+                len(phases),
+                phaseLabel,
+                "list scroll, then detail scrape",
             )
-            ok, msg, data = fetchAndMergeSearchSelenium(driver, out_path, searchUrl)
+            ok, msg, data = fetchAndMergeSearchSelenium(
+                driver,
+                outPath,
+                searchUrl,
+                runLog,
+                phaseLabel=phaseLabel,
+            )
             if not ok:
-                print(msg, file=sys.stderr)
+                runLog.error(msg)
                 raise SystemExit(1)
-            print(msg, file=sys.stderr)
+            runLog.info(msg)
             if not isinstance(data, dict):
-                data = loadJobsDocumentOrEmpty(out_path)
+                data = loadJobsDocumentOrEmpty(outPath)
             ensureSkippedOriginalUrlIds(data)
             saveOutputDocument(jsonPath, data)
 
@@ -1133,6 +1334,7 @@ def main() -> None:
                 jsonPath,
                 data,
                 knownJobIdsBeforeRun,
+                runLog,
                 phaseLabel=phaseLabel,
             )
 

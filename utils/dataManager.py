@@ -196,11 +196,11 @@ def loadAllJobs() -> list[dict]:
 def sortJobsFifoByTimestamp(jobs: list[dict]) -> list[dict]:
     """Oldest timestamp first; jobs with no timestamp last; tie-break jobId."""
 
-    def sort_key(row: dict) -> tuple[int, str, str]:
+    def sortKey(row: dict) -> tuple[int, str, str]:
         ts = str(row.get("timestamp") or "").strip()
         return (1 if not ts else 0, ts, str(row.get("jobId") or ""))
 
-    return sorted(jobs, key=sort_key)
+    return sorted(jobs, key=sortKey)
 
 
 def loadJobsWithEmptyApplyStatus(platform: str | None = None) -> list[dict]:
@@ -235,10 +235,10 @@ def loadJobsWithEmptyApplyStatus(platform: str | None = None) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def updateApplyStatusByJobId(job_id: str, apply_status: str) -> bool:
+def updateApplyStatusByJobId(jobId: str, applyStatus: str) -> bool:
     """Set applyStatus for one row. Returns True if a row was updated."""
-    jid = str(job_id or "").strip()
-    status = str(apply_status or "").strip()
+    jid = str(jobId or "").strip()
+    status = str(applyStatus or "").strip()
     if not jid:
         return False
     dbPath = createTables(recreate=False)
@@ -252,9 +252,9 @@ def updateApplyStatusByJobId(job_id: str, apply_status: str) -> bool:
         return cursor.rowcount > 0
 
 
-def loadJobsByApplyStatus(apply_status: str) -> list[dict]:
+def loadJobsByApplyStatus(applyStatus: str) -> list[dict]:
     """Return jobs whose applyStatus matches exactly."""
-    status = str(apply_status or "").strip()
+    status = str(applyStatus or "").strip()
     if not status:
         return []
     dbPath = createTables(recreate=False)
@@ -278,23 +278,106 @@ def loadJobsByApplyStatus(apply_status: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def deleteJobsByApplyStatusNotIn(allowed_statuses: list[str] | tuple[str, ...]) -> int:
+def jobDataApplyStatusSummary() -> dict[str, int]:
     """
-    Delete rows where applyStatus is NULL/blank or not in allowed_statuses.
-    Returns number of deleted rows.
+    Counts for jobData: total rows, pending (NULL/blank applyStatus), APPLY,
+    DO_NOT_APPLY, EXISTING, and any other non-empty applyStatus; plus pastData row count.
+    """
+    dbPath = createTables(recreate=False)
+    with sqlite3.connect(dbPath) as connection:
+        cursor = connection.cursor()
+        row = cursor.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN applyStatus IS NULL
+                                OR TRIM(COALESCE(applyStatus, '')) = ''
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS null_pending,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN TRIM(COALESCE(applyStatus, '')) = 'APPLY'
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS apply_cnt,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN TRIM(COALESCE(applyStatus, '')) = 'DO_NOT_APPLY'
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS do_not_apply_cnt,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN TRIM(COALESCE(applyStatus, '')) = 'EXISTING'
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS existing_cnt,
+                COALESCE(
+                    SUM(
+                        CASE
+                            WHEN TRIM(COALESCE(applyStatus, '')) != ''
+                                AND TRIM(COALESCE(applyStatus, '')) NOT IN (
+                                    'APPLY',
+                                    'DO_NOT_APPLY',
+                                    'EXISTING'
+                                )
+                            THEN 1
+                            ELSE 0
+                        END
+                    ),
+                    0
+                ) AS other_cnt
+            FROM jobData
+            """
+        ).fetchone()
+        past_rows = cursor.execute("SELECT COUNT(*) FROM pastData").fetchone()
+    total, n_null, n_apply, n_dna, n_ex, n_other = (int(x or 0) for x in row)
+    return {
+        "total": total,
+        "nullPending": n_null,
+        "apply": n_apply,
+        "doNotApply": n_dna,
+        "existing": n_ex,
+        "otherStatus": n_other,
+        "pastDataRows": int(past_rows[0] or 0) if past_rows else 0,
+    }
+
+
+def deleteJobsByApplyStatusNotIn(allowedStatuses: list[str] | tuple[str, ...]) -> int:
+    """
+    Delete rows whose applyStatus is a non-empty string not in allowedStatuses.
+    Rows with NULL or blank applyStatus are kept (pending / not yet classified).
     """
     normalized = sorted(
-        {str(item or "").strip() for item in allowed_statuses if str(item or "").strip()}
+        {str(item or "").strip() for item in allowedStatuses if str(item or "").strip()}
     )
     if not normalized:
-        raise ValueError("allowed_statuses must include at least one non-empty status")
+        raise ValueError("allowedStatuses must include at least one non-empty status")
 
     placeholders = ", ".join("?" for _ in normalized)
     sql = f"""
         DELETE FROM jobData
-        WHERE applyStatus IS NULL
-           OR TRIM(COALESCE(applyStatus, '')) = ''
-           OR applyStatus NOT IN ({placeholders})
+        WHERE TRIM(COALESCE(applyStatus, '')) != ''
+          AND TRIM(COALESCE(applyStatus, '')) NOT IN ({placeholders})
     """
     dbPath = createTables(recreate=False)
     with sqlite3.connect(dbPath) as connection:
@@ -343,18 +426,18 @@ def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
         rows = cursor.execute(
             "SELECT jobId, timestamp FROM pastData WHERE timestamp IS NOT NULL AND TRIM(timestamp) != ''"
         ).fetchall()
-    stale_ids: list[str] = []
+    staleIds: list[str] = []
     for row in rows:
         jid = str(row["jobId"]).strip()
         parsed = _parseStoredTimestampToUtc(row["timestamp"])
         if parsed is not None and parsed < cutoff and jid:
-            stale_ids.append(jid)
-    if not stale_ids:
+            staleIds.append(jid)
+    if not staleIds:
         return 0
-    placeholders = ",".join("?" for _ in stale_ids)
+    placeholders = ",".join("?" for _ in staleIds)
     with sqlite3.connect(dbPath) as connection:
         cursor = connection.cursor()
-        cursor.execute(f"DELETE FROM pastData WHERE jobId IN ({placeholders})", stale_ids)
+        cursor.execute(f"DELETE FROM pastData WHERE jobId IN ({placeholders})", staleIds)
         connection.commit()
         return int(cursor.rowcount or 0)
 

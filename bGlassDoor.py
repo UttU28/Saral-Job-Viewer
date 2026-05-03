@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import re
-import sys
 import time
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from dotenv import load_dotenv
@@ -17,12 +17,15 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.scraperTerminalLog import PLATFORM_GLASSDOOR, ScraperRunLog
 from utils.startChrome import (
     createScrapingChromeDriver,
     envBool,
 )
+from utils.dataManager import loadKnownJobIdsByPlatform
 from utils.fileManagement import (
     DEFAULT_SCRAPER_SEARCH_KEYWORDS,
+    inferPlatformFromPath,
     loadJobsDocumentOrEmpty,
     mergeNewJobsIntoDocument,
     resolveOutputJsonPath,
@@ -53,11 +56,11 @@ def buildDefaultGlassdoorSearchUrl(params: dict[str, str] | None = None) -> str:
         params = getDefaultGlassdoorSearchParams()
     base = "https://www.glassdoor.ca/Job"
     location = params.get("location", "united-states")
-    role_raw = params.get("role", "devops")
-    role_slug = glassdoorRolePathSegment(role_raw)
-    ko_start = len(location) + 1
-    ko_end = ko_start + len(role_slug)
-    path = f"{location}-{role_slug}-jobs-SRCH_IL.0,13_IN1_KO{ko_start},{ko_end}.htm"
+    roleRaw = params.get("role", "devops")
+    roleSlug = glassdoorRolePathSegment(roleRaw)
+    koStart = len(location) + 1
+    koEnd = koStart + len(roleSlug)
+    path = f"{location}-{roleSlug}-jobs-SRCH_IL.0,13_IN1_KO{koStart},{koEnd}.htm"
     query = {k: v for k, v in params.items() if k not in ("location", "role")}
     from urllib.parse import urlencode
     url = f"{base}/{path}"
@@ -86,7 +89,7 @@ def resolveGlassdoorSearchUrl(cliUrl: str | None = None) -> str:
 
 def resolveGlassdoorSearchPhases(cliUrl: str | None = None) -> list[tuple[str, str]]:
     """
-    Each phase is (search_url, label). One phase finishes list + detail scrape
+    Each phase is (searchUrl, label). One phase finishes list + detail scrape
     before the next. Optional cliUrl forces a single phase.
     Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
     """
@@ -104,7 +107,7 @@ def glassdoorJobIdToJobId(glassdoorJobId: str | None) -> str:
 
 
 def existingJobIdsFromOutputData(data: dict) -> set[str]:
-    """jobId values already stored (e.g. gdj_1010106816170) so we can skip re-scraping."""
+    """In-memory job rows and skip-bucket ids (e.g. Easy Apply) for this run."""
     jobs = data.get("jobs")
     out: set[str] = set()
     if isinstance(jobs, list):
@@ -113,12 +116,21 @@ def existingJobIdsFromOutputData(data: dict) -> set[str]:
                 jid = j.get("jobId")
                 if isinstance(jid, str) and jid.strip():
                     out.add(jid.strip())
-    skip_ids = data.get(skippedOriginalUrlIdsKey)
-    if isinstance(skip_ids, list):
-        for sid in skip_ids:
+    skipIds = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(skipIds, list):
+        for sid in skipIds:
             if isinstance(sid, str) and sid.strip():
                 out.add(sid.strip())
     return out
+
+
+def existingJobIdsKnownBeforeScrape(data: dict, outputPath: Path) -> set[str]:
+    """
+    All jobIds we should not open again: SQLite jobData ∪ pastData for this platform,
+    plus any ids already in the working document / skip bucket.
+    """
+    platform = inferPlatformFromPath(outputPath)
+    return set(loadKnownJobIdsByPlatform(platform)) | existingJobIdsFromOutputData(data)
 
 
 def ensureSkippedOriginalUrlIds(data: dict) -> None:
@@ -160,14 +172,14 @@ def httpJobUrl(u: str) -> bool:
     return s.startswith("http") and "about:blank" not in s.lower()
 
 
-def waitNewTabUrlFullyLoaded(driver, max_wait: float) -> str:
+def waitNewTabUrlFullyLoaded(driver, maxWait: float) -> str:
     """
     Wait for a real HTTP URL, document.readyState complete (bounded), then URL
     stability so SPAs / redirects finish before we read the final address.
     """
-    max_wait = max(10.0, min(float(max_wait), 90.0))
+    maxWait = max(10.0, min(float(maxWait), 90.0))
     try:
-        WebDriverWait(driver, int(max_wait)).until(
+        WebDriverWait(driver, int(maxWait)).until(
             lambda d: httpJobUrl((d.current_url or "").strip())
         )
     except TimeoutException:
@@ -175,13 +187,13 @@ def waitNewTabUrlFullyLoaded(driver, max_wait: float) -> str:
         return u if httpJobUrl(u) else ""
 
     try:
-        WebDriverWait(driver, min(25, int(max_wait))).until(
+        WebDriverWait(driver, min(25, int(maxWait))).until(
             lambda d: d.execute_script("return document.readyState") == "complete"
         )
     except TimeoutException:
         pass
 
-    deadline = time.monotonic() + min(18.0, max_wait)
+    deadline = time.monotonic() + min(18.0, maxWait)
     last = (driver.current_url or "").strip()
     while time.monotonic() < deadline:
         time.sleep(0.45)
@@ -330,38 +342,38 @@ def resolveRobotChallengeUrl(
 
 def captureNewTabUrlThenClose(
     driver,
-    handles_before: set[str],
-    return_to_handle: str,
+    handlesBefore: set[str],
+    returnToHandle: str,
     *,
-    wait_sec: float = 22.0,
+    waitSec: float = 22.0,
 ) -> str | None:
     """
     If Accept TNC (or similar) opened a new window, switch to it, read the URL,
     close that tab, and return focus to the Glassdoor tab.
     """
-    deadline = time.monotonic() + wait_sec
-    new_handle: str | None = None
+    deadline = time.monotonic() + waitSec
+    newHandle: str | None = None
     while time.monotonic() < deadline:
         now = set(driver.window_handles)
-        fresh = [h for h in now if h not in handles_before]
+        fresh = [h for h in now if h not in handlesBefore]
         if fresh:
-            new_handle = fresh[-1]
+            newHandle = fresh[-1]
             break
         time.sleep(0.12)
-    if not new_handle:
+    if not newHandle:
         return None
 
     url = ""
     try:
-        driver.switch_to.window(new_handle)
-        url = waitNewTabUrlFullyLoaded(driver, wait_sec)
+        driver.switch_to.window(newHandle)
+        url = waitNewTabUrlFullyLoaded(driver, waitSec)
     finally:
         try:
             driver.close()
         except Exception:
             pass
         try:
-            driver.switch_to.window(return_to_handle)
+            driver.switch_to.window(returnToHandle)
         except Exception:
             if driver.window_handles:
                 driver.switch_to.window(driver.window_handles[0])
@@ -389,7 +401,7 @@ def acceptIndeedArbitrationModalIfPresent(driver) -> tuple[bool, str | None]:
     if not visible:
         return False, None
 
-    def _try_click(btn) -> bool:
+    def _tryClick(btn) -> bool:
         try:
             driver.execute_script(
                 "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
@@ -409,13 +421,13 @@ def acceptIndeedArbitrationModalIfPresent(driver) -> tuple[bool, str | None]:
         btn = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, indeedArbitrationAccept))
         )
-        handles_before = set(driver.window_handles)
-        return_handle = driver.current_window_handle
-        if _try_click(btn):
-            tnc_url = captureNewTabUrlThenClose(
-                driver, handles_before, return_handle
+        handlesBefore = set(driver.window_handles)
+        returnHandle = driver.current_window_handle
+        if _tryClick(btn):
+            tncUrl = captureNewTabUrlThenClose(
+                driver, handlesBefore, returnHandle
             )
-            return True, tnc_url
+            return True, tncUrl
     except TimeoutException:
         pass
 
@@ -427,13 +439,13 @@ def acceptIndeedArbitrationModalIfPresent(driver) -> tuple[bool, str | None]:
             btn = driver.find_element(By.XPATH, xp)
             if not btn.is_displayed():
                 continue
-            handles_before = set(driver.window_handles)
-            return_handle = driver.current_window_handle
-            if _try_click(btn):
-                tnc_url = captureNewTabUrlThenClose(
-                    driver, handles_before, return_handle
+            handlesBefore = set(driver.window_handles)
+            returnHandle = driver.current_window_handle
+            if _tryClick(btn):
+                tncUrl = captureNewTabUrlThenClose(
+                    driver, handlesBefore, returnHandle
                 )
-                return True, tnc_url
+                return True, tncUrl
         except NoSuchElementException:
             continue
         except StaleElementReferenceException:
@@ -468,24 +480,24 @@ def dismissUnifiedAuthModalIfPresent(driver) -> tuple[bool, str | None]:
     'Never Miss an Opportunity' modal if it blocks the page.
     Returns (whether any action was taken, employer URL if Accept TNC opened a new tab).
     """
-    took_action, tnc_url = acceptIndeedArbitrationModalIfPresent(driver)
+    tookAction, tncUrl = acceptIndeedArbitrationModalIfPresent(driver)
     if closeJobAlertModalIfPresent(driver):
-        took_action = True
+        tookAction = True
     for btn in driver.find_elements(By.CSS_SELECTOR, authModalClose):
         try:
             if btn.is_displayed():
                 driver.execute_script(JS_CLICK, btn)
                 time.sleep(0.5)
-                return True, tnc_url
+                return True, tncUrl
         except StaleElementReferenceException:
             continue
-    return took_action, tnc_url
+    return tookAction, tncUrl
 
 
-def drainBlockingGlassdoorModals(driver, max_rounds: int = 8) -> list[str]:
+def drainBlockingGlassdoorModals(driver, maxRounds: int = 8) -> list[str]:
     """Dismiss Indeed ToS / auth nag repeatedly; collect employer URLs from new tabs."""
     collected: list[str] = []
-    for _ in range(max_rounds):
+    for _ in range(maxRounds):
         took, url = dismissUnifiedAuthModalIfPresent(driver)
         if url:
             collected.append(url)
@@ -495,13 +507,13 @@ def drainBlockingGlassdoorModals(driver, max_rounds: int = 8) -> list[str]:
     return collected
 
 
-def resolveEmployerApplyUrl(primary: str | None, extra_http_urls: list[str]) -> str:
+def resolveEmployerApplyUrl(primary: str | None, extraHttpUrls: list[str]) -> str:
     """Prefer apply-flow URL; else last http URL from TNC / drain (new-tab capture)."""
     if primary and primary.startswith("http"):
         return primary
     if primary == easyApplyLabel:
         return easyApplyLabel
-    for u in reversed(extra_http_urls):
+    for u in reversed(extraHttpUrls):
         if u.startswith("http"):
             return u
     if primary:
@@ -563,13 +575,13 @@ def originalApplyValue(driver) -> tuple[str | None, list[str]]:
 
         def _uncheckPreApplyBoxes() -> None:
             try:
-                checked_boxes = driver.find_elements(
+                checkedBoxes = driver.find_elements(
                     By.CSS_SELECTOR,
                     'dialog[open] input[type="checkbox"]:checked',
                 )
             except Exception:
-                checked_boxes = []
-            for box in checked_boxes:
+                checkedBoxes = []
+            for box in checkedBoxes:
                 try:
                     driver.execute_script(
                         """
@@ -608,14 +620,14 @@ def originalApplyValue(driver) -> tuple[str | None, list[str]]:
                     except TimeoutException:
                         startBtn = None
 
-                    got_url = False
+                    gotUrl = False
                     if startBtn is not None:
                         _uncheckPreApplyBoxes()
 
                         directUrl = _extractUrlFromStartButton(startBtn)
                         if directUrl:
                             primary = directUrl
-                            got_url = True
+                            gotUrl = True
                         else:
                             driver.execute_script(JS_CLICK, startBtn)
                             time.sleep(1.5)
@@ -644,9 +656,9 @@ def originalApplyValue(driver) -> tuple[str | None, list[str]]:
                                 time.sleep(0.5)
                                 if externalUrl:
                                     primary = externalUrl
-                                    got_url = True
+                                    gotUrl = True
 
-                            if not got_url:
+                            if not gotUrl:
                                 redirectedUrl = (driver.current_url or "").strip()
                                 if (
                                     redirectedUrl
@@ -659,15 +671,15 @@ def originalApplyValue(driver) -> tuple[str | None, list[str]]:
                                     except Exception:
                                         pass
                                     primary = redirectedUrl
-                                    got_url = True
+                                    gotUrl = True
 
-                    if not got_url:
+                    if not gotUrl:
                         primary = applyOnEmployerSiteLabel
             except NoSuchElementException:
                 pass
     finally:
-        post_urls = drainBlockingGlassdoorModals(driver, max_rounds=8)
-    return primary, post_urls
+        postUrls = drainBlockingGlassdoorModals(driver, maxRounds=8)
+    return primary, postUrls
 
 
 def clickShowMoreIfPresent(driver) -> None:
@@ -858,13 +870,13 @@ def _visibleLoadMoreButton(driver):
     return None
 
 
-def expandGlassdoorJobList(driver) -> int:
+def expandGlassdoorJobList(driver, log: ScraperRunLog) -> int:
     """
     Click Glassdoor's 'Show more jobs' control until it no longer appears at the
     end of the list. Returns how many times the button was clicked.
     """
     clicks = 0
-    no_growth_streak = 0
+    noGrowthStreak = 0
 
     while clicks < loadMoreMaxClicks:
         dismissUnifiedAuthModalIfPresent(driver)
@@ -881,7 +893,7 @@ def expandGlassdoorJobList(driver) -> int:
             time.sleep(0.5)
             continue
 
-        count_before = len(driver.find_elements(By.CSS_SELECTOR, jobListItem))
+        countBefore = len(driver.find_elements(By.CSS_SELECTOR, jobListItem))
         try:
             driver.execute_script(JS_CLICK, btn)
         except StaleElementReferenceException:
@@ -893,7 +905,7 @@ def expandGlassdoorJobList(driver) -> int:
 
         try:
             WebDriverWait(driver, 25).until(
-                lambda d, before=count_before: len(
+                lambda d, before=countBefore: len(
                     d.find_elements(By.CSS_SELECTOR, jobListItem)
                 )
                 > before
@@ -901,31 +913,29 @@ def expandGlassdoorJobList(driver) -> int:
         except TimeoutException:
             pass
 
-        count_after = len(driver.find_elements(By.CSS_SELECTOR, jobListItem))
-        if count_after <= count_before:
-            no_growth_streak += 1
-            if no_growth_streak >= 2:
-                print(
+        countAfter = len(driver.find_elements(By.CSS_SELECTOR, jobListItem))
+        if countAfter <= countBefore:
+            noGrowthStreak += 1
+            if noGrowthStreak >= 2:
+                log.siteDetail(
                     "Load more: no new rows after click; stopping.",
-                    file=sys.stderr,
                 )
                 break
         else:
-            no_growth_streak = 0
+            noGrowthStreak = 0
 
     if clicks:
-        print(
+        log.siteDetail(
             f"Expanded job list: {clicks} 'Show more jobs' click(s); "
             f"{len(driver.find_elements(By.CSS_SELECTOR, jobListItem))} rows.",
-            file=sys.stderr,
         )
     return clicks
 
 
 def scrollGlassdoorJobsList(
-    driver, *, fraction: float | None = None, delta_px: int | None = None
+    driver, *, fraction: float | None = None, deltaPx: int | None = None
 ) -> bool:
-    """Scroll the left jobs list so virtualized rows can mount. fraction in [0,1] or nudge by delta_px."""
+    """Scroll the left jobs list so virtualized rows can mount. fraction in [0,1] or nudge by deltaPx."""
     for sel in (
         jobsListUl,
         '[class*="JobsList_jobsList"]',
@@ -944,7 +954,7 @@ def scrollGlassdoorJobsList(
                     el,
                     f,
                 )
-            elif delta_px is not None:
+            elif deltaPx is not None:
                 driver.execute_script(
                     """
                     var el = arguments[0], d = arguments[1];
@@ -952,7 +962,7 @@ def scrollGlassdoorJobsList(
                     el.scrollTop = Math.min(max, el.scrollTop + d);
                     """,
                     el,
-                    int(delta_px),
+                    int(deltaPx),
                 )
             else:
                 return False
@@ -962,12 +972,12 @@ def scrollGlassdoorJobsList(
     return False
 
 
-def findJobListingIndexAndLi(driver, glassdoor_data_jobid: str) -> tuple[int, object] | None:
+def findJobListingIndexAndLi(driver, glassdoorDataJobid: str) -> tuple[int, object] | None:
     """
     Re-locate a list row after DOM reflows. The jobs list is often virtualized: only a
     window of rows exists until the panel is scrolled, so we scan then sweep scroll.
     """
-    raw = (glassdoor_data_jobid or "").strip()
+    raw = (glassdoorDataJobid or "").strip()
     if not raw:
         return None
 
@@ -993,7 +1003,7 @@ def findJobListingIndexAndLi(driver, glassdoor_data_jobid: str) -> tuple[int, ob
 
     if scrollGlassdoorJobsList(driver, fraction=0.0):
         for _ in range(40):
-            if not scrollGlassdoorJobsList(driver, delta_px=280):
+            if not scrollGlassdoorJobsList(driver, deltaPx=280):
                 break
             time.sleep(0.22)
             found = _scan()
@@ -1005,6 +1015,7 @@ def findJobListingIndexAndLi(driver, glassdoor_data_jobid: str) -> tuple[int, ob
 
 def scrapeGlassdoorSearch(
     driver,
+    log: ScraperRunLog,
     existingJobIds: set[str] | None = None,
     data: dict | None = None,
     outputPath = None,
@@ -1013,9 +1024,9 @@ def scrapeGlassdoorSearch(
 ) -> list[dict]:
     """
     Scrape list + detail pane for jobs whose jobId is not in existingJobIds
-    (from prior DB-backed source). Rows already saved are not clicked.
+    (jobData ∪ pastData ∪ skip bucket). Those rows are not clicked.
     """
-    tag = f"[{phaseLabel}] " if phaseLabel else ""
+    log.bindPhase(phaseLabel)
     wait = WebDriverWait(driver, listWaitSec)
     try:
         wait.until(
@@ -1024,20 +1035,20 @@ def scrapeGlassdoorSearch(
             )
         )
     except TimeoutException:
-        print(f"{tag}Timed out waiting for Jobs List.", file=sys.stderr)
+        log.error("Timed out waiting for Jobs List.")
         return []
 
     time.sleep(1.0)
     dismissUnifiedAuthModalIfPresent(driver)
-    expandGlassdoorJobList(driver)
+    expandGlassdoorJobList(driver, log)
 
     items = driver.find_elements(By.CSS_SELECTOR, jobListItem)
     if not items:
-        print(f"{tag}No job listings found.", file=sys.stderr)
+        log.warning("No job listings found.")
         return []
 
-    file_job_ids = frozenset(existingJobIds) if existingJobIds else frozenset()
-    seen: set[str] = set(file_job_ids)
+    fileJobIds = frozenset(existingJobIds) if existingJobIds else frozenset()
+    seen: set[str] = set(fileJobIds)
 
     out: list[dict] = []
     n = len(items)
@@ -1051,67 +1062,68 @@ def scrapeGlassdoorSearch(
             continue
         snapshot.append((gid, jid))
 
-    n_snap = len(snapshot)
-    print(
-        f"{tag}Found {n} list items ({n_snap} with job id); skipping jobIds already in output, opening detail for the rest…",
-        file=sys.stderr,
+    nSnap = len(snapshot)
+    log.info(
+        f"Found {n} list items ({nSnap} with job id); "
+        "skipping jobIds already in DB (jobData/pastData) or skip list, opening detail for the rest…",
     )
 
-    for pos, (gid_raw, job_id) in enumerate(snapshot):
+    for pos, (gidRaw, jobId) in enumerate(snapshot):
         try:
             dismissUnifiedAuthModalIfPresent(driver)
-            located = findJobListingIndexAndLi(driver, gid_raw)
+            located = findJobListingIndexAndLi(driver, gidRaw)
             if located is None:
-                print(
-                    f"{tag}[{pos + 1}/{n_snap}] skip (row not in DOM): {job_id}",
-                    file=sys.stderr,
-                )
+                log.jobSkip(pos + 1, nSnap, "row not in DOM", str(jobId))
                 continue
 
-            list_index, li = located
+            listIndex, li = located
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", li)
             time.sleep(0.2)
             card = cardFields(li)
             if not card.get("glassdoorJobId"):
-                print(f"{tag}[{pos + 1}] skip: no data-jobid", file=sys.stderr)
+                log.jobLine(pos + 1, nSnap, "skip: no data-jobid")
                 continue
 
-            if job_id and job_id in seen:
+            if jobId and jobId in seen:
                 where = (
                     "on disk"
-                    if job_id in file_job_ids
+                    if jobId in fileJobIds
                     else "earlier in this list"
                 )
-                print(
-                    f"{tag}[{pos + 1}/{n_snap}] skip ({where}): {card.get('companyName') or '?'} — {job_id}",
-                    file=sys.stderr,
+                log.jobSkip(
+                    pos + 1,
+                    nSnap,
+                    where,
+                    f"{card.get('companyName') or '?'} — {jobId}",
                 )
                 continue
 
             if cardShowsGlassdoorEasyApply(li):
                 if isinstance(data, dict):
-                    skip_bucket = data.setdefault(skippedOriginalUrlIdsKey, [])
-                    if not isinstance(skip_bucket, list):
+                    skipBucket = data.setdefault(skippedOriginalUrlIdsKey, [])
+                    if not isinstance(skipBucket, list):
                         data[skippedOriginalUrlIdsKey] = []
-                        skip_bucket = data[skippedOriginalUrlIdsKey]
-                    if job_id and job_id not in skip_bucket:
-                        skip_bucket.append(job_id)
+                        skipBucket = data[skippedOriginalUrlIdsKey]
+                    if jobId and jobId not in skipBucket:
+                        skipBucket.append(jobId)
                         if outputPath is not None:
                             saveOutputDocument(outputPath, data)
-                if job_id:
-                    seen.add(job_id)
-                print(
-                    f"{tag}[{pos + 1}/{n_snap}] skip ({easyApplyLabel}): {card.get('companyName') or '?'} — {job_id}",
-                    file=sys.stderr,
+                if jobId:
+                    seen.add(jobId)
+                log.jobSkip(
+                    pos + 1,
+                    nSnap,
+                    easyApplyLabel,
+                    f"{card.get('companyName') or '?'} — {jobId}",
                 )
                 continue
 
-            clickJobCard(driver, list_index)
+            clickJobCard(driver, listIndex)
             time.sleep(0.9)
 
             description, companyHdr = scrapeDetailPane(driver)
-            apply_primary, post_urls = originalApplyValue(driver)
-            applyLabel = resolveEmployerApplyUrl(apply_primary, post_urls)
+            applyPrimary, postUrls = originalApplyValue(driver)
+            applyLabel = resolveEmployerApplyUrl(applyPrimary, postUrls)
 
             jobUrl = absoluteUrl(driver, card.get("titleHref"))
             rec = buildJobRecord(
@@ -1128,13 +1140,14 @@ def scrapeGlassdoorSearch(
                     out.append(rec)
             else:
                 out.append(rec)
-            seen.add(job_id)
-            print(
-                f"{tag}[{pos + 1}/{n_snap}] {rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
-                file=sys.stderr,
+            seen.add(jobId)
+            log.jobLine(
+                pos + 1,
+                nSnap,
+                f"{rec.get('companyName')} — {rec.get('jobUrl', '')[:70]}…",
             )
         except Exception as exc:
-            print(f"{tag}[{pos + 1}] error: {exc}", file=sys.stderr)
+            log.jobError(pos + 1, "error", exc)
             continue
 
     return out
@@ -1142,16 +1155,17 @@ def scrapeGlassdoorSearch(
 
 def main() -> None:
     os.environ["USE_UNDETECTED_CHROME"] = "1"
+    runLog = ScraperRunLog(PLATFORM_GLASSDOOR)
 
     try:
         outputPath = GLASSDOOR_SOURCE_PATH
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         raise SystemExit(1) from exc
 
     phases = resolveGlassdoorSearchPhases(None)
     if not phases:
-        print("No Glassdoor search keywords or URLs configured.", file=sys.stderr)
+        runLog.error("No Glassdoor search keywords or URLs configured.")
         raise SystemExit(1)
 
     headless = envBool("SCRAPING_HEADLESS", default=True)
@@ -1159,46 +1173,43 @@ def main() -> None:
     try:
         driver = createScrapingChromeDriver(headless=headless, quiet=True)
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         raise SystemExit(1) from exc
 
     try:
         driver.set_page_load_timeout(120)
         totalNew = 0
         for phaseNum, (searchUrl, phaseLabel) in enumerate(phases, start=1):
-            print(
-                f"--- Glassdoor phase {phaseNum}/{len(phases)}: {phaseLabel!r} "
-                f"(list + detail pane) ---",
-                file=sys.stderr,
+            runLog.bindPhase(phaseLabel)
+            runLog.phaseStart(
+                phaseNum,
+                len(phases),
+                phaseLabel,
+                "list + detail pane",
             )
             data = loadJobsDocumentOrEmpty(outputPath)
             ensureSkippedOriginalUrlIds(data)
-            existing_ids = existingJobIdsFromOutputData(data)
-            if existing_ids and phaseNum == 1:
-                print(
-                    f"{len(existing_ids)} jobId(s) already in {outputPath.name}; "
-                    "those list rows will be skipped.",
-                    file=sys.stderr,
-                )
+            existingIds = existingJobIdsKnownBeforeScrape(data, outputPath)
+            if existingIds and phaseNum == 1:
+                runLog.existingJobsNotice(len(existingIds), outputPath.name)
 
             driver.get(searchUrl)
             rows = scrapeGlassdoorSearch(
                 driver,
-                existing_ids,
+                runLog,
+                existingIds,
                 data,
                 outputPath,
                 phaseLabel=phaseLabel,
             )
-            phase_new = len(rows)
-            totalNew += phase_new
-            print(
-                f"Phase {phaseLabel!r}: +{phase_new} new job(s) into {outputPath.name}.",
-                file=sys.stderr,
+            phaseNew = len(rows)
+            totalNew += phaseNew
+            runLog.phaseDone(
+                phaseLabel,
+                f"+{phaseNew} new job(s) into {outputPath.name}",
             )
-        print(
-            f"Done: +{totalNew} new job(s) total across {len(phases)} phase(s) → "
-            f"{outputPath.resolve()}",
-            file=sys.stderr,
+        runLog.runDone(
+            f"+{totalNew} new job(s) across {len(phases)} phase(s) → {outputPath.resolve()}",
         )
     finally:
         driver.quit()

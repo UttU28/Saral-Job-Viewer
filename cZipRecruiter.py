@@ -7,7 +7,6 @@ import gzip
 import json
 import os
 import zlib
-import sys
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
@@ -20,8 +19,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from utils.dataManager import loadKnownJobIdsByPlatform
+from utils.scraperTerminalLog import PLATFORM_ZIPRECRUITER, ScraperRunLog
 from utils.fileManagement import (
     DEFAULT_SCRAPER_SEARCH_KEYWORDS,
+    inferPlatformFromPath,
     loadJobsDocumentOrEmpty,
     mergeNewJobsIntoDocument,
     resolveOutputJsonPath,
@@ -105,20 +107,20 @@ def buildZipRecruiterUrlForKeyword(keyword: str) -> str:
     return f"{baseUrl}?{urlencode(query)}"
 
 
-def resolveZipRecruiterSearchUrl(cli_url: str | None = None) -> str:
-    if cli_url and str(cli_url).strip():
-        return str(cli_url).strip()
+def resolveZipRecruiterSearchUrl(cliUrl: str | None = None) -> str:
+    if cliUrl and str(cliUrl).strip():
+        return str(cliUrl).strip()
     return buildDefaultZipRecruiterUrl()
 
 
-def resolveZipRecruiterSearchPhases(cli_url: str | None = None) -> list[tuple[str, str]]:
+def resolveZipRecruiterSearchPhases(cliUrl: str | None = None) -> list[tuple[str, str]]:
     """
-    Each phase is (search_url, label). One phase paginates the full result set
-    before the next. Optional cli_url forces a single phase.
+    Each phase is (searchUrl, label). One phase paginates the full result set
+    before the next. Optional cliUrl forces a single phase.
     Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
     """
-    if cli_url and str(cli_url).strip():
-        return [(str(cli_url).strip(), "cli")]
+    if cliUrl and str(cliUrl).strip():
+        return [(str(cliUrl).strip(), "cli")]
     keywords = resolveScraperSearchKeywords()
     if not keywords:
         return []
@@ -381,7 +383,11 @@ def _detailPaneTitleMatches(expected: str | None, actual: str | None) -> bool:
     return False
 
 
-def waitForDetailsPane(driver: webdriver.Chrome, expectedTitle: str | None) -> None:
+def waitForDetailsPane(
+    driver: webdriver.Chrome,
+    expectedTitle: str | None,
+    log: ScraperRunLog,
+) -> None:
     WebDriverWait(driver, 20).until(
         EC.presence_of_element_located(
             (By.CSS_SELECTOR, "div[data-testid='right-pane'], div[data-testid='job-details-scroll-container']")
@@ -391,19 +397,18 @@ def waitForDetailsPane(driver: webdriver.Chrome, expectedTitle: str | None) -> N
         time.sleep(0.5)
         return
 
-    def title_ready(d: webdriver.Chrome) -> bool:
+    def titleReady(d: webdriver.Chrome) -> bool:
         h2 = safeText(d, "div[data-testid='job-details-scroll-container'] h2")
         return _detailPaneTitleMatches(expectedTitle, h2)
 
     try:
-        WebDriverWait(driver, 18).until(title_ready)
+        WebDriverWait(driver, 18).until(titleReady)
     except TimeoutException:
         h2 = safeText(driver, "div[data-testid='job-details-scroll-container'] h2")
         if h2:
-            print(
-                f"waitForDetailsPane: title did not match list preview within timeout "
-                f"(list={expectedTitle!r}, detail={h2!r}); continuing with detail pane.",
-                file=sys.stderr,
+            log.warning(
+                f"[site] Detail title mismatch after wait "
+                f"(list={expectedTitle!r}, detail={h2!r}); continuing.",
             )
             return
         raise
@@ -465,6 +470,7 @@ def scrapeSelectedJobDetails(driver: webdriver.Chrome, fallback: dict[str, str |
 
 def scrapeCurrentPageJobs(
     driver: webdriver.Chrome,
+    log: ScraperRunLog,
     globalSeenIds: set[str],
     pageNumber: int,
     data: dict,
@@ -472,45 +478,48 @@ def scrapeCurrentPageJobs(
     *,
     phaseLabel: str = "",
 ) -> tuple[int, int, int]:
-    tag = f"[{phaseLabel}] " if phaseLabel else ""
-    added_count = 0
-    skipped_merge = 0
-    skipped_known = 0
+    log.bindPhase(phaseLabel)
+    addedCount = 0
+    skippedMerge = 0
+    skippedKnown = 0
     cards = getCardElementsOnPage(driver)
     n = len(cards)
-    print(
-        f"{tag}Page {pageNumber}: found {n} list items; skipping jobIds already in output, "
-        "opening detail for the rest…",
-        file=sys.stderr,
+    log.info(
+        f"Page {pageNumber}: found {n} list items; "
+        "skipping jobIds already in output, opening detail for the rest…",
     )
 
     for idx, card in enumerate(cards):
         cardId = (card.get_attribute("id") or "").strip()
-        company_preview = safeText(card, '[data-testid="job-card-company"]') or "?"
+        companyPreview = safeText(card, '[data-testid="job-card-company"]') or "?"
         if not cardId:
-            print(f"{tag}[{idx + 1}/{n}] skip: no id", file=sys.stderr)
+            log.jobLine(idx + 1, n, "skip: no id")
             continue
         if cardId in globalSeenIds:
-            skipped_known += 1
-            print(
-                f"{tag}[{idx + 1}/{n}] skip (on disk): {company_preview} — {cardId}",
-                file=sys.stderr,
+            skippedKnown += 1
+            log.jobSkip(
+                idx + 1,
+                n,
+                "on disk",
+                f"{companyPreview} — {cardId}",
             )
             continue
 
-        hosted_label = cardShowsZipHostedApply(card)
-        if hosted_label:
-            skip_bucket = data.setdefault(skippedOriginalUrlIdsKey, [])
-            if not isinstance(skip_bucket, list):
+        hostedLabel = cardShowsZipHostedApply(card)
+        if hostedLabel:
+            skipBucket = data.setdefault(skippedOriginalUrlIdsKey, [])
+            if not isinstance(skipBucket, list):
                 data[skippedOriginalUrlIdsKey] = []
-                skip_bucket = data[skippedOriginalUrlIdsKey]
-            if cardId not in skip_bucket:
-                skip_bucket.append(cardId)
+                skipBucket = data[skippedOriginalUrlIdsKey]
+            if cardId not in skipBucket:
+                skipBucket.append(cardId)
                 saveOutputDocument(outputPath, data)
             globalSeenIds.add(cardId)
-            print(
-                f"{tag}[{idx + 1}/{n}] skip ({hosted_label}): {company_preview} — {cardId}",
-                file=sys.stderr,
+            log.jobSkip(
+                idx + 1,
+                n,
+                hostedLabel,
+                f"{companyPreview} — {cardId}",
             )
             continue
 
@@ -533,13 +542,12 @@ def scrapeCurrentPageJobs(
         for attempt in range(2):
             try:
                 clickCardById(driver, cardId)
-                waitForDetailsPane(driver, fallback.get("title"))
+                waitForDetailsPane(driver, fallback.get("title"), log)
                 break
             except TimeoutException:
                 if attempt == 0:
-                    print(
-                        f"{tag}[{idx + 1}/{n}] detail pane wait failed, retry click: {cardId}",
-                        file=sys.stderr,
+                    log.warning(
+                        f"[{idx + 1}/{n}] detail pane wait failed, retry click: {cardId}",
                     )
                     time.sleep(0.75)
                     continue
@@ -566,17 +574,14 @@ def scrapeCurrentPageJobs(
         added, skipped = mergeNewJobsIntoDocument(data, [jobRecord])
         if added:
             saveOutputDocument(outputPath, data)
-            added_count += added
+            addedCount += added
         else:
-            skipped_merge += skipped
+            skippedMerge += skipped
         globalSeenIds.add(cardId)
-        label = jobRecord.get("companyName") or company_preview or "?"
+        label = jobRecord.get("companyName") or companyPreview or "?"
         preview = str(jobRecord.get("jobUrl") or "").strip()[:70]
-        print(
-            f"{tag}[{idx + 1}/{n}] {label} — {preview}…",
-            file=sys.stderr,
-        )
-    return added_count, skipped_merge, skipped_known
+        log.jobLine(idx + 1, n, f"{label} — {preview}…")
+    return addedCount, skippedMerge, skippedKnown
 
 
 def goToNextResultsPage(driver: webdriver.Chrome) -> bool:
@@ -592,6 +597,7 @@ def goToNextResultsPage(driver: webdriver.Chrome) -> bool:
 
 
 def seedSeenIdsFromDocument(data: dict) -> set[str]:
+    """In-memory job rows and skip-bucket card ids for this run."""
     out: set[str] = set()
     jobs = data.get("jobs")
     if isinstance(jobs, list):
@@ -600,57 +606,62 @@ def seedSeenIdsFromDocument(data: dict) -> set[str]:
                 jid = j.get("jobId")
                 if isinstance(jid, str) and jid:
                     out.add(jid)
-    skip_ids = data.get(skippedOriginalUrlIdsKey)
-    if isinstance(skip_ids, list):
-        for sid in skip_ids:
+    skipIds = data.get(skippedOriginalUrlIdsKey)
+    if isinstance(skipIds, list):
+        for sid in skipIds:
             if isinstance(sid, str) and sid.strip():
                 out.add(sid.strip())
     return out
 
 
+def zipRecruiterSeenIdsBeforeScrape(data: dict, outputPath: Path) -> set[str]:
+    """jobData ∪ pastData for ZipRecruiter, plus document / skip-bucket ids."""
+    platform = inferPlatformFromPath(outputPath)
+    return set(loadKnownJobIdsByPlatform(platform)) | seedSeenIdsFromDocument(data)
+
+
 def scrapeAllResultPages(
     driver: webdriver.Chrome,
+    log: ScraperRunLog,
     startUrl: str,
     outputPath: Path,
     *,
     phaseLabel: str = "",
 ) -> tuple[int, int, int]:
-    tag = f"[{phaseLabel}] " if phaseLabel else ""
+    log.bindPhase(phaseLabel)
     driver.get(startUrl)
     dismissLoginPopupIfPresent(driver)
     time.sleep(1.0)
 
     data = loadJobsDocumentOrEmpty(outputPath)
     ensureSkippedOriginalUrlIds(data)
-    seenIds = seedSeenIdsFromDocument(data)
+    seenIds = zipRecruiterSeenIdsBeforeScrape(data, outputPath)
     if seenIds:
-        print(
-            f"{tag}{len(seenIds)} jobId(s) already in {outputPath.name}; "
-            "those list rows will be skipped.",
-            file=sys.stderr,
-        )
+        log.existingJobsNotice(len(seenIds), outputPath.name)
 
-    total_added = 0
-    total_skipped_merge = 0
-    total_skipped_known_cards = 0
+    totalAdded = 0
+    totalSkippedMerge = 0
+    totalSkippedKnownCards = 0
     pageNumber = 1
     while True:
-        added, skipped_merge, skipped_known = scrapeCurrentPageJobs(
+        added, skippedMerge, skippedKnown = scrapeCurrentPageJobs(
             driver,
+            log,
             seenIds,
             pageNumber,
             data,
             outputPath,
             phaseLabel=phaseLabel,
         )
-        total_added += added
-        total_skipped_merge += skipped_merge
-        total_skipped_known_cards += skipped_known
-        if added or skipped_merge:
-            print(
-                f"{tag}Merged into {outputPath.resolve()}: +{added} new, {skipped_merge} skipped "
-                "(duplicate jobId or invalid row).",
-                file=sys.stderr,
+        totalAdded += added
+        totalSkippedMerge += skippedMerge
+        totalSkippedKnownCards += skippedKnown
+        if added or skippedMerge:
+            log.mergeCheckpoint(
+                str(outputPath.resolve()),
+                added,
+                skippedMerge,
+                extra="(duplicate jobId or invalid row)",
             )
 
         if not goToNextResultsPage(driver):
@@ -658,30 +669,31 @@ def scrapeAllResultPages(
         time.sleep(1.0)
         pageNumber += 1
 
-    return total_added, total_skipped_merge, total_skipped_known_cards
+    return totalAdded, totalSkippedMerge, totalSkippedKnownCards
 
 
 def main() -> int:
+    runLog = ScraperRunLog(PLATFORM_ZIPRECRUITER)
     parser = argparse.ArgumentParser(
         description="Scrape ZipRecruiter search into DB-backed storage."
     )
     parser.add_argument(
-        "search_url",
+        "searchUrl",
         nargs="?",
         default=None,
         help="Optional full search URL (single run). Else SCRAPER_SEARCH_KEYWORDS / built-in defaults.",
     )
     args = parser.parse_args()
 
-    phases = resolveZipRecruiterSearchPhases(args.search_url)
+    phases = resolveZipRecruiterSearchPhases(args.searchUrl)
     if not phases:
-        print("No ZipRecruiter search keywords or URLs configured.", file=sys.stderr)
+        runLog.error("No ZipRecruiter search keywords or URLs configured.")
         return 1
 
     try:
         outputPath = ZIPRECRUITER_SOURCE_PATH
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         return 1
     headless = envBool("SCRAPING_HEADLESS", default=True)
     os.environ["USE_UNDETECTED_CHROME"] = "1"
@@ -689,39 +701,40 @@ def main() -> int:
     try:
         driver = createScrapingChromeDriver(headless=headless, quiet=True)
     except ValueError as exc:
-        print(exc, file=sys.stderr)
+        runLog.error(str(exc))
         return 1
 
     try:
         driver.set_page_load_timeout(120)
-        total_added = 0
-        total_skipped_merge = 0
-        total_skipped_known = 0
+        totalAdded = 0
+        totalSkippedMerge = 0
+        totalSkippedKnown = 0
         for phaseNum, (startUrl, phaseLabel) in enumerate(phases, start=1):
-            print(
-                f"--- ZipRecruiter phase {phaseNum}/{len(phases)}: {phaseLabel!r} "
-                f"(all pages for this search) ---",
-                file=sys.stderr,
+            runLog.bindPhase(phaseLabel)
+            runLog.phaseStart(
+                phaseNum,
+                len(phases),
+                phaseLabel,
+                "all pages for this search",
             )
-            added, skipped_m, skipped_k = scrapeAllResultPages(
+            added, skippedMerge, skippedKnown = scrapeAllResultPages(
                 driver,
+                runLog,
                 startUrl,
                 outputPath,
                 phaseLabel=phaseLabel,
             )
-            total_added += added
-            total_skipped_merge += skipped_m
-            total_skipped_known += skipped_k
-            print(
-                f"Phase {phaseLabel!r}: +{added} new row(s); "
-                f"{skipped_k} list card(s) skipped as already known.",
-                file=sys.stderr,
+            totalAdded += added
+            totalSkippedMerge += skippedMerge
+            totalSkippedKnown += skippedKnown
+            runLog.phaseDone(
+                phaseLabel,
+                f"+{added} new row(s); {skippedKnown} list card(s) skipped as already known",
             )
-        print(
-            f"Done: +{total_added} new row(s); {total_skipped_merge} merge skip(s); "
-            f"{total_skipped_known} known-card skip(s) across {len(phases)} phase(s) → "
+        runLog.runDone(
+            f"+{totalAdded} new row(s); {totalSkippedMerge} merge skip(s); "
+            f"{totalSkippedKnown} known-card skip(s) across {len(phases)} phase(s) → "
             f"{outputPath.resolve()}",
-            file=sys.stderr,
         )
         promptBeforeClosingBrowserIfHeaded()
     finally:

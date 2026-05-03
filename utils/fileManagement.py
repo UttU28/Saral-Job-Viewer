@@ -18,8 +18,7 @@ from .urlCleaner import cleanUrl, normalizeCompanyName
 # Project root = parent of utils/ folder.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# Shared multi-keyword defaults for JobRight, Glassdoor, ZipRecruiter.
-DEFAULT_SCRAPER_SEARCH_KEYWORDS: list[str] = ["devops", "assembly developer"]
+DEFAULT_SCRAPER_SEARCH_KEYWORDS: list[str] = ["devops"]
 
 
 def resolveScraperSearchKeywords() -> list[str]:
@@ -305,9 +304,9 @@ def _preferRicherJob(existing: dict, candidate: dict) -> dict:
         if not existingVal and candidateVal:
             merged[key] = val
     # Prefer real http(s) apply URLs over placeholder text; never replace a URL with a label.
-    ex_url = _strOrBlank(merged.get("originalJobPostUrl"))
-    cand_url = _strOrBlank(candidate.get("originalJobPostUrl"))
-    if cand_url.startswith("http") or (cand_url and not ex_url.startswith("http")):
+    exUrl = _strOrBlank(merged.get("originalJobPostUrl"))
+    candUrl = _strOrBlank(candidate.get("originalJobPostUrl"))
+    if candUrl.startswith("http") or (candUrl and not exUrl.startswith("http")):
         merged["originalJobPostUrl"] = candidate.get("originalJobPostUrl")
     if len(_strOrBlank(candidate.get("jobDescription"))) > len(
         _strOrBlank(merged.get("jobDescription"))
@@ -413,12 +412,12 @@ def mergeJobListsById(
     existing: list[dict],
     incoming: list[dict],
     *,
-    id_key: str = "jobId",
+    idKey: str = "jobId",
     platform: str = "Unknown",
 ) -> tuple[list[dict], int, int]:
     seen: set[str] = set(loadKnownJobIdsByPlatform(platform))
     for j in existing:
-        jid = j.get(id_key)
+        jid = j.get(idKey)
         if isinstance(jid, str) and jid:
             seen.add(jid)
 
@@ -430,7 +429,7 @@ def mergeJobListsById(
             skipped += 1
             continue
         normalized = normalizeJobRecord(j)
-        jid = normalized.get(id_key)
+        jid = normalized.get(idKey)
         if not jid or not isinstance(jid, str):
             skipped += 1
             continue
@@ -458,9 +457,9 @@ def mergeJobListsById(
 
 def mergeNewJobsIntoDocument(
     data: dict,
-    new_rows: list[dict],
+    newRows: list[dict],
     *,
-    id_key: str = "jobId",
+    idKey: str = "jobId",
 ) -> tuple[int, int]:
     platform = inferPlatformFromPath(Path(str(data.get("_sourcePath") or "")))
     if platform == "Unknown":
@@ -470,16 +469,16 @@ def mergeNewJobsIntoDocument(
         data["jobs"] = []
         jobs = data["jobs"]
     seen = set(loadKnownJobIdsByPlatform(platform))
-    seen.update({j.get(id_key) for j in jobs if isinstance(j, dict) and j.get(id_key)})
+    seen.update({j.get(idKey) for j in jobs if isinstance(j, dict) and j.get(idKey)})
     added = 0
     skipped = 0
     filteredSkipRows: list[dict] = []
-    for row in new_rows:
+    for row in newRows:
         if not isinstance(row, dict):
             skipped += 1
             continue
         row = normalizeJobRecord(row)
-        jid = row.get(id_key)
+        jid = row.get(idKey)
         if not jid or jid in seen:
             row["platform"] = row.get("platform") or platform
             row["timestamp"] = row.get("timestamp") or _utcNowIso()
@@ -491,7 +490,7 @@ def mergeNewJobsIntoDocument(
             skipped += 1
             continue
         if shouldSkipJob(row):
-            addJobIdToSkipBucket(data, row, idKey=id_key, skipKey=ORIGINAL_URL_SKIP_KEY)
+            addJobIdToSkipBucket(data, row, idKey=idKey, skipKey=ORIGINAL_URL_SKIP_KEY)
             filteredSkipRows.append(row)
             skipped += 1
             continue
