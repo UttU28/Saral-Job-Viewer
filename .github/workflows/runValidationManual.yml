@@ -65,16 +65,18 @@ jobs:
           EXECUTION_NAME="${{ steps.executeJob.outputs.executionName }}"
           echo "Waiting for execution: ${EXECUTION_NAME}"
           while true; do
-            CONDITION="$(gcloud run jobs executions describe "${EXECUTION_NAME}" \
+            # Cloud Run executions use the Knative v1 shape: conditions have
+            # type + status (True/False), not the v2 state enum (CONDITION_*).
+            COMPLETED_STATUS="$(gcloud run jobs executions describe "${EXECUTION_NAME}" \
               --region "${{ env.GCP_REGION }}" \
               --project "${{ env.GCP_PROJECT_ID }}" \
-              --format='value(status.conditions[0].state)')"
-            case "${CONDITION}" in
-              CONDITION_SUCCEEDED)
+              --format=json | jq -r '.status.conditions[]? | select(.type == "Completed") | .status')"
+            case "${COMPLETED_STATUS}" in
+              True)
                 echo "Execution succeeded."
                 exit 0
                 ;;
-              CONDITION_FAILED)
+              False)
                 echo "Execution failed."
                 gcloud run jobs executions describe "${EXECUTION_NAME}" \
                   --region "${{ env.GCP_REGION }}" \
@@ -82,7 +84,7 @@ jobs:
                 exit 1
                 ;;
               *)
-                echo "Current state: ${CONDITION}. Waiting 10s..."
+                echo "Completed condition: ${COMPLETED_STATUS:-not ready yet}. Waiting 10s..."
                 sleep 10
                 ;;
             esac
