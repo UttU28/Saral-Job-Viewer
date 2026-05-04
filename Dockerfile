@@ -1,0 +1,22 @@
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+WORKDIR /app
+
+RUN pip install --upgrade pip \
+    && pip install \
+        "python-dotenv>=1.0.0,<2" \
+        "requests>=2.31.0,<3" \
+        "pymongo>=4.6,<5" \
+        "dnspython>=2.0.0,<3"
+
+COPY utils/ ./utils/
+COPY dValidate.py .
+# Inject runtime env/secrets from Cloud Run (do not bake .env into image).
+
+ENTRYPOINT ["python", "dValidate.py"]
+CMD ["-1"]

@@ -1,0 +1,17 @@
+# Run:  docker compose up        (build if needed, run dValidate -1, stream logs, exit)
+#       docker compose up -d     (detached: run then stop; use: docker compose logs dvalidate)
+#       docker compose up --build
+#
+# Requires `.env` with MONGODB_URI, MONGODB_DATABASE, MIDHTECH_* (same as local dValidate).
+# One-shot job: container stops when dValidate.py finishes. Re-run: docker compose up
+services:
+  dvalidate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saral-dvalidate:local
+    container_name: saral-dvalidate
+    env_file:
+      - .env
+    command: ["-1"]
+    init: true
