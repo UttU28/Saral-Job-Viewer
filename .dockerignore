@@ -1,0 +1,19 @@
+# Keep image small and avoid leaking local data
+.git
+.gitignore
+__pycache__
+*.py[cod]
+*.db
+zata
+*.md
+.github
+.vscode
+.cursor
+linkedIn
+mcps
+agent-transcripts
+Dockerfile*
+.pytest_cache
+.mypy_cache
+dist
+build

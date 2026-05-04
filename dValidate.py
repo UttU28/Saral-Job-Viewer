@@ -761,7 +761,7 @@ def showDatabaseStatusReport() -> None:
     """Print jobData / pastData counts by applyStatus (option 4)."""
     log = ScraperRunLog(PLATFORM_MIDHTECH, "stats", mirrorToScrapeLog=False)
     s = jobDataApplyStatusSummary()
-    log.info("── jobData (saralJobViewer.db) ──")
+    log.info("── jobData (MongoDB) ──")
     log.info(f"  Total rows:           {s['total']}")
     log.info(f"  NULL / pending:       {s['nullPending']}")
     log.info(
