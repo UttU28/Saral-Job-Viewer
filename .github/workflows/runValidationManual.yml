@@ -1,0 +1,89 @@
+name: Run Validation Manually
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dValidate mode (1=validate, 2=cleanup, 3=push+cleanup, 4=status)
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+      waitForCompletion:
+        description: Wait for Cloud Run Job execution to finish
+        required: true
+        default: true
+        type: boolean
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  RUN_JOB_NAME: saral-dvalidate-job
+
+jobs:
+  runValidationOnce:
+    name: Run Validation Once
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Execute Cloud Run Job
+        id: executeJob
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODE="${{ inputs.mode }}"
+          echo "Executing dValidate with mode: -${MODE}"
+          EXECUTION_NAME="$(gcloud run jobs execute "${{ env.RUN_JOB_NAME }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --args "dValidate.py,-${MODE}" \
+            --format='value(metadata.name)')"
+          echo "executionName=${EXECUTION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "Started execution: ${EXECUTION_NAME}"
+
+      - name: Wait for completion
+        if: ${{ inputs.waitForCompletion }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXECUTION_NAME="${{ steps.executeJob.outputs.executionName }}"
+          echo "Waiting for execution: ${EXECUTION_NAME}"
+          while true; do
+            CONDITION="$(gcloud run jobs executions describe "${EXECUTION_NAME}" \
+              --region "${{ env.GCP_REGION }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --format='value(status.conditions[0].state)')"
+            case "${CONDITION}" in
+              CONDITION_SUCCEEDED)
+                echo "Execution succeeded."
+                exit 0
+                ;;
+              CONDITION_FAILED)
+                echo "Execution failed."
+                gcloud run jobs executions describe "${EXECUTION_NAME}" \
+                  --region "${{ env.GCP_REGION }}" \
+                  --project "${{ env.GCP_PROJECT_ID }}"
+                exit 1
+                ;;
+              *)
+                echo "Current state: ${CONDITION}. Waiting 10s..."
+                sleep 10
+                ;;
+            esac
+          done

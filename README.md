@@ -21,8 +21,9 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
 - **Deploy**:
   - `Dockerfile` (container for `dValidate.py`)
   - `docker-compose.yml` (local one-shot run)
-  - `.github/workflows/deploy-dvalidate-job.yml` (CI/CD)
-  - `docs/gcp-cloud-run-job-cicd.md` (GCP setup guide)
+  - `.github/workflows/deployValidation.yml` (build + deploy job + deploy scheduler)
+  - `.github/workflows/runValidationManual.yml` (manual one-time run)
+  - `gcpCloudRun.md` (GCP setup guide)
 
 ## Environment Variables
 
@@ -116,7 +117,7 @@ docker compose up
 
 Automated deploy flow is documented in:
 
-- `docs/gcp-cloud-run-job-cicd.md`
+- `gcpCloudRun.md`
 
 Current workflow:
 
