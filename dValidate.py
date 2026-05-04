@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import time
 import traceback
 from pathlib import Path
@@ -783,7 +784,7 @@ def showDatabaseStatusReport() -> None:
 
 def promptMenu() -> str | None:
     print()
-    print("  1  Validate all pending (applyStatus NULL → check API, FIFO)")
+    print("  1  Validate all pending (applyStatus NULL -> check API, FIFO)")
     print("  2  Delete classified non-APPLY rows (keep NULL / empty / APPLY; cleanup + pastData)")
     print("  3  Push all APPLY jobs to API, then same cleanup as 2 (suggest + cleanup)")
     print("  4  Show DB status (totals: jobs, APPLY, DO_NOT_APPLY, EXISTING, NULL, pastData)")
@@ -797,8 +798,48 @@ def promptMenu() -> str | None:
         print("Invalid choice. Enter 1, 2, 3, 4, or q.")
 
 
+def _parseCliChoice(argv: list[str]) -> str | None:
+    """
+    If the first argument is -1..-4 (or 1..4), return normalized '1'..'4'.
+    If there are no arguments, return None → caller shows interactive menu.
+    """
+    if len(argv) < 2:
+        return None
+    raw = argv[1].strip()
+    if raw in ("-h", "--help"):
+        print(
+            "Usage: python dValidate.py [-1|-2|-3|-4]\n\n"
+            "  -1  Validate all pending (applyStatus NULL -> check API, FIFO)\n"
+            "  -2  Delete classified non-APPLY rows; cleanup + pastData prune\n"
+            "  -3  Push all APPLY jobs to suggest API, then same cleanup as -2\n"
+            "  -4  Show DB status (counts by applyStatus, pastData)\n\n"
+            "With no arguments, an interactive menu is shown."
+        )
+        raise SystemExit(0)
+    mapping = {
+        "-1": "1",
+        "-2": "2",
+        "-3": "3",
+        "-4": "4",
+        "1": "1",
+        "2": "2",
+        "3": "3",
+        "4": "4",
+    }
+    if raw in mapping:
+        return mapping[raw]
+    print(
+        f"Unknown argument: {raw!r}. Use -1, -2, -3, -4, or run with no arguments for the menu.\n"
+        "Try: python dValidate.py --help",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
 def main() -> int:
-    choice = promptMenu()
+    choice = _parseCliChoice(sys.argv)
+    if choice is None:
+        choice = promptMenu()
     if choice is None:
         print("Cancelled.")
         return 0

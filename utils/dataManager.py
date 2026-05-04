@@ -1,11 +1,56 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+except ImportError:
+    pass
 
 DB_FILE_NAME = "saralJobViewer.db"
+
+JOB_DATA_COLLECTION = "jobData"
+PAST_DATA_COLLECTION = "pastData"
+
+_mongo_client: Any = None
+_mongo_db: Any = None
+
+
+def _databaseKind() -> str:
+    raw = (os.getenv("DATABASE") or "sqlite").strip().lower()
+    if raw in ("mongo", "mongodb"):
+        return "mongo"
+    return "sqlite"
+
+
+def _getMongoDb():
+    global _mongo_client, _mongo_db
+    if _mongo_db is not None:
+        return _mongo_db
+    try:
+        from pymongo import MongoClient
+    except ImportError as exc:
+        raise ImportError(
+            "Install pymongo and dnspython when using DATABASE=mongo: "
+            'pip install "pymongo>=4.6,<5" "dnspython>=2.0.0,<3"'
+        ) from exc
+
+    uri = (os.getenv("MONGODB_URI") or os.getenv("MONGO_URI") or "").strip()
+    if not uri:
+        raise ValueError("Set MONGODB_URI in .env when DATABASE=mongo")
+    db_name = (
+        (os.getenv("MONGODB_DATABASE") or os.getenv("MONGODB_DB_NAME") or "").strip()
+        or "saralJobViewer"
+    )
+    _mongo_client = MongoClient(uri)
+    _mongo_db = _mongo_client[db_name]
+    return _mongo_db
 
 
 def _projectRoot() -> Path:
@@ -13,6 +58,7 @@ def _projectRoot() -> Path:
 
 
 def getDatabasePath() -> Path:
+    """SQLite file path under zata/. Used when DATABASE=sqlite (and by sqlite-only tools)."""
     return _projectRoot() / "zata" / DB_FILE_NAME
 
 
@@ -34,7 +80,31 @@ def appendScrapeLog(message: str, *, platform: str = "Unknown") -> Path:
     return logPath
 
 
-def createTables(*, recreate: bool = False) -> Path:
+def _mongoEnsureIndexes(recreate: bool) -> None:
+    db = _getMongoDb()
+    if recreate:
+        names = set(db.list_collection_names())
+        if JOB_DATA_COLLECTION in names:
+            db[JOB_DATA_COLLECTION].drop()
+        if PAST_DATA_COLLECTION in names:
+            db[PAST_DATA_COLLECTION].drop()
+    job_col = db[JOB_DATA_COLLECTION]
+    past_col = db[PAST_DATA_COLLECTION]
+    job_col.create_index("jobId", unique=True)
+    past_col.create_index("jobId", unique=True)
+    job_col.create_index("platform")
+    past_col.create_index("platform")
+
+
+def createTables(*, recreate: bool = False) -> Path | None:
+    """
+    SQLite: create zata/saralJobViewer.db tables. Returns path to the DB file.
+    MongoDB: ensure collections and indexes. Returns None.
+    """
+    if _databaseKind() == "mongo":
+        _mongoEnsureIndexes(recreate)
+        return None
+
     dbPath = getDatabasePath()
     dbPath.parent.mkdir(parents=True, exist_ok=True)
 
@@ -64,7 +134,6 @@ def createTables(*, recreate: bool = False) -> Path:
             )
             """
         )
-        # Keep existing DBs compatible without requiring table recreation.
         columns = cursor.execute("PRAGMA table_info(jobData)").fetchall()
         columnNames = {str(col[1]) for col in columns if len(col) > 1}
         if "title" not in columnNames:
@@ -87,7 +156,7 @@ def createTables(*, recreate: bool = False) -> Path:
 
 
 def _applyStatusSqlParam(row: dict) -> str | None:
-    """Unset / blank -> SQL NULL; classifier or manual statuses stay as non-empty strings."""
+    """Unset / blank -> None; classifier or manual statuses stay as non-empty strings."""
     if "applyStatus" not in row:
         return None
     raw = row.get("applyStatus")
@@ -97,11 +166,47 @@ def _applyStatusSqlParam(row: dict) -> str | None:
     return s or None
 
 
+def _mongoDocToJobRow(doc: dict) -> dict:
+    """Normalize Mongo document keys/types to match sqlite Row dicts."""
+    keys = (
+        "jobId",
+        "title",
+        "jobUrl",
+        "location",
+        "employmentType",
+        "workModel",
+        "seniority",
+        "experience",
+        "originalJobPostUrl",
+        "companyName",
+        "jobDescription",
+        "timestamp",
+        "applyStatus",
+        "platform",
+    )
+    out: dict[str, Any] = {}
+    for k in keys:
+        v = doc.get(k)
+        if v is None:
+            out[k] = None
+        elif k == "applyStatus" and v == "":
+            out[k] = ""
+        else:
+            out[k] = v if isinstance(v, str) else str(v)
+    return out
+
+
 def upsertJobs(rows: list[dict]) -> int:
     if not rows:
         return 0
+    if _databaseKind() == "mongo":
+        return _mongoUpsertJobs(rows)
+    return _sqliteUpsertJobs(rows)
 
+
+def _sqliteUpsertJobs(rows: list[dict]) -> int:
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     values: list[tuple] = []
     for row in rows:
         if not isinstance(row, dict):
@@ -154,8 +259,51 @@ def upsertJobs(rows: list[dict]) -> int:
     return len(values)
 
 
+def _mongoUpsertJobs(rows: list[dict]) -> int:
+    from pymongo import UpdateOne
+
+    createTables(recreate=False)
+    coll = _getMongoDb()[JOB_DATA_COLLECTION]
+    ops: list[Any] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        jid = str(row.get("jobId") or "").strip()
+        if not jid:
+            continue
+        apply_val = _applyStatusSqlParam(row)
+        set_doc: dict[str, Any] = {
+            "jobId": jid,
+            "title": str(row.get("title") or ""),
+            "jobUrl": str(row.get("jobUrl") or ""),
+            "location": str(row.get("location") or ""),
+            "employmentType": str(row.get("employmentType") or ""),
+            "workModel": str(row.get("workModel") or ""),
+            "seniority": str(row.get("seniority") or ""),
+            "experience": str(row.get("experience") or ""),
+            "originalJobPostUrl": str(row.get("originalJobPostUrl") or ""),
+            "companyName": str(row.get("companyName") or ""),
+            "jobDescription": str(row.get("jobDescription") or ""),
+            "timestamp": str(row.get("timestamp") or _utcNowIso()),
+            "platform": str(row.get("platform") or "Unknown"),
+        }
+        if apply_val is not None:
+            set_doc["applyStatus"] = apply_val
+        ops.append(UpdateOne({"jobId": jid}, {"$set": set_doc}, upsert=True))
+    if not ops:
+        return 0
+    coll.bulk_write(ops, ordered=False)
+    return len(ops)
+
+
 def loadJobsByPlatform(platform: str) -> list[dict]:
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        cur = _getMongoDb()[JOB_DATA_COLLECTION].find({"platform": platform})
+        return [_mongoDocToJobRow(d) for d in cur]
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
@@ -174,7 +322,14 @@ def loadJobsByPlatform(platform: str) -> list[dict]:
 
 def loadAllJobs() -> list[dict]:
     """All rows in jobData, FIFO by timestamp (oldest first), then jobId."""
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        cur = _getMongoDb()[JOB_DATA_COLLECTION].find({})
+        jobs = [_mongoDocToJobRow(d) for d in cur]
+        return sortJobsFifoByTimestamp(jobs)
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
@@ -205,12 +360,20 @@ def sortJobsFifoByTimestamp(jobs: list[dict]) -> list[dict]:
 
 def loadJobsWithEmptyApplyStatus(platform: str | None = None) -> list[dict]:
     """
-    Jobs where applyStatus is NULL only (not yet classified / not set).
-    Rows with APPLY, EXISTING, DO_NOT_APPLY, legacy '', etc. are skipped.
-    If platform is set, restrict to that platform.
+    Jobs where applyStatus is NULL only (SQLite parity).
     Ordered FIFO: oldest timestamp first; rows with no timestamp sort last, then jobId.
     """
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        query: dict[str, Any] = {"applyStatus": None}
+        if platform:
+            query["platform"] = platform
+        cur = _getMongoDb()[JOB_DATA_COLLECTION].find(query)
+        jobs = [_mongoDocToJobRow(d) for d in cur]
+        return sortJobsFifoByTimestamp(jobs)
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     sql = """
         SELECT
             jobId, title, jobUrl, location, employmentType, workModel, seniority, experience,
@@ -241,7 +404,15 @@ def updateApplyStatusByJobId(jobId: str, applyStatus: str) -> bool:
     status = str(applyStatus or "").strip()
     if not jid:
         return False
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        res = _getMongoDb()[JOB_DATA_COLLECTION].update_one(
+            {"jobId": jid}, {"$set": {"applyStatus": status}}
+        )
+        return res.matched_count > 0
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         cursor = connection.cursor()
         cursor.execute(
@@ -257,7 +428,14 @@ def loadJobsByApplyStatus(applyStatus: str) -> list[dict]:
     status = str(applyStatus or "").strip()
     if not status:
         return []
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        cur = _getMongoDb()[JOB_DATA_COLLECTION].find({"applyStatus": status})
+        jobs = [_mongoDocToJobRow(d) for d in cur]
+        return sortJobsFifoByTimestamp(jobs)
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
@@ -283,7 +461,11 @@ def jobDataApplyStatusSummary() -> dict[str, int]:
     Counts for jobData: total rows, pending (NULL/blank applyStatus), APPLY,
     DO_NOT_APPLY, EXISTING, and any other non-empty applyStatus; plus pastData row count.
     """
+    if _databaseKind() == "mongo":
+        return _mongoJobDataApplyStatusSummary()
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         cursor = connection.cursor()
         row = cursor.execute(
@@ -362,6 +544,46 @@ def jobDataApplyStatusSummary() -> dict[str, int]:
     }
 
 
+def _mongoJobDataApplyStatusSummary() -> dict[str, int]:
+    createTables(recreate=False)
+    db = _getMongoDb()
+    job_col = db[JOB_DATA_COLLECTION]
+    past_col = db[PAST_DATA_COLLECTION]
+    total = job_col.count_documents({})
+    past_n = past_col.count_documents({})
+
+    def _trim_status(doc: dict) -> str:
+        return str(doc.get("applyStatus") or "").strip()
+
+    pending = 0
+    n_apply = 0
+    n_dna = 0
+    n_ex = 0
+    n_other = 0
+    for doc in job_col.find({}):
+        s = _trim_status(doc)
+        if not s:
+            pending += 1
+        elif s == "APPLY":
+            n_apply += 1
+        elif s == "DO_NOT_APPLY":
+            n_dna += 1
+        elif s == "EXISTING":
+            n_ex += 1
+        else:
+            n_other += 1
+
+    return {
+        "total": total,
+        "nullPending": pending,
+        "apply": n_apply,
+        "doNotApply": n_dna,
+        "existing": n_ex,
+        "otherStatus": n_other,
+        "pastDataRows": past_n,
+    }
+
+
 def deleteJobsByApplyStatusNotIn(allowedStatuses: list[str] | tuple[str, ...]) -> int:
     """
     Delete rows whose applyStatus is a non-empty string not in allowedStatuses.
@@ -373,6 +595,9 @@ def deleteJobsByApplyStatusNotIn(allowedStatuses: list[str] | tuple[str, ...]) -
     if not normalized:
         raise ValueError("allowedStatuses must include at least one non-empty status")
 
+    if _databaseKind() == "mongo":
+        return _mongoDeleteJobsByApplyStatusNotIn(normalized)
+
     placeholders = ", ".join("?" for _ in normalized)
     sql = f"""
         DELETE FROM jobData
@@ -380,12 +605,32 @@ def deleteJobsByApplyStatusNotIn(allowedStatuses: list[str] | tuple[str, ...]) -
           AND TRIM(COALESCE(applyStatus, '')) NOT IN ({placeholders})
     """
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         cursor = connection.cursor()
         cursor.execute(sql, tuple(normalized))
         deleted = int(cursor.rowcount or 0)
         connection.commit()
     return deleted
+
+
+def _mongoDeleteJobsByApplyStatusNotIn(normalized: list[str]) -> int:
+    createTables(recreate=False)
+    coll = _getMongoDb()[JOB_DATA_COLLECTION]
+    to_delete: list[str] = []
+    for doc in coll.find(
+        {"applyStatus": {"$exists": True, "$nin": [None, ""]}},
+        {"jobId": 1, "applyStatus": 1},
+    ):
+        s = str(doc.get("applyStatus") or "").strip()
+        if s and s not in normalized:
+            jid = str(doc.get("jobId") or "").strip()
+            if jid:
+                to_delete.append(jid)
+    if not to_delete:
+        return 0
+    res = coll.delete_many({"jobId": {"$in": to_delete}})
+    return int(res.deleted_count or 0)
 
 
 def _parseStoredTimestampToUtc(raw: object) -> datetime | None:
@@ -418,7 +663,11 @@ def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
     """
     if hours <= 0:
         raise ValueError("hours must be positive")
+    if _databaseKind() == "mongo":
+        return _mongoDeletePastDataOlderThanHours(hours=hours)
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     with sqlite3.connect(dbPath) as connection:
         connection.row_factory = sqlite3.Row
@@ -442,8 +691,43 @@ def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
         return int(cursor.rowcount or 0)
 
 
+def _mongoDeletePastDataOlderThanHours(*, hours: float) -> int:
+    createTables(recreate=False)
+    coll = _getMongoDb()[PAST_DATA_COLLECTION]
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    stale_ids: list[str] = []
+    for doc in coll.find(
+        {"timestamp": {"$exists": True, "$nin": [None, ""]}},
+        {"jobId": 1, "timestamp": 1},
+    ):
+        jid = str(doc.get("jobId") or "").strip()
+        parsed = _parseStoredTimestampToUtc(doc.get("timestamp"))
+        if parsed is not None and parsed < cutoff and jid:
+            stale_ids.append(jid)
+    if not stale_ids:
+        return 0
+    res = coll.delete_many({"jobId": {"$in": stale_ids}})
+    return int(res.deleted_count or 0)
+
+
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:
+    if _databaseKind() == "mongo":
+        createTables(recreate=False)
+        db = _getMongoDb()
+        job_ids = {
+            str(d["jobId"]).strip()
+            for d in db[JOB_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
+            if d.get("jobId")
+        }
+        past_ids = {
+            str(d["jobId"]).strip()
+            for d in db[PAST_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
+            if d.get("jobId")
+        }
+        return job_ids | past_ids
+
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     with sqlite3.connect(dbPath) as connection:
         cursor = connection.cursor()
         rows = cursor.execute(
@@ -460,7 +744,14 @@ def loadKnownJobIdsByPlatform(platform: str) -> set[str]:
 def recordPastData(rows: list[dict], *, platform: str) -> int:
     if not rows:
         return 0
+    if _databaseKind() == "mongo":
+        return _mongoRecordPastData(rows, platform=platform)
+    return _sqliteRecordPastData(rows, platform=platform)
+
+
+def _sqliteRecordPastData(rows: list[dict], *, platform: str) -> int:
     dbPath = createTables(recreate=False)
+    assert dbPath is not None
     now = _utcNowIso()
     values: list[tuple[str, str, str, str]] = []
     for row in rows:
@@ -489,3 +780,37 @@ def recordPastData(rows: list[dict], *, platform: str) -> int:
         )
         connection.commit()
     return len(values)
+
+
+def _mongoRecordPastData(rows: list[dict], *, platform: str) -> int:
+    from pymongo import UpdateOne
+
+    createTables(recreate=False)
+    coll = _getMongoDb()[PAST_DATA_COLLECTION]
+    now = _utcNowIso()
+    ops: list[Any] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        job_id = str(row.get("jobId") or "").strip()
+        company_name = str(row.get("companyName") or "").strip() or "Unknown"
+        if not job_id:
+            continue
+        ts = str(row.get("timestamp") or now).strip() or now
+        doc = {
+            "jobId": job_id,
+            "platform": platform,
+            "timestamp": ts,
+            "companyName": company_name,
+        }
+        ops.append(
+            UpdateOne(
+                {"jobId": job_id},
+                {"$set": doc},
+                upsert=True,
+            )
+        )
+    if not ops:
+        return 0
+    coll.bulk_write(ops, ordered=False)
+    return len(ops)
