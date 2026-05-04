@@ -1,10 +1,3 @@
-# Build:  docker build -t saral-dvalidate .
-#          Requires a `.env` file in the build context (repo root). Secrets end up in image layers — fine for private dev; use runtime `-e` / Secret Manager for prod.
-# Run:    docker run --rm saral-dvalidate
-# Or:     docker run --rm -e MONGODB_URI="..." -e MONGODB_DATABASE=... -e MIDHTECH_EMAIL=... -e MIDHTECH_PASSWORD=... saral-dvalidate
-# Shell:  docker run --rm -it --env-file .env saral-dvalidate -4
-#
-# Default command: python dValidate.py -1  (validate pending; then exit)
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
@@ -23,10 +16,7 @@ RUN pip install --upgrade pip \
 
 COPY utils/ ./utils/
 COPY dValidate.py .
-COPY .env ./
-COPY .env.example ./
-
-# load_dotenv reads /app/.env; runtime `-e` / `--env-file` still overrides when variables are set first (override=False)
+# Inject runtime env/secrets from Cloud Run (do not bake .env into image).
 
 ENTRYPOINT ["python", "dValidate.py"]
 CMD ["-1"]

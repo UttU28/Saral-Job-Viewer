@@ -4,6 +4,7 @@
 __pycache__
 *.py[cod]
 *.db
+.env
 zata
 *.md
 .github

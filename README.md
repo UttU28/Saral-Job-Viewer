@@ -1,94 +1,61 @@
-# Saral Job Viewer
+﻿# Saral Job Viewer
 
-DB-first job scraping, storage, and viewing pipeline for multiple sources (JobRight, GlassDoor, ZipRecruiter), with a FastAPI backend and frontend UI.
+Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, with MongoDB as the source of truth.
 
-## Current Architecture
+## What This Repo Does
 
-- **Scrapers**
+- Scrapes jobs from multiple platforms:
   - `aJobRight.py`
   - `bGlassDoor.py`
   - `cZipRecruiter.py`
-- **Automation helper**
-  - `dFillForm.py`
-- **Backend API**
-  - `server.py` (FastAPI)
-- **Core utilities**
-  - `utils/fileManagement.py` (normalization, dedupe flow, DB-write orchestration)
-  - `utils/dataManager.py` (SQLite schema + CRUD helpers + scrape logging)
-- **Maintenance**
-  - `zClean.py` (delete `__pycache__` and temp/cache files)
-  - `dValidate.py` (Midhtech: validate pending jobs → push APPLY → trim DB to APPLY-only; `-d` cleanup-only; `-s` single-job check)
-- **Data storage**
-  - `zata/saralJobViewer.db`
-  - `zata/logs/`
+- Normalizes and writes jobs to MongoDB via `utils/dataManager.py`.
+- Runs validation/push flow against Midhtech using `dValidate.py`.
+- Supports local Docker runs and Cloud Run Job + Scheduler CI/CD.
 
-## Key Behavior
+## Current Architecture
 
-- JSON output files are not used for persistence.
-- Jobs are normalized and saved to SQLite.
-- Logs are written to `zata/logs/scrape-YYYY-MM-DD.log`.
-- Deduplication is DB-first (`jobData` + `pastData` by platform).
-- Blocked domains are skipped from `jobData` and tracked in `pastData`.
+- **Scrapers**: browser-based collection and normalization
+- **Data layer**: `utils/dataManager.py` (MongoDB only)
+- **Validation pipeline**: `dValidate.py`
+- **Maintenance**: `klean.py` for temp/cache cleanup
+- **Deploy**:
+  - `Dockerfile` (container for `dValidate.py`)
+  - `docker-compose.yml` (local one-shot run)
+  - `.github/workflows/deploy-dvalidate-job.yml` (CI/CD)
+  - `docs/gcp-cloud-run-job-cicd.md` (GCP setup guide)
 
-## Database Schema
+## Environment Variables
 
-### `jobData`
+Copy `.env.example` to `.env` and set values.
 
-- `jobId` (PRIMARY KEY, NOT NULL)
-- `title`
-- `jobUrl` (NOT NULL)
-- `location`
-- `employmentType`
-- `workModel`
-- `seniority`
-- `experience`
-- `originalJobPostUrl` (NOT NULL)
-- `companyName` (NOT NULL)
-- `jobDescription` (NOT NULL)
-- `timestamp`
-- `applyStatus`
-- `platform` (NOT NULL)
+### Scraping
 
-### `pastData`
+- `CHROME_APP_PATH`
+- `SCRAPING_CHROME_DIR`
+- `SCRAPING_PORT`
+- `DATA_DIR`
+- `SCRAPER_SEARCH_KEYWORDS`
+- `SCRAPING_STALE_RETRIES`
+- `SCRAPING_STALE_DELAY`
+- `SCRAPING_HEADLESS`
+- `CLOSE_ON_COMPLETE`
 
-- `jobId` (PRIMARY KEY, NOT NULL)
-- `platform` (NOT NULL)
-- `timestamp`
-- `companyName` (NOT NULL)
+### Database + Midhtech
 
-## API Endpoints (`server.py`)
+- `MONGODB_URI`
+- `MONGODB_DATABASE`
+- `MIDHTECH_EMAIL`
+- `MIDHTECH_PASSWORD`
 
-- `GET /health`
-- `GET /api/jobs`
-  - Query params: `platform`, `company`, `q`, `limit`, `offset`
-- `GET /api/jobs/{job_id}`
-- `GET /api/past-data`
-  - Query params: `platform`, `limit`, `offset`
-- `GET /api/stats`
-
-## Setup
-
-### 1) Python environment
+## Local Setup
 
 ```bash
-python -m venv env
+python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2) Environment file
-
-Copy `.env.example` to `.env` and set values you need (Chrome path/profile/port and scraping behavior flags).
-
-### 3) Run API server
-
-```bash
-python server.py
-```
-
-FastAPI runs on `http://127.0.0.1:8000` by default.
-
-### 4) Run scrapers
+## Run Scrapers
 
 ```bash
 python aJobRight.py
@@ -96,20 +63,81 @@ python bGlassDoor.py
 python cZipRecruiter.py
 ```
 
-## Frontend
+## Run Validation (`dValidate.py`)
 
-Frontend source is under `frontend/src` and is built to consume the API from `server.py`.
-
-## Cleanup Script
-
-Use `zClean.py` to delete temp/cache files.
+Interactive mode:
 
 ```bash
-python zClean.py --dry-run
-python zClean.py
+python dValidate.py
+```
+
+CLI mode:
+
+```bash
+python dValidate.py -1
+python dValidate.py -2
+python dValidate.py -3
+python dValidate.py -4
+```
+
+Where:
+
+- `-1`: validate pending jobs
+- `-2`: cleanup non-APPLY + prune old pastData
+- `-3`: push APPLY jobs, then cleanup
+- `-4`: show DB status report
+
+## Docker (Local)
+
+Build:
+
+```bash
+docker build -t saral-dvalidate .
+```
+
+Run once:
+
+```bash
+docker run --rm \
+  -e MONGODB_URI="..." \
+  -e MONGODB_DATABASE="saralJobViewer" \
+  -e MIDHTECH_EMAIL="..." \
+  -e MIDHTECH_PASSWORD="..." \
+  saral-dvalidate
+```
+
+Compose one-shot:
+
+```bash
+docker compose up
+```
+
+## CI/CD + Cloud Run Job
+
+Automated deploy flow is documented in:
+
+- `docs/gcp-cloud-run-job-cicd.md`
+
+Current workflow:
+
+- Build and push Docker image to Artifact Registry
+- Update/create Cloud Run Job
+- Ensure Cloud Scheduler runs job daily at `00:00 UTC`
+
+## Security Notes
+
+- Never commit real credentials in `.env`.
+- Docker image is configured to avoid baking `.env` into image layers.
+- Use Secret Manager for Cloud Run runtime secrets.
+
+## Cleanup
+
+```bash
+python klean.py --dry-run
+python klean.py
 ```
 
 ## Notes
 
-- Some scraper failures are expected in live browser automation (timeouts, non-interactable rows, closed windows) and should be handled by reruns/retries.
-- Keep `linkedIn/` scripts isolated if you use them for separate experiments; core flow is the root scraper + `utils/` pipeline above.
+- `linkedIn/` contains separate/legacy LinkedIn-specific experiments and is not part of the main root scraper flow.
+- `zata/` is ignored for runtime artifacts and logs.

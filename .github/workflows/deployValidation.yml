@@ -1,0 +1,116 @@
+name: Build and Deploy dValidate Job
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  AR_REPOSITORY: saral-job-viewer-cr
+  IMAGE_NAME: dvalidate
+  RUN_JOB_NAME: saral-dvalidate-job
+  SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
+  MONGODB_DATABASE: saralJobViewer
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push image
+        id: build
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_TAG="${GITHUB_SHA}"
+          FULL_IMAGE="${IMAGE_URI}:${IMAGE_TAG}"
+
+          docker build -t "${FULL_IMAGE}" .
+          docker push "${FULL_IMAGE}"
+
+          docker tag "${FULL_IMAGE}" "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:latest"
+
+          echo "full_image=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Ensure required APIs are enabled
+        run: |
+          gcloud services enable \
+            run.googleapis.com \
+            artifactregistry.googleapis.com \
+            cloudscheduler.googleapis.com \
+            secretmanager.googleapis.com
+
+      - name: Create or update Cloud Run Job
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_IMAGE="${{ steps.build.outputs.full_image }}"
+
+          if gcloud run jobs describe "${{ env.RUN_JOB_NAME }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud run jobs update "${{ env.RUN_JOB_NAME }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --image "${FULL_IMAGE}" \
+              --command python \
+              --args dValidate.py,-1 \
+              --task-timeout 3600s \
+              --max-retries 1 \
+              --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \
+              --set-secrets "MONGODB_URI=MONGODB_URI:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest"
+          else
+            gcloud run jobs create "${{ env.RUN_JOB_NAME }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --image "${FULL_IMAGE}" \
+              --command python \
+              --args dValidate.py,-1 \
+              --task-timeout 3600s \
+              --max-retries 1 \
+              --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \
+              --set-secrets "MONGODB_URI=MONGODB_URI:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest"
+          fi
+
+      - name: Ensure Cloud Scheduler (00:00 UTC daily)
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB_URI="https://${{ env.GCP_REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.GCP_PROJECT_ID }}/jobs/${{ env.RUN_JOB_NAME }}:run"
+          SA_EMAIL="${{ secrets.GCP_SERVICE_ACCOUNT }}"
+
+          if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB_NAME }}" --location "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${{ env.SCHEDULER_JOB_NAME }}" \
+              --location "${{ env.GCP_REGION }}" \
+              --schedule "0 0 * * *" \
+              --time-zone "Etc/UTC" \
+              --uri "${JOB_URI}" \
+              --http-method POST \
+              --oauth-service-account-email "${SA_EMAIL}"
+          else
+            gcloud scheduler jobs create http "${{ env.SCHEDULER_JOB_NAME }}" \
+              --location "${{ env.GCP_REGION }}" \
+              --schedule "0 0 * * *" \
+              --time-zone "Etc/UTC" \
+              --uri "${JOB_URI}" \
+              --http-method POST \
+              --oauth-service-account-email "${SA_EMAIL}"
+          fi
