@@ -8,52 +8,207 @@
   --font-sans: 'Inter', sans-serif;
   --font-display: 'Outfit', sans-serif;
 
-  /* Deep, rich dark theme base */
-  --background: 240 10% 3.9%;
-  --foreground: 0 0% 98%;
+  /* Light theme */
+  --background: 0 0% 99%;
+  --foreground: 240 10% 9%;
 
-  --card: 240 10% 5.5%;
-  --card-foreground: 0 0% 98%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 9%;
 
-  --popover: 240 10% 5.5%;
-  --popover-foreground: 0 0% 98%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 9%;
 
-  /* Vibrant Indigo/Purple Primary */
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 98%;
+
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 10% 9%;
+
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+
+  --accent: 262 60% 96%;
+  --accent-foreground: 262 55% 32%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 240 6% 90%;
+  --input: 240 6% 90%;
+  --ring: 262 83% 48%;
+
+  --card-border: 240 6% 88%;
+  --popover-border: 240 6% 88%;
+
+  --primary-border: hsl(var(--primary) / 0.22);
+  --secondary-border: hsl(var(--border));
+  --destructive-border: hsl(var(--destructive) / 0.28);
+  --muted-border: hsl(var(--border));
+  --accent-border: hsl(var(--primary) / 0.12);
+  --button-outline: hsl(var(--border));
+
+  --chart-1: 262 83% 58%;
+  --chart-2: 173 58% 42%;
+  --chart-3: 197 37% 45%;
+  --chart-4: 43 74% 49%;
+  --chart-5: 27 87% 55%;
+
+  --sidebar: 240 5% 96%;
+  --sidebar-foreground: 240 10% 9%;
+  --sidebar-border: 240 6% 90%;
+  --sidebar-primary: 262 83% 58%;
+  --sidebar-primary-foreground: 0 0% 98%;
+  --sidebar-accent: 240 5% 92%;
+  --sidebar-accent-foreground: 240 10% 9%;
+  --sidebar-ring: 262 83% 48%;
+  --sidebar-primary-border: hsl(var(--sidebar-primary) / 0.2);
+  --sidebar-accent-border: hsl(var(--sidebar-border));
+}
+
+.dark {
+  /* Lifted from OLED-black: easier on eyes, better for colored text contrast */
+  --background: 240 8% 11%;
+  /* Soft off-white (slight cool tint) — less glare than pure white */
+  --foreground: 220 14% 93%;
+
+  --card: 240 7% 14%;
+  --card-foreground: 220 14% 93%;
+
+  --popover: 240 7% 14%;
+  --popover-foreground: 220 14% 93%;
+
   --primary: 252 87% 67%;
   --primary-foreground: 240 5.9% 10%;
 
-  --secondary: 240 3.7% 15.9%;
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 240 6% 18%;
+  --secondary-foreground: 220 14% 93%;
 
-  --muted: 240 3.7% 15.9%;
-  --muted-foreground: 240 5% 64.9%;
+  --muted: 240 6% 18%;
+  --muted-foreground: 220 10% 74%;
 
   --accent: 252 87% 67%;
-  --accent-foreground: 0 0% 98%;
+  --accent-foreground: 220 14% 93%;
 
   --destructive: 0 62.8% 30.6%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 240 3.7% 15.9%;
-  --input: 240 3.7% 15.9%;
-  --ring: 240 4.9% 83.9%;
+  --border: 240 6% 22%;
+  --input: 240 6% 22%;
+  --ring: 252 65% 72%;
+
+  --card-border: 240 6% 24%;
+  --popover-border: 240 6% 24%;
+
+  --primary-border: hsl(var(--primary) / 0.35);
+  --secondary-border: hsl(var(--border));
+  --destructive-border: hsl(var(--destructive) / 0.35);
+  --muted-border: hsl(var(--border));
+  --accent-border: hsl(var(--primary) / 0.35);
+  --button-outline: hsl(var(--border));
+
+  --chart-1: 252 87% 67%;
+  --chart-2: 173 58% 45%;
+  --chart-3: 197 50% 42%;
+  --chart-4: 43 74% 52%;
+  --chart-5: 27 87% 58%;
+
+  --sidebar: 240 7% 13%;
+  --sidebar-foreground: 220 14% 93%;
+  --sidebar-border: 240 6% 22%;
+  --sidebar-primary: 252 87% 67%;
+  --sidebar-primary-foreground: 240 5.9% 10%;
+  --sidebar-accent: 240 6% 20%;
+  --sidebar-accent-foreground: 220 14% 93%;
+  --sidebar-ring: 252 87% 67%;
+  --sidebar-primary-border: hsl(var(--sidebar-primary) / 0.35);
+  --sidebar-accent-border: hsl(var(--sidebar-border));
 }
 
 @layer base {
+  html {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
   * {
     @apply border-border;
   }
+
+  /* Firefox: unified thin scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.35) hsl(var(--card) / 0.45);
+  }
+
+  /* WebKit / Chromium: match track + thumb across all scrollable regions */
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(var(--card) / 0.45);
+    border-radius: 9999px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.45),
+      hsl(var(--muted) / 0.55)
+    );
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--card) / 0.45);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.65),
+      hsl(var(--muted) / 0.75)
+    );
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: hsl(var(--background));
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased selection:bg-primary/30 selection:text-primary-foreground;
-    background-image: 
-      radial-gradient(circle at 15% 50%, rgba(120, 119, 198, 0.08), transparent 25%), 
-      radial-gradient(circle at 85% 30%, rgba(120, 119, 198, 0.08), transparent 25%);
+    height: 100%;
+    overflow: hidden;
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(120, 119, 198, 0.06), transparent 28%),
+      radial-gradient(circle at 85% 30%, rgba(120, 119, 198, 0.05), transparent 28%);
     background-attachment: fixed;
+  }
+
+  html.dark body {
+    background-image:
+      radial-gradient(circle at 15% 45%, rgba(139, 92, 246, 0.06), transparent 38%),
+      radial-gradient(circle at 88% 28%, rgba(120, 119, 198, 0.045), transparent 36%);
   }
   
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
     @apply tracking-tight;
+  }
+}
+
+@layer utilities {
+  /* Extra hint for nested panes (same look as global; use when portals need inheritance) */
+  .scrollbar-themed {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.35) hsl(var(--card) / 0.45);
   }
 }
 

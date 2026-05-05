@@ -21,16 +21,12 @@ from utils.jobViewerQueries import (
     fetchJobSummaryCamel,
 )
 
-defaultOrigins = "http://localhost:5173,http://127.0.0.1:5173"
-corsRaw = (os.getenv("API_CORS_ORIGINS") or defaultOrigins).strip()
-allowOrigins = [o.strip() for o in corsRaw.split(",") if o.strip()]
-
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowOrigins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

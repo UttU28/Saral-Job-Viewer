@@ -31,6 +31,8 @@ export type JobRow = {
   applyStatus: string | null;
   platform: string | null;
   jobDescription?: string;
+  descriptionPreview?: string;
+  hasLongDescription?: boolean;
 };
 
 export type JobListResponse = {

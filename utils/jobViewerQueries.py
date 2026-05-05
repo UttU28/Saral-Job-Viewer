@@ -93,6 +93,11 @@ def normalizeJobListDoc(doc: dict[str, Any]) -> dict[str, Any]:
             out[key] = ""
         else:
             out[key] = val if isinstance(val, str) else str(val)
+    previewRaw = doc.get("descriptionPreview")
+    if previewRaw is not None:
+        out["descriptionPreview"] = str(previewRaw)
+    if "hasLongDescription" in doc:
+        out["hasLongDescription"] = bool(doc.get("hasLongDescription"))
     return out
 
 
@@ -106,7 +111,8 @@ def fetchJobDataPage(
 ) -> tuple[list[dict[str, Any]], int]:
     """
     One aggregation: match → FIFO sort (same as sortJobsFifoByTimestamp) → facet skip/limit + count.
-    Drops jobDescription and _id from list payloads to keep responses light.
+    List payloads include descriptionPreview (first 280 chars) and hasLongDescription;
+    full jobDescription is omitted to keep transfers small.
     """
     ensureJobListingIndexes()
     createTables(recreate=False)
@@ -142,8 +148,36 @@ def fetchJobDataPage(
                         {
                             "$project": {
                                 "_id": 0,
-                                "jobDescription": 0,
-                                "_tsEmpty": 0,
+                                "jobId": 1,
+                                "title": 1,
+                                "jobUrl": 1,
+                                "location": 1,
+                                "employmentType": 1,
+                                "workModel": 1,
+                                "seniority": 1,
+                                "experience": 1,
+                                "originalJobPostUrl": 1,
+                                "companyName": 1,
+                                "timestamp": 1,
+                                "applyStatus": 1,
+                                "platform": 1,
+                                "descriptionPreview": {
+                                    "$substrCP": [
+                                        {"$ifNull": ["$jobDescription", ""]},
+                                        0,
+                                        280,
+                                    ]
+                                },
+                                "hasLongDescription": {
+                                    "$gt": [
+                                        {
+                                            "$strLenCP": {
+                                                "$ifNull": ["$jobDescription", ""]
+                                            }
+                                        },
+                                        280,
+                                    ]
+                                },
                             }
                         },
                     ],
