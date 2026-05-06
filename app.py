@@ -26,6 +26,7 @@ from utils.authService import (
     requireAdminUser,
     registerUser,
     setUserAdminStatus,
+    updateUserName,
 )
 from utils.jobDecisionService import executeJobUiDecision
 from utils.jobViewerQueries import (
@@ -39,6 +40,19 @@ from utils.userWeeklyStats import (
     fetchCurrentWeekAcceptedCount,
     fetchWeeklyReportByUser,
     incrementWeeklyDecisionCount,
+)
+from utils.redisCache import (
+    bumpJobsListVersion,
+    deleteCacheKey,
+    getCachedJson,
+    keyAdminUsers,
+    keyJobDetail,
+    keyJobPlatforms,
+    keyJobsList,
+    keyJobsSummary,
+    keyProfileCurrentWeekAccepts,
+    keyProfileWeeklyReport,
+    setCachedJson,
 )
 
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
@@ -58,6 +72,10 @@ class LoginBody(BaseModel):
 class ChangePasswordBody(BaseModel):
     currentPassword: str = ""
     newPassword: str = ""
+
+
+class UpdateProfileBody(BaseModel):
+    name: str = ""
 
 
 class SetUserAdminBody(BaseModel):
@@ -98,6 +116,17 @@ def requireAdmin(currentUser: dict[str, Any] = Depends(requireAuth)) -> dict[str
         return currentUser
     except Exception as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+def invalidateJobCaches(*, userId: str | None = None, jobId: str | None = None) -> None:
+    deleteCacheKey(keyJobsSummary())
+    deleteCacheKey(keyJobPlatforms())
+    if jobId:
+        deleteCacheKey(keyJobDetail(jobId))
+    bumpJobsListVersion()
+    if userId:
+        deleteCacheKey(keyProfileWeeklyReport(userId))
+        deleteCacheKey(keyProfileCurrentWeekAccepts(userId))
 
 
 app.add_middleware(
@@ -172,6 +201,20 @@ def postAuthChangePassword(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/auth/update-profile")
+def postAuthUpdateProfile(
+    body: UpdateProfileBody, currentUser: dict[str, str] = Depends(requireAuth)
+):
+    try:
+        nextUser = updateUserName(userId=currentUser["userId"], nextName=body.name or "")
+        deleteCacheKey(keyAdminUsers())
+        return {"ok": True, "user": nextUser}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/auth/logout")
 def postAuthLogout(currentUser: dict[str, str] = Depends(requireAuth)):
     return {"ok": True, "userId": currentUser["userId"]}
@@ -180,7 +223,13 @@ def postAuthLogout(currentUser: dict[str, str] = Depends(requireAuth)):
 @app.get("/api/admin/users")
 def getAdminUsers(currentUser: dict[str, Any] = Depends(requireAdmin)):
     try:
-        return listAllUsersForAdmin()
+        cacheKey = keyAdminUsers()
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
+        payload = listAllUsersForAdmin()
+        setCachedJson(cacheKey, payload, ttlSeconds=20)
+        return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -195,6 +244,7 @@ def postAdminSetUserAdmin(
         if str(currentUser.get("userId") or "") == str(targetUserId or ""):
             raise HTTPException(status_code=400, detail="You cannot change your own admin access.")
         setUserAdminStatus(targetUserId=targetUserId, isAdmin=bool(body.isAdmin))
+        deleteCacheKey(keyAdminUsers())
         return {"ok": True}
     except HTTPException:
         raise
@@ -207,7 +257,12 @@ def postAdminSetUserAdmin(
 @app.get("/api/jobs/summary")
 def getJobsSummary(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
+        cacheKey = keyJobsSummary()
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
         summary = fetchJobSummaryCamel()
+        setCachedJson(cacheKey, summary, ttlSeconds=60)
         return summary
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -216,8 +271,14 @@ def getJobsSummary(currentUser: dict[str, str] = Depends(requireAuth)):
 @app.get("/api/jobs/platforms")
 def getJobPlatforms(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
+        cacheKey = keyJobPlatforms()
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
         platforms = fetchDistinctPlatforms()
-        return {"platforms": platforms}
+        payload = {"platforms": platforms}
+        setCachedJson(cacheKey, payload, ttlSeconds=300)
+        return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -247,18 +308,20 @@ def postJobDecision(body: JobDecisionBody, currentUser: dict[str, str] = Depends
             profileName=(body.profileName or "").strip(),
         )
         if result.get("ok"):
+            jobIdValue = str((body.job or {}).get("jobId") or "").strip() or None
             if result.get("applyStatusUpdated") == "APPLIED":
                 incrementWeeklyDecisionCount(
                     userId=currentUser["userId"],
                     decision="accept",
-                    jobId=str((body.job or {}).get("jobId") or "").strip() or None,
+                    jobId=jobIdValue,
                 )
             elif result.get("applyStatusUpdated") == "REJECTED":
                 incrementWeeklyDecisionCount(
                     userId=currentUser["userId"],
                     decision="reject",
-                    jobId=str((body.job or {}).get("jobId") or "").strip() or None,
+                    jobId=jobIdValue,
                 )
+            invalidateJobCaches(userId=currentUser["userId"], jobId=jobIdValue)
         return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -282,6 +345,7 @@ def postRejectedJobToApply(jobId: str, currentUser: dict[str, str] = Depends(req
         if not updateApplyStatusByJobId(jobId, "APPLY"):
             raise HTTPException(status_code=404, detail="Job not found")
         decrementWeeklyRejectedCount(userId=currentUser["userId"], jobId=jobId)
+        invalidateJobCaches(userId=currentUser["userId"], jobId=jobId)
         return {"ok": True, "applyStatus": "APPLY"}
     except HTTPException:
         raise
@@ -292,7 +356,13 @@ def postRejectedJobToApply(jobId: str, currentUser: dict[str, str] = Depends(req
 @app.get("/api/profile/weekly-report")
 def getProfileWeeklyReport(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
-        return fetchWeeklyReportByUser(userId=currentUser["userId"])
+        cacheKey = keyProfileWeeklyReport(currentUser["userId"])
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
+        payload = fetchWeeklyReportByUser(userId=currentUser["userId"])
+        setCachedJson(cacheKey, payload, ttlSeconds=30)
+        return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -300,7 +370,13 @@ def getProfileWeeklyReport(currentUser: dict[str, str] = Depends(requireAuth)):
 @app.get("/api/profile/current-week-accepts")
 def getProfileCurrentWeekAccepts(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
-        return fetchCurrentWeekAcceptedCount(userId=currentUser["userId"])
+        cacheKey = keyProfileCurrentWeekAccepts(currentUser["userId"])
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
+        payload = fetchCurrentWeekAcceptedCount(userId=currentUser["userId"])
+        setCachedJson(cacheKey, payload, ttlSeconds=15)
+        return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -308,9 +384,14 @@ def getProfileCurrentWeekAccepts(currentUser: dict[str, str] = Depends(requireAu
 @app.get("/api/jobs/{jobId}")
 def getJobById(jobId: str, currentUser: dict[str, str] = Depends(requireAuth)):
     try:
+        cacheKey = keyJobDetail(jobId)
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
         row = fetchJobDetailByJobId(jobId)
         if not row:
             raise HTTPException(status_code=404, detail="Job not found")
+        setCachedJson(cacheKey, row, ttlSeconds=20)
         return row
     except HTTPException:
         raise
@@ -336,6 +417,18 @@ def listJobs(
         if platformValue and platformValue.lower() == "all":
             platformValue = None
 
+        cacheParams = {
+            "page": page,
+            "pageSize": pageSize,
+            "platform": platformValue or "",
+            "applyStatus": applyValue or "",
+            "search": searchValue or "",
+        }
+        cacheKey = keyJobsList(cacheParams)
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
+
         items, total = fetchJobDataPage(
             page=page,
             pageSize=pageSize,
@@ -344,13 +437,15 @@ def listJobs(
             search=searchValue,
         )
         totalPages = max(1, math.ceil(total / pageSize)) if pageSize else 1
-        return {
+        payload = {
             "items": items,
             "total": total,
             "page": page,
             "pageSize": pageSize,
             "totalPages": totalPages,
         }
+        setCachedJson(cacheKey, payload, ttlSeconds=30)
+        return payload
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

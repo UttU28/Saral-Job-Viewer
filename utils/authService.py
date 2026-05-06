@@ -53,6 +53,8 @@ def _sanitizeUserDoc(userDoc: dict[str, Any]) -> dict[str, Any]:
         "email": str(userDoc.get("email") or ""),
         "isAdmin": bool(userDoc.get("isAdmin")),
         "profilePhotoUrl": str(userDoc.get("profilePhotoUrl") or ""),
+        "createdAt": str(userDoc.get("createdAt") or ""),
+        "updatedAt": str(userDoc.get("updatedAt") or ""),
     }
 
 
@@ -76,6 +78,7 @@ def registerUser(*, name: str, email: str, password: str) -> dict[str, str]:
         raise ValueError("Email already registered")
 
     userId = f"user_{cleanEmail}"
+    nowIso = _utcNowIso()
     users.insert_one(
         {
             "userId": userId,
@@ -84,8 +87,8 @@ def registerUser(*, name: str, email: str, password: str) -> dict[str, str]:
             "password": cleanPassword,
             "isAdmin": False,
             "profilePhotoUrl": _buildProfilePhotoUrl(seed=_profilePhotoSeed(userId=userId, email=cleanEmail)),
-            "createdAt": _utcNowIso(),
-            "updatedAt": _utcNowIso(),
+            "createdAt": nowIso,
+            "updatedAt": nowIso,
         }
     )
     return {
@@ -94,6 +97,8 @@ def registerUser(*, name: str, email: str, password: str) -> dict[str, str]:
         "email": cleanEmail,
         "isAdmin": False,
         "profilePhotoUrl": _buildProfilePhotoUrl(seed=_profilePhotoSeed(userId=userId, email=cleanEmail)),
+        "createdAt": nowIso,
+        "updatedAt": nowIso,
     }
 
 
@@ -206,6 +211,31 @@ def setUserAdminStatus(*, targetUserId: str, isAdmin: bool) -> None:
     )
     if result.matched_count == 0:
         raise ValueError("User not found")
+
+
+def updateUserName(*, userId: str, nextName: str) -> dict[str, Any]:
+    cleanUserId = str(userId or "").strip()
+    cleanName = str(nextName or "").strip()
+    if not cleanUserId:
+        raise ValueError("User not found")
+    if not cleanName:
+        raise ValueError("Name is required")
+
+    ensureUserIndexes()
+    users = getMongoDb()[USER_COLLECTION]
+    users.update_one(
+        {"userId": cleanUserId},
+        {
+            "$set": {
+                "name": cleanName,
+                "updatedAt": _utcNowIso(),
+            }
+        },
+    )
+    userDoc = users.find_one({"userId": cleanUserId})
+    if not userDoc:
+        raise ValueError("User not found")
+    return _sanitizeUserDoc(userDoc)
 
 
 def changeUserPassword(*, userId: str, currentPassword: str, newPassword: str) -> None:

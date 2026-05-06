@@ -6,6 +6,7 @@ import {
   loginUser,
   logoutUser,
   registerUser,
+  updateProfileName,
   type AuthResponse,
 } from "@/lib/api";
 import {
@@ -28,6 +29,7 @@ type AuthContextValue = {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateUserName: (name: string) => Promise<void>;
   updateSessionProfile: (nextProfile: SessionProfile) => void;
   logout: () => Promise<void>;
 };
@@ -110,6 +112,17 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
         setSessionProfile((prev) => {
           if (!prev) return prev;
           const nextProfile = { ...prev, password: newPassword };
+          writeSessionProfile(nextProfile);
+          return nextProfile;
+        });
+      },
+      updateUserName: async (name: string) => {
+        const res = await updateProfileName(name.trim());
+        writeAuthUser(res.user);
+        setUser(res.user);
+        setSessionProfile((prev) => {
+          if (!prev) return prev;
+          const nextProfile = { ...prev, name: res.user.name };
           writeSessionProfile(nextProfile);
           return nextProfile;
         });

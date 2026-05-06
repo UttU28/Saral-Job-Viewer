@@ -199,7 +199,7 @@ export function AppNav() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-xl gap-2 h-9 sm:h-10 touch-manipulation"
+                className="rounded-xl gap-2 h-9 sm:h-10 touch-manipulation border-destructive/65 text-destructive hover:bg-transparent"
                 onClick={async () => {
                   await logout();
                   navigate("/login");
@@ -273,7 +273,7 @@ export function AppNav() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full rounded-xl gap-2 h-11 touch-manipulation justify-center text-destructive border-destructive/30 hover:bg-destructive/10"
+                    className="w-full rounded-xl gap-2 h-11 touch-manipulation justify-center text-destructive border-destructive/65 hover:bg-transparent"
                     onClick={async () => {
                       await logout();
                       closeMobile();

@@ -260,6 +260,10 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
   });
 }
 
+export function updateProfileName(name: string): Promise<{ ok: boolean; user: AuthUser }> {
+  return postJson<{ ok: boolean; user: AuthUser }>("/api/auth/update-profile", { name });
+}
+
 export function logoutUser(): Promise<{ ok: boolean; userId: string }> {
   return postJson<{ ok: boolean; userId: string }>("/api/auth/logout", {});
 }

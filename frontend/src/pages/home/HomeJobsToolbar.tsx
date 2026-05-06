@@ -37,7 +37,7 @@ export function HomeJobsToolbar({
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.02 }}
-      className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 touch-manipulation"
+      className="flex flex-wrap items-center gap-2 sm:gap-2.5 shrink-0 touch-manipulation rounded-xl sm:rounded-2xl border border-border/70 bg-card/45 px-2.5 sm:px-3 py-2"
     >
       <form
         className="flex flex-1 min-w-[min(100%,14rem)] gap-1 items-center"
@@ -52,7 +52,7 @@ export function HomeJobsToolbar({
             value={searchDraft}
             onChange={(e) => onSearchDraftChange(e.target.value)}
             placeholder="Search title, company, job ID…"
-            className="pl-8 h-10 sm:h-9 text-base sm:text-sm bg-background/60 border-border rounded-lg pr-2.5"
+            className="pl-8 h-10 sm:h-9 text-base sm:text-sm bg-background/70 border-border/80 rounded-lg pr-2.5"
             aria-label="Search jobs"
             enterKeyHint="search"
             autoComplete="off"
@@ -69,7 +69,7 @@ export function HomeJobsToolbar({
         </Button>
       </form>
       <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
-        <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/60 border-border rounded-lg w-full sm:w-[11.5rem] shrink-0">
+        <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/70 border-border/80 rounded-lg w-full sm:w-[11.5rem] shrink-0">
           <SelectValue placeholder="Platform" />
         </SelectTrigger>
         <SelectContent>
@@ -82,7 +82,7 @@ export function HomeJobsToolbar({
         </SelectContent>
       </Select>
       <Select value={applyFilter} onValueChange={onApplyFilterChange}>
-        <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/60 border-border rounded-lg w-full sm:w-[11.5rem] shrink-0">
+        <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/70 border-border/80 rounded-lg w-full sm:w-[11.5rem] shrink-0">
           <SelectValue placeholder="Apply status" />
         </SelectTrigger>
         <SelectContent>
