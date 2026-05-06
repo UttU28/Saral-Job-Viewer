@@ -143,7 +143,7 @@ flowchart LR
 ## Suggested repo layout for workflows
 
 - Keep **`deployValidation.yml`** pattern for the **job** image.
-- Add **`deploy-api.yml`**: build `docker/Dockerfile.api`, deploy Cloud Run service, set secrets.
+- Add **`deployApi.yml`**: build `docker/Dockerfile.api`, deploy Cloud Run service, set secrets.
 - Add **`deploy-frontend.yml`**: build static site + deploy (container or GCS), inject `VITE_API_URL`.
 
 You can merge into one workflow with **matrix** or **jobs** if you prefer a single “deploy all” button.

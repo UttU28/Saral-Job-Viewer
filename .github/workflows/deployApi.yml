@@ -1,0 +1,95 @@
+# Build docker/Dockerfile.api, push to Artifact Registry, deploy Cloud Run **Service** (HTTP).
+# Prerequisites (one-time GCP + GitHub): same WIF secrets as deployValidation.yml, plus
+# Secret Manager: JWT_SECRET (required for login). Grant the runtime SA roles/run.developer
+# (or run.jobs.runInvoker) on project/job so admin "trigger validation job" works without a key file.
+#
+# Redis (Memorystore): run provisionMemorystoreRedis.yml first, then set repo Variable GCP_VPC_CONNECTOR_NAME
+# to the connector id (same region). Secrets: REDIS_URL (redis://host:port/0). Optional tuning: REDIS_* envs below.
+#
+# GitHub secrets:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — same as validation workflow (deploy identity)
+#   GCP_API_RUN_SERVICE_ACCOUNT — email of the Cloud Run **runtime** service account (e.g. saral-api-trigger@...)
+# GitHub variables (Actions → Variables):
+#   GCP_VPC_CONNECTOR_NAME — serverless VPC connector **name** (required for private Memorystore)
+name: Build and deploy API (Cloud Run Service)
+
+on:
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  AR_REPOSITORY: saral-job-viewer-cr
+  IMAGE_NAME: api
+  CLOUD_RUN_SERVICE: saral-api
+  RUN_JOB_NAME: saral-dvalidate-job
+  MONGODB_DATABASE: saralJobViewer
+
+jobs:
+  deployApi:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push API image
+        id: buildAndPushImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_TAG="${GITHUB_SHA}"
+          FULL_IMAGE="${IMAGE_URI}:${IMAGE_TAG}"
+
+          docker build -f docker/Dockerfile.api -t "${FULL_IMAGE}" .
+          docker push "${FULL_IMAGE}"
+
+          docker tag "${FULL_IMAGE}" "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:latest"
+
+          echo "fullImage=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloud Run service
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_IMAGE="${{ steps.buildAndPushImage.outputs.fullImage }}"
+          RUNTIME_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
+          VPC_NAME="${{ vars.GCP_VPC_CONNECTOR_NAME }}"
+          EXTRA=()
+          if [[ -n "$VPC_NAME" ]]; then
+            EXTRA+=(--vpc-connector "$VPC_NAME" --vpc-egress private-ranges-only)
+          fi
+
+          gcloud run deploy "${{ env.CLOUD_RUN_SERVICE }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --platform managed \
+            --image "${FULL_IMAGE}" \
+            --port 8000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 10 \
+            --timeout 300 \
+            --allow-unauthenticated \
+            --service-account "${RUNTIME_SA}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},RUN_JOB_NAME=${{ env.RUN_JOB_NAME }},MONGODB_DATABASE=${{ env.MONGODB_DATABASE }},REDIS_ENABLED=true,REDIS_PREFIX=sjv,REDIS_DEFAULT_TTL_SECONDS=60,REDIS_SOCKET_TIMEOUT_MS=500,REDIS_CONNECT_TIMEOUT_MS=500" \
+            --set-secrets "MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest,REDIS_URL=REDIS_URL:latest" \
+            "${EXTRA[@]}"

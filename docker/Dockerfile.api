@@ -2,8 +2,7 @@ FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    GOOGLE_APPLICATION_CREDENTIALS=/app/secrets/gcp-sa.json
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 RUN mkdir -p /app/secrets
