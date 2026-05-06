@@ -551,7 +551,17 @@ def scrapeCurrentPageJobs(
                     )
                     time.sleep(0.75)
                     continue
-                raise
+                log.jobSkip(
+                    idx + 1,
+                    n,
+                    "detail pane timeout",
+                    f"{companyPreview} — {cardId}",
+                )
+                globalSeenIds.add(cardId)
+                skippedMerge += 1
+                break
+        if cardId in globalSeenIds:
+            continue
         detail = scrapeSelectedJobDetails(driver, fallback)
 
         jobRecord = {
