@@ -45,6 +45,24 @@ export function applyStatusBadgeVariant(
   return "outline";
 }
 
+export function applyStatusBadgeClasses(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim().toUpperCase();
+  if (!s) return "border-border/80 bg-background/70 text-foreground/85";
+  if (s === "APPLY" || s === "APPLIED") {
+    return "border-emerald-500/45 bg-emerald-500/[0.08] text-emerald-800 dark:text-emerald-200";
+  }
+  if (s === "APPLYING") {
+    return "border-amber-500/45 bg-amber-500/[0.08] text-amber-900 dark:text-amber-200";
+  }
+  if (s === "DO_NOT_APPLY" || s === "REJECTED") {
+    return "border-rose-500/45 bg-rose-500/[0.08] text-rose-800 dark:text-rose-200";
+  }
+  if (s === "EXISTING") {
+    return "border-sky-500/45 bg-sky-500/[0.08] text-sky-800 dark:text-sky-200";
+  }
+  return "border-border/80 bg-background/70 text-foreground/85";
+}
+
 /** Non-empty meta fragments for the header line (seniority, experience, work model, type). */
 export function jobMetaHighlights(job: JobRow): string[] {
   const out: string[] = [];

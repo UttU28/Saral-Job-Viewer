@@ -183,7 +183,7 @@ export default function AuthHome() {
             initial={{ opacity: 0, y: 4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.04, duration: 0.22 }}
-            className="rounded-2xl border border-border/60 bg-muted/20 dark:bg-muted/10 px-5 py-6 sm:px-6 sm:py-7 space-y-5"
+            className="order-2 lg:order-1 rounded-2xl border border-border/60 bg-muted/20 dark:bg-muted/10 px-5 py-6 sm:px-6 sm:py-7 space-y-5"
           >
             <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">At a glance</h2>
             <ul className="space-y-3.5">
@@ -224,7 +224,7 @@ export default function AuthHome() {
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="w-full rounded-2xl border border-border bg-card/40 dark:bg-card/35 backdrop-blur-sm shadow-lg shadow-black/5 overflow-hidden"
+            className="order-1 lg:order-2 w-full rounded-2xl border border-border bg-card/40 dark:bg-card/35 backdrop-blur-sm shadow-lg shadow-black/5 overflow-hidden"
           >
             <div className="p-1.5 mx-3 mt-3 sm:mx-4 sm:mt-4 rounded-xl bg-muted/40 dark:bg-muted/25 border border-border/50 flex gap-1">
               <Link
@@ -436,7 +436,7 @@ export default function AuthHome() {
         </motion.section>
 
         <p className="pb-1 text-center text-[11px] sm:text-xs text-muted-foreground/85">
-          <span className="font-medium text-foreground/90">Utsav × ThatInsaneGuy</span>
+          <span className="font-medium text-foreground/90">ThatInsaneGuy</span>
         </p>
       </div>
     </div>

@@ -528,7 +528,8 @@ export function JobDetailPane({
                 type="button"
                 size="default"
                 disabled={decisionBusyHere}
-                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation bg-emerald-600 text-white hover:bg-emerald-600/90 border border-emerald-500/40 shadow-sm shadow-emerald-950/30"
+                variant="outline"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-emerald-400/80 bg-transparent text-emerald-700 hover:bg-emerald-500/[0.12] dark:text-emerald-300"
                 onClick={() => sendJobDecision("accept")}
               >
                 {decisionBusyHere && decisionBusyKind === "accept" ? (
@@ -543,9 +544,9 @@ export function JobDetailPane({
               <Button
                 type="button"
                 size="default"
-                variant="destructive"
+                variant="outline"
                 disabled={decisionBusyHere}
-                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-rose-400/80 bg-transparent text-rose-700 hover:bg-rose-500/[0.12] dark:text-rose-300"
                 onClick={() => sendJobDecision("reject")}
               >
                 {decisionBusyHere && decisionBusyKind === "reject" ? (
@@ -562,7 +563,7 @@ export function JobDetailPane({
                 size="default"
                 variant="outline"
                 disabled={decisionBusyHere || moveToApplyPending}
-                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-violet-500/40 bg-violet-500/[0.08] text-foreground hover:bg-violet-500/15 dark:border-violet-400/35"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-violet-400/80 bg-transparent text-violet-700 hover:bg-violet-500/[0.12] dark:text-violet-300"
                 onClick={() => void handleMoveRejectedToApply()}
               >
                 {moveToApplyPending ? (
@@ -574,7 +575,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {originalUrl ? (
-              <Button size="default" variant="default" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
+              <Button size="default" variant="outline" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-violet-400/80 bg-transparent text-violet-700 hover:bg-violet-500/[0.12] dark:text-violet-300" asChild>
                 <a href={originalUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Original URL
@@ -582,7 +583,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {platformUrl ? (
-              <Button size="default" variant="secondary" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
+              <Button size="default" variant="outline" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-zinc-400/80 bg-transparent text-zinc-700 hover:bg-zinc-500/[0.12] dark:text-zinc-300" asChild>
                 <a href={platformUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Platform URL
@@ -596,7 +597,7 @@ export function JobDetailPane({
           <h3 className="text-xs font-semibold uppercase tracking-widest text-primary dark:text-violet-300 mb-3">
             Full description
           </h3>
-          <div className="rounded-2xl border border-border bg-gradient-to-b from-violet-100/50 via-muted/35 to-emerald-100/40 dark:from-violet-950/35 dark:via-zinc-900/55 dark:to-emerald-950/25 p-4 sm:p-6 w-full dark:shadow-[inset_0_1px_0_0_rgba(196,181,253,0.06)]">
+          <div className="rounded-2xl border border-border/80 bg-background/65 p-4 sm:p-6 w-full shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
             <pre className="whitespace-pre-wrap break-words font-sans text-sm text-foreground/90 dark:text-zinc-200 leading-relaxed m-0 w-full [tab-size:2]">
               {(job.jobDescription ?? "").trim() ? (
                 descriptionHighlightSegments.map((seg, i) =>

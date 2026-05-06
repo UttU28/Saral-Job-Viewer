@@ -1,0 +1,170 @@
+# One-time (or rare) GCP setup: Memorystore (Redis) + Serverless VPC Access connector + Secret Manager REDIS_URL.
+# Run this BEFORE deployApi when using private Memorystore; then set GitHub repo Variable GCP_VPC_CONNECTOR_NAME
+# to the same connector name (short id, same region as Cloud Run).
+#
+# Requires same WIF secrets as other deploy workflows. Deploy SA needs: Redis admin, VPC access admin,
+# Secret Manager admin (or equivalent) to create secrets and IAM bindings.
+#
+# If connector CIDR overlaps your VPC, change input connectorCidr (unused /28 in RFC1918 space).
+name: Provision Memorystore Redis (connector + REDIS_URL secret)
+
+on:
+  workflow_dispatch:
+    inputs:
+      redisInstanceId:
+        description: Memorystore instance id (lowercase letters, numbers, hyphens only)
+        type: string
+        default: saral-memorystore-redis
+      connectorName:
+        description: VPC connector id — max 25 chars, ^[a-z][-a-z0-9]{0,23}[a-z0-9]$ (no trailing hyphen)
+        type: string
+        default: sjv-run-vpc
+      connectorCidr:
+        description: Dedicated /28 for the connector (must not overlap existing subnets)
+        type: string
+        default: 10.8.0.0/28
+      network:
+        description: VPC network name (default VPC is usually "default")
+        type: string
+        default: default
+      redisSizeGb:
+        description: Memorystore size (GB)
+        type: string
+        default: "1"
+      redisTier:
+        description: BASIC or STANDARD_HA
+        type: choice
+        options:
+          - BASIC
+          - STANDARD_HA
+        default: BASIC
+      writeRedisUrlSecret:
+        description: Create/update Secret Manager secret REDIS_URL for the API
+        type: boolean
+        default: true
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable APIs
+        run: |
+          gcloud services enable redis.googleapis.com vpcaccess.googleapis.com compute.googleapis.com \
+            --project "${{ env.GCP_PROJECT_ID }}"
+
+      - name: Create or skip Serverless VPC connector
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="${{ inputs.connectorName }}"
+          if gcloud compute networks vpc-access connectors describe "$NAME" \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "Connector $NAME already exists."
+          else
+            gcloud compute networks vpc-access connectors create "$NAME" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --network "${{ inputs.network }}" \
+              --range "${{ inputs.connectorCidr }}" \
+              --min-instances 2 \
+              --max-instances 3
+          fi
+
+      - name: Create or skip Memorystore Redis instance
+        shell: bash
+        run: |
+          set -euo pipefail
+          RID="${{ inputs.redisInstanceId }}"
+          if gcloud redis instances describe "$RID" \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            echo "Redis instance $RID already exists."
+          else
+            gcloud redis instances create "$RID" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region="${{ env.GCP_REGION }}" \
+              --network="projects/${{ env.GCP_PROJECT_ID }}/global/networks/${{ inputs.network }}" \
+              --tier="${{ inputs.redisTier }}" \
+              --size="${{ inputs.redisSizeGb }}" \
+              --redis-version=redis_7_0 \
+              --connect-mode=DIRECT_PEERING
+          fi
+
+      - name: Wait until Redis is ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          RID="${{ inputs.redisInstanceId }}"
+          for i in $(seq 1 60); do
+            STATE=$(gcloud redis instances describe "$RID" \
+              --region "${{ env.GCP_REGION }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --format='value(state)' || echo "UNKNOWN")
+            echo "Redis state: $STATE ($i/60)"
+            if [[ "$STATE" == "READY" ]]; then
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for Redis READY"
+          exit 1
+
+      - name: Write REDIS_URL to Secret Manager
+        if: inputs.writeRedisUrlSecret
+        shell: bash
+        run: |
+          set -euo pipefail
+          RID="${{ inputs.redisInstanceId }}"
+          HOST=$(gcloud redis instances describe "$RID" \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --format='value(host)')
+          PORT=$(gcloud redis instances describe "$RID" \
+            --region "${{ env.GCP_REGION }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --format='value(port)')
+          REDIS_URL="redis://${HOST}:${PORT}/0"
+          echo "REDIS_URL (no password) length: ${#REDIS_URL}"
+
+          if ! gcloud secrets describe REDIS_URL --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            gcloud secrets create REDIS_URL \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --replication-policy=automatic
+          fi
+          printf '%s' "$REDIS_URL" | gcloud secrets versions add REDIS_URL \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --data-file=-
+
+          API_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
+          gcloud secrets add-iam-policy-binding REDIS_URL \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --member="serviceAccount:${API_SA}" \
+            --role="roles/secretmanager.secretAccessor"
+
+      - name: Summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Next steps ==="
+          echo "1. Repo Settings → Actions → Variables: set GCP_VPC_CONNECTOR_NAME = ${{ inputs.connectorName }}"
+          echo "2. Run workflow deployApi to roll the API with REDIS_ENABLED and VPC egress."
+          echo "3. If Redis used AUTH, replace REDIS_URL secret with redis://:PASSWORD@host:port/0 manually."

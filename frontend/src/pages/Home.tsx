@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Briefcase, Loader2 } from "lucide-react";
+import { Briefcase, Loader2, SlidersHorizontal } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useJobInfiniteQuery, useJobPlatformsQuery } from "@/hooks/use-jobs";
@@ -19,6 +19,7 @@ export default function Home() {
   const [applyFilter, setApplyFilter] = useState<string>(DEFAULT_APPLY_FILTER);
   const [searchDraft, setSearchDraft] = useState("");
   const [committedSearch, setCommittedSearch] = useState("");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobCardDecisionState, setJobCardDecisionState] = useState<JobCardDecisionState>(null);
   const decisionRequestGenRef = useRef(0);
@@ -246,16 +247,18 @@ export default function Home() {
   return (
     <div className="w-full min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden scrollbar-themed">
       <div className="w-full min-h-0 flex-1 flex flex-col overflow-hidden px-3 sm:px-4 md:px-5 pt-3 sm:pt-4 pb-3 gap-3">
-        <HomeJobsToolbar
-          searchDraft={searchDraft}
-          onSearchDraftChange={setSearchDraft}
-          onSearchCommit={commitSearch}
-          platformFilter={platformFilter}
-          onPlatformFilterChange={setPlatformFilter}
-          applyFilter={applyFilter}
-          onApplyFilterChange={setApplyFilter}
-          platforms={platformsQuery.data?.platforms ?? []}
-        />
+        <div className="hidden lg:block">
+          <HomeJobsToolbar
+            searchDraft={searchDraft}
+            onSearchDraftChange={setSearchDraft}
+            onSearchCommit={commitSearch}
+            platformFilter={platformFilter}
+            onPlatformFilterChange={setPlatformFilter}
+            applyFilter={applyFilter}
+            onApplyFilterChange={setApplyFilter}
+            platforms={platformsQuery.data?.platforms ?? []}
+          />
+        </div>
 
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
           {infiniteQuery.isError ? (
@@ -281,18 +284,44 @@ export default function Home() {
           ) : (
             <div
               className={cn(
-                "flex flex-col lg:flex-row gap-0 rounded-xl sm:rounded-2xl border border-border overflow-hidden bg-card/30 shadow-xl shadow-black/10 dark:shadow-black/20 w-full flex-1 min-h-0",
+                "flex flex-col lg:flex-row gap-0 rounded-xl sm:rounded-2xl border border-border/80 overflow-hidden bg-card/50 dark:bg-card/35 shadow-[0_8px_30px_-16px_rgba(0,0,0,0.45)] w-full flex-1 min-h-0",
               )}
             >
-              <aside className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col min-h-0 flex-1 lg:flex-none max-h-[40vh] min-h-[160px] sm:max-h-[44vh] sm:min-h-[200px] lg:max-h-none lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border bg-muted/50 dark:bg-zinc-950/55 lg:dark:bg-zinc-950/45">
-                <div className="px-3 py-2.5 border-b border-border/80 dark:border-border/60 shrink-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    Results ({totalMatches})
-                  </p>
+              <aside className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col min-h-0 flex-1 lg:flex-none max-h-[40vh] min-h-[160px] sm:max-h-[44vh] sm:min-h-[200px] lg:max-h-none lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border/80 bg-muted/20 dark:bg-zinc-950/40">
+                <div className="px-3 py-2.5 border-b border-border/70 shrink-0 bg-background/50">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Results ({totalMatches})
+                    </p>
+                    <button
+                      type="button"
+                      className="lg:hidden inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-background/70 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                      onClick={() => setMobileFiltersOpen((v) => !v)}
+                      aria-expanded={mobileFiltersOpen}
+                      aria-controls="mobile-job-filters"
+                    >
+                      <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+                      {mobileFiltersOpen ? "Hide" : "Filter"}
+                    </button>
+                  </div>
                 </div>
+                {mobileFiltersOpen ? (
+                  <div id="mobile-job-filters" className="lg:hidden border-b border-border/70 px-2.5 py-2.5 bg-background/35">
+                    <HomeJobsToolbar
+                      searchDraft={searchDraft}
+                      onSearchDraftChange={setSearchDraft}
+                      onSearchCommit={commitSearch}
+                      platformFilter={platformFilter}
+                      onPlatformFilterChange={setPlatformFilter}
+                      applyFilter={applyFilter}
+                      onApplyFilterChange={setApplyFilter}
+                      platforms={platformsQuery.data?.platforms ?? []}
+                    />
+                  </div>
+                ) : null}
                 <div
                   ref={listScrollRef}
-                  className="scrollbar-themed flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 py-2 space-y-2"
+                  className="scrollbar-themed flex-1 min-h-0 overflow-y-auto overscroll-contain px-2.5 py-2.5 space-y-2"
                 >
                   {flatItems.map((job, rowIndex) => {
                     const jid = job.jobId == null ? "" : String(job.jobId);
@@ -340,7 +369,7 @@ export default function Home() {
                 </div>
               </aside>
 
-              <section className="scrollbar-themed flex-1 min-w-0 min-h-[45vh] lg:min-h-0 overflow-y-auto overscroll-contain bg-gradient-to-br from-background via-background to-primary/[0.03]">
+              <section className="scrollbar-themed flex-1 min-w-0 min-h-[45vh] lg:min-h-0 overflow-y-auto overscroll-contain bg-gradient-to-br from-background via-background to-muted/20">
                 <JobDetailPane
                   jobId={selectedJobId}
                   decisionBusyJobId={

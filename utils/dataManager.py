@@ -12,6 +12,11 @@ try:
 except ImportError:
     pass
 
+try:
+    from pymongo.errors import PyMongoError
+except ImportError:  # pragma: no cover - fallback when pymongo missing at import time
+    PyMongoError = Exception  # type: ignore[misc,assignment]
+
 JOB_DATA_COLLECTION = "jobData"
 PAST_DATA_COLLECTION = "pastData"
 
@@ -70,19 +75,25 @@ def appendScrapeLog(message: str, *, platform: str = "Unknown") -> Path:
 
 
 def _mongoEnsureIndexes(recreate: bool) -> None:
-    db = _getMongoDb()
-    if recreate:
-        names = set(db.list_collection_names())
-        if JOB_DATA_COLLECTION in names:
-            db[JOB_DATA_COLLECTION].drop()
-        if PAST_DATA_COLLECTION in names:
-            db[PAST_DATA_COLLECTION].drop()
-    job_col = db[JOB_DATA_COLLECTION]
-    past_col = db[PAST_DATA_COLLECTION]
-    job_col.create_index("jobId", unique=True)
-    past_col.create_index("jobId", unique=True)
-    job_col.create_index("platform")
-    past_col.create_index("platform")
+    try:
+        db = _getMongoDb()
+        if recreate:
+            names = set(db.list_collection_names())
+            if JOB_DATA_COLLECTION in names:
+                db[JOB_DATA_COLLECTION].drop()
+            if PAST_DATA_COLLECTION in names:
+                db[PAST_DATA_COLLECTION].drop()
+        job_col = db[JOB_DATA_COLLECTION]
+        past_col = db[PAST_DATA_COLLECTION]
+        job_col.create_index("jobId", unique=True)
+        past_col.create_index("jobId", unique=True)
+        job_col.create_index("platform")
+        past_col.create_index("platform")
+    except PyMongoError as exc:
+        appendScrapeLog(
+            f"Mongo index ensure skipped due to transient error: {type(exc).__name__}: {exc}",
+            platform="MongoDB",
+        )
 
 
 def createTables(*, recreate: bool = False) -> None:
@@ -165,7 +176,14 @@ def upsertJobs(rows: list[dict]) -> int:
         ops.append(UpdateOne({"jobId": jid}, {"$set": set_doc}, upsert=True))
     if not ops:
         return 0
-    coll.bulk_write(ops, ordered=False)
+    try:
+        coll.bulk_write(ops, ordered=False)
+    except PyMongoError as exc:
+        appendScrapeLog(
+            f"Mongo upsert skipped (transient error): {type(exc).__name__}: {exc}",
+            platform="MongoDB",
+        )
+        return 0
     return len(ops)
 
 
@@ -454,5 +472,12 @@ def recordPastData(rows: list[dict], *, platform: str) -> int:
         )
     if not ops:
         return 0
-    coll.bulk_write(ops, ordered=False)
+    try:
+        coll.bulk_write(ops, ordered=False)
+    except PyMongoError as exc:
+        appendScrapeLog(
+            f"Mongo pastData upsert skipped (transient error): {type(exc).__name__}: {exc}",
+            platform=platform,
+        )
+        return 0
     return len(ops)

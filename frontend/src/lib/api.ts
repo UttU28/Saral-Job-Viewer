@@ -172,6 +172,53 @@ export type CurrentWeekAcceptsResponse = {
   acceptedCount: number;
 };
 
+export type AdminUserRow = {
+  userId: string;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  currentWeekStreak: number;
+  currentWeekRejects: number;
+  profilePhotoUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminUsersResponse = {
+  users: AdminUserRow[];
+  summary: {
+    totalUsers: number;
+    adminUsers: number;
+    nonAdminUsers: number;
+  };
+};
+
+export type AdminJobStatusDetailRow = {
+  status: string;
+  count: number;
+};
+
+export type AdminJobStatusSummaryResponse = {
+  total: number;
+  nullPending: number;
+  apply: number;
+  applied: number;
+  doNotApply: number;
+  rejected: number;
+  existing: number;
+  applying: number;
+  redo: number;
+  otherStatus: number;
+  pastDataRows: number;
+  details: AdminJobStatusDetailRow[];
+};
+
+export type AdminJobAction =
+  | "classify_all_pending_null_jobs"
+  | "delete_unwanted_classified_jobs"
+  | "push_apply_jobs"
+  | "push_apply_jobs_then_cleanup";
+
 export type JobDecisionProfile = {
   name: string;
   email: string;
@@ -241,6 +288,10 @@ export function changePassword(currentPassword: string, newPassword: string): Pr
   });
 }
 
+export function updateProfileName(name: string): Promise<{ ok: boolean; user: AuthUser }> {
+  return postJson<{ ok: boolean; user: AuthUser }>("/api/auth/update-profile", { name });
+}
+
 export function logoutUser(): Promise<{ ok: boolean; userId: string }> {
   return postJson<{ ok: boolean; userId: string }>("/api/auth/logout", {});
 }
@@ -251,4 +302,69 @@ export function fetchWeeklyReport(): Promise<WeeklyReportResponse> {
 
 export function fetchCurrentWeekAccepts(): Promise<CurrentWeekAcceptsResponse> {
   return fetchJson<CurrentWeekAcceptsResponse>("/api/profile/current-week-accepts");
+}
+
+export function fetchAdminUsers(): Promise<AdminUsersResponse> {
+  return fetchJson<AdminUsersResponse>("/api/admin/users");
+}
+
+export function fetchAdminJobStatusSummary(): Promise<AdminJobStatusSummaryResponse> {
+  return fetchJson<AdminJobStatusSummaryResponse>("/api/admin/jobs/status-summary");
+}
+
+export type AdminJobCloudRunInfo = {
+  projectId: string;
+  region: string;
+  jobName: string;
+  fullJobName: string;
+  operationName: string;
+  executionName: string;
+};
+
+export type CloudRunExecutionRow = {
+  executionName: string;
+  shortName: string;
+  jobName: string;
+  state: string;
+  succeededCount: number;
+  failedCount: number;
+  cancelledCount: number;
+  runningCount: number;
+  startTime: string;
+  completionTime: string;
+};
+
+export type AdminCloudRunExecutionsResponse = {
+  ok: boolean;
+  parentJob: string;
+  executions: CloudRunExecutionRow[];
+  nextPageToken: string;
+};
+
+export function fetchAdminCloudRunExecutions(params?: {
+  limit?: number;
+  pageToken?: string;
+}): Promise<AdminCloudRunExecutionsResponse> {
+  return fetchJson<AdminCloudRunExecutionsResponse>("/api/admin/jobs/cloud-run-executions", {
+    limit: params?.limit != null ? String(params.limit) : undefined,
+    pageToken: params?.pageToken,
+  });
+}
+
+export type AdminJobActionResponse = {
+  ok: boolean;
+  action: AdminJobAction;
+  message: string;
+  deletedCount?: number;
+  cloudRun?: AdminJobCloudRunInfo;
+};
+
+export function runAdminJobAction(action: AdminJobAction): Promise<AdminJobActionResponse> {
+  return postJson<AdminJobActionResponse>("/api/admin/jobs/actions", { action });
+}
+
+export function setUserAdminStatus(userId: string, isAdmin: boolean): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/set-admin`, {
+    isAdmin,
+  });
 }

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { pastelMetaLineClasses } from "./constants";
 import type { JobListCardDecisionUi } from "./types";
-import { applyStatusBadgeVariant, formatApplyStatusLabel, jobMetaHighlights } from "./utils";
+import { applyStatusBadgeClasses, applyStatusBadgeVariant, formatApplyStatusLabel, jobMetaHighlights } from "./utils";
 
 export function JobListCard({
   job,
@@ -37,11 +37,11 @@ export function JobListCard({
         onClick={onSelect}
         className={cn(
           "relative z-0 w-full text-left rounded-xl border px-3 py-3 sm:px-3.5 sm:py-3 min-h-[3.25rem] transition-all duration-200 touch-manipulation active:scale-[0.99]",
-          "hover:border-primary/35 hover:bg-muted/60 dark:hover:bg-white/[0.04]",
+          "hover:border-primary/30 hover:bg-muted/35 dark:hover:bg-white/[0.03]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           selected
-            ? "border-primary/50 bg-primary/[0.12] shadow-[0_0_0_1px_rgba(139,92,246,0.25)]"
-            : "border-border bg-card/40",
+            ? "border-primary/40 bg-primary/[0.08] shadow-[0_0_0_1px_rgba(139,92,246,0.18)]"
+            : "border-border/80 bg-background/55",
         )}
       >
         <div className="flex flex-wrap items-center gap-1.5 mb-1">
@@ -56,7 +56,7 @@ export function JobListCard({
           </Badge>
           <Badge
             variant={applyStatusBadgeVariant(badgeApplyStatus)}
-            className="text-[11px] px-2 py-0 h-6 font-medium"
+            className={cn("text-[11px] px-2 py-0 h-6 font-medium", applyStatusBadgeClasses(badgeApplyStatus))}
           >
             {formatApplyStatusLabel(badgeApplyStatus)}
           </Badge>
@@ -81,7 +81,7 @@ export function JobListCard({
           </div>
         ) : null}
         {cardMetaLines.length > 0 ? (
-          <div className="mt-2 pt-1.5 border-t border-border/80 dark:border-border/60 flex flex-wrap items-center gap-y-0 text-[11px] leading-snug rounded-md bg-gradient-to-r from-violet-500/[0.08] via-transparent to-emerald-500/[0.06] dark:from-violet-500/[0.12] dark:to-emerald-500/[0.08] px-2 py-1.5">
+          <div className="mt-2 pt-1.5 border-t border-border/70 flex flex-wrap items-center gap-y-0 text-[11px] leading-snug rounded-md bg-muted/30 px-2 py-1.5">
             {cardMetaLines.map((line, lineIndex) => (
               <span key={`${line}-${lineIndex}`} className="inline-flex items-center max-w-full">
                 {lineIndex > 0 ? (

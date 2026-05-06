@@ -3,7 +3,7 @@
 # Saral Job Viewer — full stack deploy (Docker FastAPI backend + PM2 Vite frontend + nginx + SSL).
 # Run from repo root: sudo ./deploy.sh
 #
-# Backend: Docker image from Dockerfile.api (app.py + utils/), listens on 8000 inside the container.
+# Backend: Docker image from docker/Dockerfile.api (app.py + utils/), listens on 8000 inside the container.
 # Frontend: ./frontend via PM2 (vite preview behind nginx).
 #
 # Uses fixed ports by default (no auto-random/scan):
@@ -34,6 +34,8 @@ NGINX_AVAILABLE="/etc/nginx/sites-available/${DOMAIN}"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${DOMAIN}"
 SARAL_API_IMAGE="${SARAL_API_IMAGE:-saral-job-viewer-api:latest}"
 SARAL_API_CONTAINER="${SARAL_API_CONTAINER:-saral-job-viewer-api}"
+GCP_SA_HOST_PATH="${SARAL_GCP_SA_PATH:-$SCRIPT_DIR/gcp-sa.json}"
+GCP_SA_CONTAINER_PATH="/app/secrets/gcp-sa.json"
 
 # --- port helpers: prefer odd ports, avoid collisions ---
 port_in_use() {
@@ -85,12 +87,12 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 print_header "🐳 Backend: build & run Docker ($SARAL_API_CONTAINER)..."
-if [[ ! -f "$SCRIPT_DIR/Dockerfile.api" ]]; then
-    print_error "Missing Dockerfile.api"
+if [[ ! -f "$SCRIPT_DIR/docker/Dockerfile.api" ]]; then
+    print_error "Missing docker/Dockerfile.api"
     exit 1
 fi
 
-docker build -f "$SCRIPT_DIR/Dockerfile.api" -t "$SARAL_API_IMAGE" "$SCRIPT_DIR"
+docker build -f "$SCRIPT_DIR/docker/Dockerfile.api" -t "$SARAL_API_IMAGE" "$SCRIPT_DIR"
 
 docker rm -f "$SARAL_API_CONTAINER" >/dev/null 2>&1 || true
 
@@ -103,6 +105,13 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     DOCKER_RUN+=(--env-file "$SCRIPT_DIR/.env")
 else
     print_warn "No .env in repo root — API needs MONGODB_URI etc. Pass envs or add .env before deploy."
+fi
+DOCKER_RUN+=(-e "GOOGLE_APPLICATION_CREDENTIALS=${GCP_SA_CONTAINER_PATH}")
+if [[ -f "$GCP_SA_HOST_PATH" ]]; then
+    print_status "Mounting GCP service account key: $GCP_SA_HOST_PATH -> $GCP_SA_CONTAINER_PATH"
+    DOCKER_RUN+=(-v "$GCP_SA_HOST_PATH:$GCP_SA_CONTAINER_PATH:ro")
+else
+    print_warn "Service account key not found at $GCP_SA_HOST_PATH. Cloud Run triggers will fail until this file exists."
 fi
 DOCKER_RUN+=("$SARAL_API_IMAGE")
 

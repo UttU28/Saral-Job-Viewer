@@ -5,6 +5,7 @@ from typing import Any
 
 from utils.dataManager import (
     JOB_DATA_COLLECTION,
+    PAST_DATA_COLLECTION,
     createTables,
     getMongoDb,
     jobDataApplyStatusSummary,
@@ -219,6 +220,88 @@ def fetchJobSummaryCamel() -> dict[str, int]:
         "existing": int(raw["existing"]),
         "otherStatus": int(raw["otherStatus"]),
         "pastDataRows": int(raw["pastDataRows"]),
+    }
+
+
+def fetchAdminJobStatusSummary() -> dict[str, Any]:
+    """
+    Admin dashboard counts with explicit status buckets plus a full status breakdown.
+    Includes pending/null and applied/not-applied style totals needed for operations.
+    """
+    ensureJobListingIndexes()
+    createTables(recreate=False)
+    db = getMongoDb()
+    jobCol = db[JOB_DATA_COLLECTION]
+    pastCol = db[PAST_DATA_COLLECTION]
+
+    grouped = list(
+        jobCol.aggregate(
+            [
+                {
+                    "$project": {
+                        "normalizedStatus": {
+                            "$trim": {"input": {"$toString": {"$ifNull": ["$applyStatus", ""]}}}
+                        }
+                    }
+                },
+                {"$group": {"_id": "$normalizedStatus", "count": {"$sum": 1}}},
+            ]
+        )
+    )
+
+    statusCounts: dict[str, int] = {}
+    pendingCount = 0
+    for row in grouped:
+        key = str(row.get("_id") or "").strip()
+        count = int(row.get("count") or 0)
+        if not key:
+            pendingCount += count
+            continue
+        statusCounts[key] = count
+
+    normalized = {k.upper(): int(v) for k, v in statusCounts.items()}
+    applyCount = int(normalized.get("APPLY", 0))
+    appliedCount = int(normalized.get("APPLIED", 0))
+    doNotApplyCount = int(normalized.get("DO_NOT_APPLY", 0))
+    rejectedCount = int(normalized.get("REJECTED", 0))
+    existingCount = int(normalized.get("EXISTING", 0))
+    applyingCount = int(normalized.get("APPLYING", 0))
+    redoCount = int(normalized.get("REDO", 0))
+    totalCount = int(jobCol.count_documents({}))
+    pastDataRows = int(pastCol.count_documents({}))
+    otherCount = max(
+        0,
+        totalCount
+        - (
+            pendingCount
+            + applyCount
+            + appliedCount
+            + doNotApplyCount
+            + rejectedCount
+            + existingCount
+            + applyingCount
+            + redoCount
+        ),
+    )
+
+    detailRows = [{"status": "NULL", "count": pendingCount}] + [
+        {"status": key, "count": int(statusCounts[key])}
+        for key in sorted(statusCounts.keys(), key=str.upper)
+    ]
+
+    return {
+        "total": totalCount,
+        "nullPending": pendingCount,
+        "apply": applyCount,
+        "applied": appliedCount,
+        "doNotApply": doNotApplyCount,
+        "rejected": rejectedCount,
+        "existing": existingCount,
+        "applying": applyingCount,
+        "redo": redoCount,
+        "otherStatus": otherCount,
+        "pastDataRows": pastDataRows,
+        "details": detailRows,
     }
 
 
