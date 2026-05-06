@@ -7,13 +7,17 @@ from __future__ import annotations
 import math
 import os
 from pathlib import Path
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
+from utils.dataManager import updateApplyStatusByJobId
+from utils.jobDecisionService import executeJobUiDecision
 from utils.jobViewerQueries import (
     fetchDistinctPlatforms,
     fetchJobDataPage,
@@ -22,6 +26,16 @@ from utils.jobViewerQueries import (
 )
 
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
+
+
+class JobDecisionBody(BaseModel):
+    """Job payload plus optional profile from Settings (browser cookie)."""
+
+    decision: Literal["accept", "reject"]
+    job: dict[str, Any] = Field(default_factory=dict)
+    profileName: str = ""
+    profileEmail: str = ""
+    profilePassword: str = ""
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,6 +69,57 @@ def getJobPlatforms():
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.post("/api/jobs/decision")
+def postJobDecision(body: JobDecisionBody):
+    """
+    Reject: set applyStatus to REJECTED in Mongo.
+    Accept: Midhtech login (Settings email/password) + submit suggestion + set applyStatus to APPLIED on success (unchanged on failure).
+    Returns structured steps for the UI; logs phases to stdout.
+    """
+    email = (body.profileEmail or "").strip()
+    password = (body.profilePassword or "").strip()
+    if body.decision == "accept" and (not email or not password):
+        raise HTTPException(
+            status_code=400,
+            detail="profileEmail and profilePassword are required for Accept — save them in Settings first.",
+        )
+
+    try:
+        return executeJobUiDecision(
+            decision=body.decision,
+            job=dict(body.job),
+            profileEmail=email,
+            profilePassword=password,
+            profileName=(body.profileName or "").strip(),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/jobs/{jobId}/rejected-to-apply")
+def postRejectedJobToApply(jobId: str):
+    """
+    Set applyStatus from REJECTED to APPLY (local DB only; no Midhtech call).
+    """
+    try:
+        row = fetchJobDetailByJobId(jobId)
+        if not row:
+            raise HTTPException(status_code=404, detail="Job not found")
+        current = str(row.get("applyStatus") or "").strip().upper()
+        if current != "REJECTED":
+            raise HTTPException(
+                status_code=400,
+                detail="Only jobs with status REJECTED can be moved to APPLY.",
+            )
+        if not updateApplyStatusByJobId(jobId, "APPLY"):
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"ok": True, "applyStatus": "APPLY"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.get("/api/jobs/{jobId}")
 def getJobById(jobId: str):
     try:
@@ -77,20 +142,20 @@ def listJobs(
     search: str | None = Query(None),
 ):
     try:
-        platformVal = platform.strip() if platform and platform.strip() else None
-        applyVal = applyStatus.strip() if applyStatus and applyStatus.strip() else None
-        searchVal = search.strip() if search and search.strip() else None
-        if applyVal and applyVal.lower() == "all":
-            applyVal = None
-        if platformVal and platformVal.lower() == "all":
-            platformVal = None
+        platformValue = platform.strip() if platform and platform.strip() else None
+        applyValue = applyStatus.strip() if applyStatus and applyStatus.strip() else None
+        searchValue = search.strip() if search and search.strip() else None
+        if applyValue and applyValue.lower() == "all":
+            applyValue = None
+        if platformValue and platformValue.lower() == "all":
+            platformValue = None
 
         items, total = fetchJobDataPage(
             page=page,
             pageSize=pageSize,
-            platform=platformVal,
-            applyStatus=applyVal,
-            search=searchVal,
+            platform=platformValue,
+            applyStatus=applyValue,
+            search=searchValue,
         )
         totalPages = max(1, math.ceil(total / pageSize)) if pageSize else 1
         return {

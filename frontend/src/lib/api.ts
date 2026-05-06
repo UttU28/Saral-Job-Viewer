@@ -25,6 +25,22 @@ async function fetchJson<T>(path: string, searchParams?: Record<string, string |
   return response.json() as Promise<T>;
 }
 
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+  const url = base ? `${base}${path}` : path;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
+
 export async function fetchJobList(params: {
   page: number;
   pageSize: number;
@@ -51,4 +67,47 @@ export async function fetchJobPlatforms(): Promise<{ platforms: string[] }> {
 
 export async function fetchJobDetail(jobId: string): Promise<JobRow> {
   return fetchJson<JobRow>(`/api/jobs/${encodeURIComponent(jobId)}`);
+}
+
+export type JobDecision = "accept" | "reject";
+
+export type JobDecisionProfile = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+export type JobDecisionStep = {
+  phase: string;
+  ok: boolean;
+  message: string;
+};
+
+export type JobDecisionResponse = {
+  ok: boolean;
+  decision: JobDecision;
+  steps: JobDecisionStep[];
+  applyStatusUpdated: string | null;
+  error: string | null;
+};
+
+export async function postRejectedJobToApply(jobId: string): Promise<{ ok: boolean; applyStatus: string }> {
+  return postJson<{ ok: boolean; applyStatus: string }>(
+    `/api/jobs/${encodeURIComponent(jobId)}/rejected-to-apply`,
+    {},
+  );
+}
+
+export async function submitJobDecision(params: {
+  decision: JobDecision;
+  job: JobRow;
+  profile: JobDecisionProfile;
+}): Promise<JobDecisionResponse> {
+  return postJson<JobDecisionResponse>("/api/jobs/decision", {
+    decision: params.decision,
+    job: params.job,
+    profileName: params.profile.name,
+    profileEmail: params.profile.email,
+    profilePassword: params.profile.password,
+  });
 }
