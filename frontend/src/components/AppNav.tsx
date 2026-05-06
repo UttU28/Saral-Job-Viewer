@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import { Briefcase, Home, Moon, Settings, Sun } from "lucide-react";
-import { Link, useRoute } from "wouter";
-import { useProfileCookie } from "@/hooks/use-profile-cookie";
+import { Briefcase, Home, KeyRound, LogOut, Moon, Settings, Sun } from "lucide-react";
+import { Link, useLocation, useRoute } from "wouter";
+import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -10,11 +10,11 @@ function NavLink({
   href,
   icon: Icon,
   children,
-}: {
+}: Readonly<{
   href: string;
   icon: typeof Home;
   children: ReactNode;
-}) {
+}>) {
   const [isActive] = useRoute(href);
   return (
     <Button
@@ -35,7 +35,8 @@ function NavLink({
 }
 
 export function AppNav() {
-  const { displayName } = useProfileCookie();
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
   const { theme, toggleTheme } = useTheme();
 
   return (
@@ -54,14 +55,14 @@ export function AppNav() {
                 Saral Job Viewer
               </span>
             </Link>
-            {displayName ? (
+            {user?.name ? (
               <span
                 className="flex items-center min-w-0 text-[11px] sm:text-sm text-muted-foreground border-l border-border pl-2 sm:pl-4 ml-0.5"
-                title={displayName}
+                title={user.name}
               >
                 Hi,{" "}
                 <span className="font-medium text-foreground truncate max-w-[72px] sm:max-w-[180px] md:max-w-[260px] ml-0.5 sm:ml-1">
-                  {displayName}
+                  {user.name}
                 </span>
               </span>
             ) : null}
@@ -91,6 +92,22 @@ export function AppNav() {
             <NavLink href="/settings" icon={Settings}>
               Settings
             </NavLink>
+            <NavLink href="/change-password" icon={KeyRound}>
+              Password
+            </NavLink>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="rounded-xl gap-2 h-9 sm:h-10"
+              onClick={async () => {
+                await logout();
+                navigate("/login");
+              }}
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className="text-xs sm:text-sm">Logout</span>
+            </Button>
           </nav>
         </div>
       </div>

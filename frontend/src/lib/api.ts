@@ -1,4 +1,5 @@
 import type { JobListResponse, JobRow, JobSummary } from "@/lib/types";
+import { readAuthToken, type AuthUser } from "@/lib/authStorage";
 
 function buildUrl(path: string, searchParams?: Record<string, string | undefined>): string {
   const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
@@ -15,7 +16,9 @@ function buildUrl(path: string, searchParams?: Record<string, string | undefined
 }
 
 async function fetchJson<T>(path: string, searchParams?: Record<string, string | undefined>): Promise<T> {
+  const token = readAuthToken();
   const response = await fetch(buildUrl(path, searchParams), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     credentials: "omit",
   });
   if (!response.ok) {
@@ -28,9 +31,13 @@ async function fetchJson<T>(path: string, searchParams?: Record<string, string |
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
   const url = base ? `${base}${path}` : path;
+  const token = readAuthToken();
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     credentials: "omit",
     body: JSON.stringify(body),
   });
@@ -70,6 +77,12 @@ export async function fetchJobDetail(jobId: string): Promise<JobRow> {
 }
 
 export type JobDecision = "accept" | "reject";
+
+export type AuthResponse = {
+  ok: boolean;
+  token: string;
+  user: AuthUser;
+};
 
 export type JobDecisionProfile = {
   name: string;
@@ -119,4 +132,27 @@ export async function submitJobDecision(params: {
     profileEmail: params.profile.email,
     profilePassword: params.profile.password,
   });
+}
+
+export function registerUser(name: string, email: string, password: string): Promise<AuthResponse> {
+  return postJson<AuthResponse>("/api/auth/register", { name, email, password });
+}
+
+export function loginUser(email: string, password: string): Promise<AuthResponse> {
+  return postJson<AuthResponse>("/api/auth/login", { email, password });
+}
+
+export function fetchCurrentUser(): Promise<{ ok: boolean; user: AuthUser }> {
+  return fetchJson<{ ok: boolean; user: AuthUser }>("/api/auth/me");
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>("/api/auth/change-password", {
+    currentPassword,
+    newPassword,
+  });
+}
+
+export function logoutUser(): Promise<{ ok: boolean; userId: string }> {
+  return postJson<{ ok: boolean; userId: string }>("/api/auth/logout", {});
 }

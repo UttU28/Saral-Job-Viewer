@@ -25,7 +25,7 @@ import {
   buildDescriptionHighlightSegments,
   findJobDescriptionRestrictionTags,
 } from "@/lib/jobDescriptionRestrictions";
-import { readProfileFromCookie } from "@/lib/profileCookie";
+import { useAuth } from "@/auth/AuthProvider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +69,7 @@ export function JobDetailPane({
   ) => void;
 }>) {
   const detailQuery = useJobDetailQuery(jobId, Boolean(jobId));
+  const { sessionProfile } = useAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [profileRequiredOpen, setProfileRequiredOpen] = useState(false);
@@ -133,10 +134,9 @@ export function JobDetailPane({
   const platformUrl = (job.jobUrl ?? "").trim();
 
   const executeAcceptSubmit = async () => {
-    const stored = readProfileFromCookie();
-    const name = (stored?.name ?? "").trim();
-    const email = (stored?.email ?? "").trim();
-    const password = (stored?.password ?? "").trim();
+    const name = (sessionProfile?.name ?? "").trim();
+    const email = (sessionProfile?.email ?? "").trim();
+    const password = (sessionProfile?.password ?? "").trim();
     if (!email || !password) {
       setProfileRequiredOpen(true);
       return;
@@ -170,9 +170,8 @@ export function JobDetailPane({
 
   const sendJobDecision = async (decision: JobDecision) => {
     if (decision === "accept") {
-      const stored = readProfileFromCookie();
-      const email = (stored?.email ?? "").trim();
-      const password = (stored?.password ?? "").trim();
+      const email = (sessionProfile?.email ?? "").trim();
+      const password = (sessionProfile?.password ?? "").trim();
       if (!email || !password) {
         setProfileRequiredOpen(true);
         return;
@@ -278,10 +277,10 @@ export function JobDetailPane({
             <AlertDialogDescription asChild>
               <div className="text-left text-muted-foreground space-y-3 text-sm leading-relaxed pt-1">
                 <p>
-                  <strong className="text-foreground font-medium">Accept</strong> logs into Midhtech with your saved{" "}
+                  <strong className="text-foreground font-medium">Accept</strong> logs into Midhtech with your current{" "}
                   <strong className="text-foreground font-medium">email</strong> and{" "}
-                  <strong className="text-foreground font-medium">password</strong> and submits this job. Add them in Settings, then click{" "}
-                  <strong className="text-foreground font-medium">Save to cookie</strong>. <strong className="text-foreground font-medium">Reject</strong> only
+                  <strong className="text-foreground font-medium">password</strong> from this session and submits this job. Update them in{" "}
+                  <strong className="text-foreground font-medium">Settings</strong> if needed. <strong className="text-foreground font-medium">Reject</strong> only
                   updates the database and does not need credentials.
                 </p>
                 <p className="text-xs text-muted-foreground/90">Your name is optional but will be sent with Accept if you set it.</p>

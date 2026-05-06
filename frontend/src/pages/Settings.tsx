@@ -12,7 +12,7 @@ import {
   XCircle,
   Youtube,
 } from "lucide-react";
-import { readProfileFromCookie, writeProfileToCookie } from "@/lib/profileCookie";
+import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,6 +78,7 @@ function FooterExternalLink({
 }
 
 export default function Settings() {
+  const { user, sessionProfile, updateSessionProfile } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -85,37 +86,39 @@ export default function Settings() {
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
-    const existing = readProfileFromCookie();
-    if (existing) {
-      setName(existing.name);
-      setEmail(existing.email);
-      setPassword(existing.password);
+    if (sessionProfile) {
+      setName(sessionProfile.name);
+      setEmail(sessionProfile.email);
+      setPassword(sessionProfile.password);
+      return;
     }
-  }, []);
+    setName(user?.name ?? "");
+    setEmail(user?.email ?? "");
+    setPassword("");
+  }, [sessionProfile, user?.email, user?.name]);
 
-  const matchesSavedCookie = useMemo(() => {
-    const cookie = readProfileFromCookie();
-    if (!cookie) {
+  const matchesSavedSession = useMemo(() => {
+    if (!sessionProfile) {
       return name.trim() === "" && email.trim() === "" && password === "";
     }
     return (
-      cookie.name === name.trim() &&
-      cookie.email === email.trim() &&
-      cookie.password === password
+      sessionProfile.name === name.trim() &&
+      sessionProfile.email === email.trim() &&
+      sessionProfile.password === password
     );
-  }, [name, email, password]);
+  }, [name, email, password, sessionProfile]);
 
-  const hasCookieOnDisk = useMemo(() => readProfileFromCookie() !== null, [name, email, password, savedFlash]);
+  const hasSessionProfile = useMemo(() => sessionProfile !== null, [sessionProfile]);
 
   const handleSave = (e: FormEvent) => {
     e.preventDefault();
-    writeProfileToCookie({
+    updateSessionProfile({
       name: name.trim(),
       email: email.trim(),
       password,
     });
     setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 2000);
+    globalThis.setTimeout(() => setSavedFlash(false), 2000);
   };
 
   return (
@@ -136,34 +139,33 @@ export default function Settings() {
           <div>
             <h1 className="text-2xl font-bold font-display text-foreground">Settings</h1>
             <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              Saved in your browser as a cookie (this device only). Do not use a real password you
-              reuse elsewhere.
+              Saved in your local session on this browser. This profile is used for Midhtech submit.
             </p>
 
             <div
               className={cn(
                 "mt-4 flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm",
-                matchesSavedCookie
+                matchesSavedSession
                   ? "border-emerald-500/35 bg-emerald-500/[0.07] text-foreground"
                   : "border-amber-500/35 bg-amber-500/[0.06] text-foreground",
               )}
               role="status"
             >
-              {matchesSavedCookie ? (
+              {matchesSavedSession ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" aria-hidden />
               ) : (
                 <XCircle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" aria-hidden />
               )}
               <span className="leading-snug">
-                {matchesSavedCookie ? (
+                {matchesSavedSession ? (
                   <>
                     <span className="font-medium text-emerald-700 dark:text-emerald-400">
-                      In sync with saved cookie
+                      In sync with session profile
                     </span>
-                    {hasCookieOnDisk ? (
-                      <span className="text-muted-foreground"> — form matches what is stored in this browser.</span>
+                    {hasSessionProfile ? (
+                      <span className="text-muted-foreground"> — form matches what is stored in this session.</span>
                     ) : (
-                      <span className="text-muted-foreground"> — nothing stored yet (all fields empty).</span>
+                      <span className="text-muted-foreground"> — no profile saved yet.</span>
                     )}
                   </>
                 ) : (
@@ -171,8 +173,8 @@ export default function Settings() {
                     <span className="font-medium text-amber-800 dark:text-amber-200/95">Unsaved changes</span>
                     <span className="text-muted-foreground">
                       {" "}
-                      — click <strong className="text-foreground font-medium">Save to cookie</strong> to update what
-                      Accept/Reject uses.
+                      — click <strong className="text-foreground font-medium">Save session profile</strong> to update
+                      what Accept uses.
                     </span>
                   </>
                 )}
@@ -250,7 +252,7 @@ export default function Settings() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <Button type="submit" className="rounded-xl gap-2 w-full sm:w-auto">
                 <Save className="h-4 w-4" />
-                Save to cookie
+                Save session profile
               </Button>
               {savedFlash ? (
                 <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 font-medium">

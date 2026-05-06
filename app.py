@@ -10,13 +10,20 @@ from pathlib import Path
 from typing import Any, Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from utils.dataManager import updateApplyStatusByJobId
+from utils.authService import (
+    changeUserPassword,
+    createUserSessionToken,
+    getUserFromToken,
+    loginUser,
+    registerUser,
+)
 from utils.jobDecisionService import executeJobUiDecision
 from utils.jobViewerQueries import (
     fetchDistinctPlatforms,
@@ -28,6 +35,22 @@ from utils.jobViewerQueries import (
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
 
 
+class RegisterBody(BaseModel):
+    name: str = ""
+    email: str = ""
+    password: str = ""
+
+
+class LoginBody(BaseModel):
+    email: str = ""
+    password: str = ""
+
+
+class ChangePasswordBody(BaseModel):
+    currentPassword: str = ""
+    newPassword: str = ""
+
+
 class JobDecisionBody(BaseModel):
     """Job payload plus optional profile from Settings (browser cookie)."""
 
@@ -36,6 +59,25 @@ class JobDecisionBody(BaseModel):
     profileName: str = ""
     profileEmail: str = ""
     profilePassword: str = ""
+
+
+def _extractBearerToken(authorization: str | None) -> str:
+    value = str(authorization or "").strip()
+    if not value or not value.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Authorization token missing")
+    token = value[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authorization token missing")
+    return token
+
+
+def requireAuth(authorization: str | None = Header(default=None)) -> dict[str, str]:
+    token = _extractBearerToken(authorization)
+    try:
+        return getUserFromToken(token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,8 +93,71 @@ def healthCheck():
     return {"ok": True}
 
 
+@app.post("/api/auth/register")
+def postAuthRegister(body: RegisterBody):
+    try:
+        user = registerUser(
+            name=(body.name or "").strip(),
+            email=(body.email or "").strip(),
+            password=body.password or "",
+        )
+        token = createUserSessionToken(user)
+        return {
+            "ok": True,
+            "token": token,
+            "user": user,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/auth/login")
+def postAuthLogin(body: LoginBody):
+    try:
+        user = loginUser(email=(body.email or "").strip(), password=body.password or "")
+        token = createUserSessionToken(user)
+        return {
+            "ok": True,
+            "token": token,
+            "user": user,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/auth/me")
+def getAuthMe(currentUser: dict[str, str] = Depends(requireAuth)):
+    return {"ok": True, "user": currentUser}
+
+
+@app.post("/api/auth/change-password")
+def postAuthChangePassword(
+    body: ChangePasswordBody, currentUser: dict[str, str] = Depends(requireAuth)
+):
+    try:
+        changeUserPassword(
+            userId=currentUser["userId"],
+            currentPassword=body.currentPassword or "",
+            newPassword=body.newPassword or "",
+        )
+        return {"ok": True}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/auth/logout")
+def postAuthLogout(currentUser: dict[str, str] = Depends(requireAuth)):
+    return {"ok": True, "userId": currentUser["userId"]}
+
+
 @app.get("/api/jobs/summary")
-def getJobsSummary():
+def getJobsSummary(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
         summary = fetchJobSummaryCamel()
         return summary
@@ -61,7 +166,7 @@ def getJobsSummary():
 
 
 @app.get("/api/jobs/platforms")
-def getJobPlatforms():
+def getJobPlatforms(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
         platforms = fetchDistinctPlatforms()
         return {"platforms": platforms}
@@ -70,7 +175,7 @@ def getJobPlatforms():
 
 
 @app.post("/api/jobs/decision")
-def postJobDecision(body: JobDecisionBody):
+def postJobDecision(body: JobDecisionBody, currentUser: dict[str, str] = Depends(requireAuth)):
     """
     Reject: set applyStatus to REJECTED (blocked if APPLIED or APPLYING).
     Accept: requires APPLY in Mongo; atomically APPLY→APPLYING, then Midhtech login + suggest, then APPLIED;
@@ -98,7 +203,7 @@ def postJobDecision(body: JobDecisionBody):
 
 
 @app.post("/api/jobs/{jobId}/rejected-to-apply")
-def postRejectedJobToApply(jobId: str):
+def postRejectedJobToApply(jobId: str, currentUser: dict[str, str] = Depends(requireAuth)):
     """
     Set applyStatus from REJECTED to APPLY (local DB only; no Midhtech call).
     """
@@ -122,7 +227,7 @@ def postRejectedJobToApply(jobId: str):
 
 
 @app.get("/api/jobs/{jobId}")
-def getJobById(jobId: str):
+def getJobById(jobId: str, currentUser: dict[str, str] = Depends(requireAuth)):
     try:
         row = fetchJobDetailByJobId(jobId)
         if not row:
@@ -141,6 +246,7 @@ def listJobs(
     platform: str | None = Query(None),
     applyStatus: str | None = Query(None),
     search: str | None = Query(None),
+    currentUser: dict[str, str] = Depends(requireAuth),
 ):
     try:
         platformValue = platform.strip() if platform and platform.strip() else None
