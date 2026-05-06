@@ -5,10 +5,10 @@ import {
   Building2,
   CheckCircle2,
   ExternalLink,
+  KeyRound,
   Loader2,
   MapPin,
   RotateCcw,
-  Settings,
   Sparkles,
   XCircle,
 } from "lucide-react";
@@ -271,7 +271,7 @@ export function JobDetailPane({
         <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-md shadow-xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display text-xl flex items-center gap-2">
-              <Settings className="h-5 w-5 text-primary shrink-0" aria-hidden />
+              <KeyRound className="h-5 w-5 text-primary shrink-0" aria-hidden />
               Email and password required
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
@@ -279,8 +279,8 @@ export function JobDetailPane({
                 <p>
                   <strong className="text-foreground font-medium">Accept</strong> logs into Midhtech with your current{" "}
                   <strong className="text-foreground font-medium">email</strong> and{" "}
-                  <strong className="text-foreground font-medium">password</strong> from this session and submits this job. Update them in{" "}
-                  <strong className="text-foreground font-medium">Settings</strong> if needed. <strong className="text-foreground font-medium">Reject</strong> only
+                  <strong className="text-foreground font-medium">password</strong> from this session and submits this job. Update password in{" "}
+                  <strong className="text-foreground font-medium">Password</strong> tab if needed. <strong className="text-foreground font-medium">Reject</strong> only
                   updates the database and does not need credentials.
                 </p>
                 <p className="text-xs text-muted-foreground/90">Your name is optional but will be sent with Accept if you set it.</p>
@@ -293,11 +293,11 @@ export function JobDetailPane({
               className="rounded-xl gap-2"
               onClick={() => {
                 setProfileRequiredOpen(false);
-                navigate("/settings");
+                  navigate("/change-password");
               }}
             >
-              <Settings className="h-4 w-4" aria-hidden />
-              Open Settings
+              <KeyRound className="h-4 w-4" aria-hidden />
+              Open Password
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

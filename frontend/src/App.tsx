@@ -8,8 +8,8 @@ import ChangePassword from "@/pages/ChangePassword";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
+import Profile from "@/pages/Profile";
 import Register from "@/pages/Register";
-import Settings from "@/pages/Settings";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -27,7 +27,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/settings" component={Settings} />
+      <Route path="/profile" component={Profile} />
       <Route path="/change-password" component={ChangePassword} />
       <Route path="/login" component={Home} />
       <Route path="/register" component={Home} />

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Briefcase, Home, KeyRound, LogOut, Moon, Settings, Sun } from "lucide-react";
+import { Briefcase, Home, KeyRound, LogOut, Moon, Sun, UserRound } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -89,8 +89,8 @@ export function AppNav() {
             <NavLink href="/" icon={Home}>
               Browse
             </NavLink>
-            <NavLink href="/settings" icon={Settings}>
-              Settings
+            <NavLink href="/profile" icon={UserRound}>
+              Profile
             </NavLink>
             <NavLink href="/change-password" icon={KeyRound}>
               Password

@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
+import { Eye, EyeOff, Loader2, LogIn, Sparkles } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/hooks/use-toast";
+import { formatClientError } from "@/lib/api";
 
 export default function Login() {
   const { login } = useAuth();
@@ -22,20 +24,38 @@ export default function Login() {
     setErrorText("");
     try {
       await login(email.trim(), password);
+      toast({
+        title: "Signed in",
+        description: "Welcome back.",
+      });
       navigate("/");
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "Login failed.");
+      const message = formatClientError(error, "Login failed.");
+      setErrorText(message);
+      toast({
+        variant: "destructive",
+        title: "Could not sign in",
+        description: message.length > 280 ? `${message.slice(0, 280)}…` : message,
+      });
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card/45 p-6 sm:p-8 shadow-xl shadow-black/15">
-        <div className="space-y-2 mb-6">
+    <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center px-4 py-8">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.2),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.14),transparent_44%)]"
+      />
+      <div className="relative w-full max-w-md rounded-2xl border border-border/80 bg-card/65 backdrop-blur-md p-6 sm:p-8 shadow-xl shadow-black/20">
+        <div className="space-y-3 mb-6">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            Saral Job Viewer
+          </div>
           <h1 className="text-2xl font-bold font-display text-foreground">Login</h1>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground leading-relaxed">
             Use the same email and password that you configured for Midhtech.com in this tool.
           </p>
         </div>
@@ -58,6 +78,7 @@ export default function Login() {
               onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
               required
+              className="rounded-xl bg-background/70 border-border"
             />
           </div>
           <div className="space-y-2">
@@ -71,7 +92,7 @@ export default function Login() {
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Your password"
                 required
-                className="pr-11"
+                className="rounded-xl bg-background/70 border-border pr-11"
               />
               <Button
                 type="button"
@@ -90,7 +111,11 @@ export default function Login() {
               </Button>
             </div>
           </div>
-          <Button type="submit" className="w-full rounded-xl gap-2" disabled={submitting}>
+          <Button
+            type="submit"
+            className="w-full rounded-xl gap-2 bg-primary text-primary-foreground hover:bg-primary/90"
+            disabled={submitting}
+          >
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogIn className="h-4 w-4" />}
             Sign in
           </Button>

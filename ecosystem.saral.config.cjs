@@ -5,7 +5,7 @@ module.exports = {
       name: "saral-frontend",
       cwd: "/home/uttu28/Desktop/Saral-Job-Viewer/frontend",
       script: "npm",
-      args: "run preview -- --host 0.0.0.0 --port 37213",
+      args: "run preview -- --host 0.0.0.0 --port 8005",
       interpreter: "none",
       instances: 1,
       autorestart: true,

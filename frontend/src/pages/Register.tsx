@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation } from "wouter";
-import { Eye, EyeOff, Loader2, ShieldCheck, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Loader2, ShieldCheck, Sparkles, UserPlus } from "lucide-react";
 import { useAuth } from "@/auth/AuthProvider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/hooks/use-toast";
+import { formatClientError } from "@/lib/api";
 
 export default function Register() {
   const { register } = useAuth();
@@ -23,9 +25,19 @@ export default function Register() {
     setErrorText("");
     try {
       await register(name.trim(), email.trim(), password);
+      toast({
+        title: "Account created",
+        description: "You are now signed in.",
+      });
       navigate("/");
     } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "Registration failed.");
+      const message = formatClientError(error, "Registration failed.");
+      setErrorText(message);
+      toast({
+        variant: "destructive",
+        title: "Could not create account",
+        description: message.length > 280 ? `${message.slice(0, 280)}…` : message,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -40,6 +52,10 @@ export default function Register() {
       <div className="relative w-full max-w-md rounded-2xl border border-border/80 bg-card/65 backdrop-blur-md p-6 sm:p-8 shadow-xl shadow-black/20">
         <div className="space-y-3 mb-6">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            Saral Job Viewer
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
             <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
             Secure account setup
           </div>

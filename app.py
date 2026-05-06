@@ -31,6 +31,11 @@ from utils.jobViewerQueries import (
     fetchJobDetailByJobId,
     fetchJobSummaryCamel,
 )
+from utils.userWeeklyStats import (
+    decrementWeeklyRejectedCount,
+    fetchWeeklyReportByUser,
+    incrementWeeklyDecisionCount,
+)
 
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
 
@@ -191,13 +196,27 @@ def postJobDecision(body: JobDecisionBody, currentUser: dict[str, str] = Depends
         )
 
     try:
-        return executeJobUiDecision(
+        result = executeJobUiDecision(
             decision=body.decision,
             job=dict(body.job),
             profileEmail=email,
             profilePassword=password,
             profileName=(body.profileName or "").strip(),
         )
+        if result.get("ok"):
+            if result.get("applyStatusUpdated") == "APPLIED":
+                incrementWeeklyDecisionCount(
+                    userId=currentUser["userId"],
+                    decision="accept",
+                    jobId=str((body.job or {}).get("jobId") or "").strip() or None,
+                )
+            elif result.get("applyStatusUpdated") == "REJECTED":
+                incrementWeeklyDecisionCount(
+                    userId=currentUser["userId"],
+                    decision="reject",
+                    jobId=str((body.job or {}).get("jobId") or "").strip() or None,
+                )
+        return result
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
@@ -219,9 +238,18 @@ def postRejectedJobToApply(jobId: str, currentUser: dict[str, str] = Depends(req
             )
         if not updateApplyStatusByJobId(jobId, "APPLY"):
             raise HTTPException(status_code=404, detail="Job not found")
+        decrementWeeklyRejectedCount(userId=currentUser["userId"], jobId=jobId)
         return {"ok": True, "applyStatus": "APPLY"}
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/profile/weekly-report")
+def getProfileWeeklyReport(currentUser: dict[str, str] = Depends(requireAuth)):
+    try:
+        return fetchWeeklyReportByUser(userId=currentUser["userId"])
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
