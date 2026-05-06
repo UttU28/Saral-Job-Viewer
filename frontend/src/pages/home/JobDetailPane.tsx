@@ -5,10 +5,10 @@ import {
   Building2,
   CheckCircle2,
   ExternalLink,
+  KeyRound,
   Loader2,
   MapPin,
   RotateCcw,
-  Settings,
   Sparkles,
   XCircle,
 } from "lucide-react";
@@ -25,7 +25,7 @@ import {
   buildDescriptionHighlightSegments,
   findJobDescriptionRestrictionTags,
 } from "@/lib/jobDescriptionRestrictions";
-import { readProfileFromCookie } from "@/lib/profileCookie";
+import { useAuth } from "@/auth/AuthProvider";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -69,6 +69,7 @@ export function JobDetailPane({
   ) => void;
 }>) {
   const detailQuery = useJobDetailQuery(jobId, Boolean(jobId));
+  const { sessionProfile } = useAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [profileRequiredOpen, setProfileRequiredOpen] = useState(false);
@@ -133,10 +134,9 @@ export function JobDetailPane({
   const platformUrl = (job.jobUrl ?? "").trim();
 
   const executeAcceptSubmit = async () => {
-    const stored = readProfileFromCookie();
-    const name = (stored?.name ?? "").trim();
-    const email = (stored?.email ?? "").trim();
-    const password = (stored?.password ?? "").trim();
+    const name = (sessionProfile?.name ?? "").trim();
+    const email = (sessionProfile?.email ?? "").trim();
+    const password = (sessionProfile?.password ?? "").trim();
     if (!email || !password) {
       setProfileRequiredOpen(true);
       return;
@@ -170,9 +170,8 @@ export function JobDetailPane({
 
   const sendJobDecision = async (decision: JobDecision) => {
     if (decision === "accept") {
-      const stored = readProfileFromCookie();
-      const email = (stored?.email ?? "").trim();
-      const password = (stored?.password ?? "").trim();
+      const email = (sessionProfile?.email ?? "").trim();
+      const password = (sessionProfile?.password ?? "").trim();
       if (!email || !password) {
         setProfileRequiredOpen(true);
         return;
@@ -272,16 +271,16 @@ export function JobDetailPane({
         <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-md shadow-xl">
           <AlertDialogHeader>
             <AlertDialogTitle className="font-display text-xl flex items-center gap-2">
-              <Settings className="h-5 w-5 text-primary shrink-0" aria-hidden />
+              <KeyRound className="h-5 w-5 text-primary shrink-0" aria-hidden />
               Email and password required
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="text-left text-muted-foreground space-y-3 text-sm leading-relaxed pt-1">
                 <p>
-                  <strong className="text-foreground font-medium">Accept</strong> logs into Midhtech with your saved{" "}
+                  <strong className="text-foreground font-medium">Accept</strong> logs into Midhtech with your current{" "}
                   <strong className="text-foreground font-medium">email</strong> and{" "}
-                  <strong className="text-foreground font-medium">password</strong> and submits this job. Add them in Settings, then click{" "}
-                  <strong className="text-foreground font-medium">Save to cookie</strong>. <strong className="text-foreground font-medium">Reject</strong> only
+                  <strong className="text-foreground font-medium">password</strong> from this session and submits this job. Update password in{" "}
+                  <strong className="text-foreground font-medium">Password</strong> tab if needed. <strong className="text-foreground font-medium">Reject</strong> only
                   updates the database and does not need credentials.
                 </p>
                 <p className="text-xs text-muted-foreground/90">Your name is optional but will be sent with Accept if you set it.</p>
@@ -294,11 +293,11 @@ export function JobDetailPane({
               className="rounded-xl gap-2"
               onClick={() => {
                 setProfileRequiredOpen(false);
-                navigate("/settings");
+                  navigate("/change-password");
               }}
             >
-              <Settings className="h-4 w-4" aria-hidden />
-              Open Settings
+              <KeyRound className="h-4 w-4" aria-hidden />
+              Open Password
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -523,13 +522,13 @@ export function JobDetailPane({
               ))}
             </div>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
             {showAcceptForStatus(job.applyStatus) ? (
               <Button
                 type="button"
                 size="default"
                 disabled={decisionBusyHere}
-                className="rounded-xl gap-2 bg-emerald-600 text-white hover:bg-emerald-600/90 border border-emerald-500/40 shadow-sm shadow-emerald-950/30"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation bg-emerald-600 text-white hover:bg-emerald-600/90 border border-emerald-500/40 shadow-sm shadow-emerald-950/30"
                 onClick={() => sendJobDecision("accept")}
               >
                 {decisionBusyHere && decisionBusyKind === "accept" ? (
@@ -546,7 +545,7 @@ export function JobDetailPane({
                 size="default"
                 variant="destructive"
                 disabled={decisionBusyHere}
-                className="rounded-xl gap-2"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation"
                 onClick={() => sendJobDecision("reject")}
               >
                 {decisionBusyHere && decisionBusyKind === "reject" ? (
@@ -563,7 +562,7 @@ export function JobDetailPane({
                 size="default"
                 variant="outline"
                 disabled={decisionBusyHere || moveToApplyPending}
-                className="rounded-xl gap-2 border-violet-500/40 bg-violet-500/[0.08] text-foreground hover:bg-violet-500/15 dark:border-violet-400/35"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-violet-500/40 bg-violet-500/[0.08] text-foreground hover:bg-violet-500/15 dark:border-violet-400/35"
                 onClick={() => void handleMoveRejectedToApply()}
               >
                 {moveToApplyPending ? (
@@ -575,7 +574,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {originalUrl ? (
-              <Button size="default" variant="default" className="rounded-xl gap-2" asChild>
+              <Button size="default" variant="default" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
                 <a href={originalUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Original URL
@@ -583,7 +582,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {platformUrl ? (
-              <Button size="default" variant="secondary" className="rounded-xl gap-2" asChild>
+              <Button size="default" variant="secondary" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
                 <a href={platformUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Platform URL

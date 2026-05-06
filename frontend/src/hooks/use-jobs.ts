@@ -1,5 +1,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { fetchJobDetail, fetchJobList, fetchJobPlatforms, fetchJobSummary } from "@/lib/api";
+import {
+  fetchCurrentWeekAccepts,
+  fetchJobDetail,
+  fetchJobList,
+  fetchJobPlatforms,
+  fetchJobSummary,
+  fetchWeeklyReport,
+} from "@/lib/api";
 
 export function useJobSummaryQuery() {
   return useQuery({
@@ -50,5 +57,21 @@ export function useJobDetailQuery(jobId: string | null, enabled: boolean) {
     queryKey: ["jobDetail", jobId],
     queryFn: () => fetchJobDetail(jobId!),
     enabled: Boolean(jobId && enabled),
+  });
+}
+
+export function useWeeklyReportQuery() {
+  return useQuery({
+    queryKey: ["weeklyReport"],
+    queryFn: fetchWeeklyReport,
+    staleTime: 30_000,
+  });
+}
+
+export function useCurrentWeekAcceptsQuery() {
+  return useQuery({
+    queryKey: ["currentWeekAccepts"],
+    queryFn: fetchCurrentWeekAccepts,
+    staleTime: 30_000,
   });
 }

@@ -4,8 +4,7 @@ import { Briefcase, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useJobInfiniteQuery, useJobPlatformsQuery } from "@/hooks/use-jobs";
-import type { JobDecision, JobDecisionResponse } from "@/lib/api";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import type { CurrentWeekAcceptsResponse, JobDecision, JobDecisionResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ALL_VALUE, DEFAULT_APPLY_FILTER, PAGE_SIZE } from "./home/constants";
@@ -18,8 +17,8 @@ import { formatApiDecisionError } from "./home/utils";
 export default function Home() {
   const [platformFilter, setPlatformFilter] = useState<string>(ALL_VALUE);
   const [applyFilter, setApplyFilter] = useState<string>(DEFAULT_APPLY_FILTER);
-  const [searchInput, setSearchInput] = useState("");
-  const debouncedSearch = useDebouncedValue(searchInput, 400);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [committedSearch, setCommittedSearch] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [jobCardDecisionState, setJobCardDecisionState] = useState<JobCardDecisionState>(null);
   const decisionRequestGenRef = useRef(0);
@@ -35,7 +34,7 @@ export default function Home() {
     pageSize: PAGE_SIZE,
     platform: platformFilter === ALL_VALUE ? undefined : platformFilter,
     applyStatus: applyFilter === ALL_VALUE ? undefined : applyFilter,
-    search: debouncedSearch.trim() || undefined,
+    search: committedSearch || undefined,
   });
 
   const flatItems = useMemo(
@@ -50,6 +49,10 @@ export default function Home() {
   );
 
   const lastDecisionKindRef = useRef<JobDecision | null>(null);
+
+  const commitSearch = useCallback(() => {
+    setCommittedSearch(searchDraft.trim());
+  }, [searchDraft]);
 
   const beginDecision = useCallback((actingJobId: string, kind: JobDecision) => {
     lastDecisionKindRef.current = kind;
@@ -124,6 +127,21 @@ export default function Home() {
         void queryClient.invalidateQueries({ queryKey: ["jobDetail", actingJobId] });
         void queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
         void queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
+
+        if (
+          result.decision === "accept" &&
+          result.applyStatusUpdated === "APPLIED"
+        ) {
+          queryClient.setQueryData<CurrentWeekAcceptsResponse>(
+            ["currentWeekAccepts"],
+            (prev) => {
+              if (!prev) return prev;
+              return { ...prev, acceptedCount: prev.acceptedCount + 1 };
+            },
+          );
+          void queryClient.invalidateQueries({ queryKey: ["currentWeekAccepts"] });
+          void queryClient.invalidateQueries({ queryKey: ["weeklyReport"] });
+        }
 
         const shortMessage =
           result.decision === "accept"
@@ -229,8 +247,9 @@ export default function Home() {
     <div className="w-full min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden scrollbar-themed">
       <div className="w-full min-h-0 flex-1 flex flex-col overflow-hidden px-3 sm:px-4 md:px-5 pt-3 sm:pt-4 pb-3 gap-3">
         <HomeJobsToolbar
-          searchInput={searchInput}
-          onSearchInputChange={setSearchInput}
+          searchDraft={searchDraft}
+          onSearchDraftChange={setSearchDraft}
+          onSearchCommit={commitSearch}
           platformFilter={platformFilter}
           onPlatformFilterChange={setPlatformFilter}
           applyFilter={applyFilter}
@@ -265,7 +284,7 @@ export default function Home() {
                 "flex flex-col lg:flex-row gap-0 rounded-xl sm:rounded-2xl border border-border overflow-hidden bg-card/30 shadow-xl shadow-black/10 dark:shadow-black/20 w-full flex-1 min-h-0",
               )}
             >
-              <aside className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col min-h-0 flex-1 lg:flex-none border-b lg:border-b-0 lg:border-r border-border bg-muted/50 dark:bg-zinc-950/55 lg:dark:bg-zinc-950/45">
+              <aside className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col min-h-0 flex-1 lg:flex-none max-h-[40vh] min-h-[160px] sm:max-h-[44vh] sm:min-h-[200px] lg:max-h-none lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border bg-muted/50 dark:bg-zinc-950/55 lg:dark:bg-zinc-950/45">
                 <div className="px-3 py-2.5 border-b border-border/80 dark:border-border/60 shrink-0">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Results ({totalMatches})
@@ -321,7 +340,7 @@ export default function Home() {
                 </div>
               </aside>
 
-              <section className="scrollbar-themed flex-1 min-w-0 min-h-0 overflow-y-auto overscroll-contain bg-gradient-to-br from-background via-background to-primary/[0.03]">
+              <section className="scrollbar-themed flex-1 min-w-0 min-h-[45vh] lg:min-h-0 overflow-y-auto overscroll-contain bg-gradient-to-br from-background via-background to-primary/[0.03]">
                 <JobDetailPane
                   jobId={selectedJobId}
                   decisionBusyJobId={

@@ -6,10 +6,10 @@
 # Backend: Docker image from Dockerfile.api (app.py + utils/), listens on 8000 inside the container.
 # Frontend: ./frontend via PM2 (vite preview behind nginx).
 #
-# Picks two free odd localhost ports. Default first candidate is SARAL_FIRST_ODD_PORT
-# (37211) — high / uncommon vs typical dev & ad-hoc testing (3000, 5173, 8000, 8080,
-# 3011, linkitup 3008/3009, etc.). Override: SARAL_FIRST_ODD_PORT, or set
-# SARAL_BACKEND_PORT / SARAL_FRONTEND_PORT explicitly.
+# Uses fixed ports by default (no auto-random/scan):
+#   backend: 37211
+#   frontend: 37213
+# Override only if needed: SARAL_BACKEND_PORT / SARAL_FRONTEND_PORT.
 
 set -euo pipefail
 
@@ -32,6 +32,8 @@ NGINX_TEMPLATE="$SCRIPT_DIR/nginx-saral.conf"
 NGINX_STAGED="/tmp/nginx-saral.${DOMAIN}.conf"
 NGINX_AVAILABLE="/etc/nginx/sites-available/${DOMAIN}"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${DOMAIN}"
+SARAL_API_IMAGE="${SARAL_API_IMAGE:-saral-job-viewer-api:latest}"
+SARAL_API_CONTAINER="${SARAL_API_CONTAINER:-saral-job-viewer-api}"
 
 # --- port helpers: prefer odd ports, avoid collisions ---
 port_in_use() {
@@ -45,34 +47,28 @@ port_in_use() {
     return 1
 }
 
-next_free_odd_from() {
-    local start="${1:-37211}"
-    # ensure odd
-    if (( start % 2 == 0 )); then start=$((start + 1)); fi
-    local p="$start"
-    while port_in_use "$p"; do
-        p=$((p + 2))
-        if (( p > 65533 )); then
-            print_error "No free odd port found from $start"
-            exit 1
-        fi
-    done
-    echo "$p"
-}
+DEFAULT_BACKEND_PORT="8004"
+DEFAULT_FRONTEND_PORT="8005"
+BACKEND_PORT="${SARAL_BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+FRONTEND_PORT="${SARAL_FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
 
-SARAL_FIRST_ODD_PORT="${SARAL_FIRST_ODD_PORT:-37211}"
-BACKEND_PORT="${SARAL_BACKEND_PORT:-}"
-FRONTEND_PORT="${SARAL_FRONTEND_PORT:-}"
-if [[ -z "$BACKEND_PORT" ]]; then
-    BACKEND_PORT="$(next_free_odd_from "$SARAL_FIRST_ODD_PORT")"
+print_header "🧹 Cleaning existing Saral services..."
+# Stop/remove previous Saral API container first so fixed backend port can be reused.
+if command -v docker >/dev/null 2>&1; then
+    docker rm -f "$SARAL_API_CONTAINER" >/dev/null 2>&1 || true
 fi
-if [[ -z "$FRONTEND_PORT" ]]; then
-    # next odd after backend, still free
-    FRONTEND_PORT="$(next_free_odd_from $((BACKEND_PORT + 2)))"
+# Remove previous Saral frontend PM2 app so fixed frontend port can be reused.
+if command -v pm2 >/dev/null 2>&1; then
+    pm2 delete saral-frontend >/dev/null 2>&1 || true
+    pm2 delete saral-backend >/dev/null 2>&1 || true
 fi
 
-if port_in_use "$BACKEND_PORT" || port_in_use "$FRONTEND_PORT"; then
-    print_error "Ports not free: backend=$BACKEND_PORT frontend=$FRONTEND_PORT"
+if port_in_use "$BACKEND_PORT"; then
+    print_error "Backend port $BACKEND_PORT is already in use. Stop conflicting service or set SARAL_BACKEND_PORT."
+    exit 1
+fi
+if port_in_use "$FRONTEND_PORT"; then
+    print_error "Frontend port $FRONTEND_PORT is already in use. Stop conflicting service or set SARAL_FRONTEND_PORT."
     exit 1
 fi
 
@@ -87,9 +83,6 @@ if ! docker info >/dev/null 2>&1; then
     print_error "Docker daemon not reachable. Start Docker or add your user to the docker group."
     exit 1
 fi
-
-SARAL_API_IMAGE="${SARAL_API_IMAGE:-saral-job-viewer-api:latest}"
-SARAL_API_CONTAINER="${SARAL_API_CONTAINER:-saral-job-viewer-api}"
 
 print_header "🐳 Backend: build & run Docker ($SARAL_API_CONTAINER)..."
 if [[ ! -f "$SCRIPT_DIR/Dockerfile.api" ]]; then
@@ -237,7 +230,6 @@ umask 077
 cat >"$PORTS_FILE" <<EOF
 # Written by deploy.sh — source or re-export for debugging
 SARAL_DOMAIN=$DOMAIN
-SARAL_FIRST_ODD_PORT=$SARAL_FIRST_ODD_PORT
 SARAL_BACKEND_PORT=$BACKEND_PORT
 SARAL_FRONTEND_PORT=$FRONTEND_PORT
 EOF

@@ -1,27 +1,13 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "wouter";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  ExternalLink,
-  Github,
-  Heart,
-  Save,
-  XCircle,
-  Youtube,
-} from "lucide-react";
-import { readProfileFromCookie, writeProfileToCookie } from "@/lib/profileCookie";
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, Save, XCircle } from "lucide-react";
+import { useAuth } from "@/auth/AuthProvider";
+import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-
-const DEV_YOUTUBE = "https://www.youtube.com/@ThatInsaneGuy/";
-const DEV_GITHUB_PROFILE = "https://github.com/UttU28/";
-const PROJECT_REPO = "https://github.com/UttU28/Saral-Job-Viewer";
 
 function emailLooksValid(value: string): boolean {
   const s = value.trim();
@@ -52,32 +38,8 @@ function FieldRowStatus({
   return <XCircle className="h-4 w-4 shrink-0 text-destructive/90" aria-label={`${label} missing or invalid`} />;
 }
 
-function FooterExternalLink({
-  href,
-  children,
-  className,
-}: Readonly<{
-  href: string;
-  children: ReactNode;
-  className?: string;
-}>) {
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className={cn(
-        "group inline-flex items-center gap-2 rounded-xl border border-border bg-background/60 px-3 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-primary/35 hover:bg-primary/5 hover:text-primary",
-        className,
-      )}
-    >
-      {children}
-      <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100" aria-hidden />
-    </a>
-  );
-}
-
 export default function Settings() {
+  const { user, sessionProfile, updateSessionProfile } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -85,42 +47,46 @@ export default function Settings() {
   const [savedFlash, setSavedFlash] = useState(false);
 
   useEffect(() => {
-    const existing = readProfileFromCookie();
-    if (existing) {
-      setName(existing.name);
-      setEmail(existing.email);
-      setPassword(existing.password);
+    if (sessionProfile) {
+      setName(sessionProfile.name);
+      setEmail(sessionProfile.email);
+      setPassword(sessionProfile.password);
+      return;
     }
-  }, []);
+    setName(user?.name ?? "");
+    setEmail(user?.email ?? "");
+    setPassword("");
+  }, [sessionProfile, user?.email, user?.name]);
 
-  const matchesSavedCookie = useMemo(() => {
-    const cookie = readProfileFromCookie();
-    if (!cookie) {
+  const matchesSavedSession = useMemo(() => {
+    if (!sessionProfile) {
       return name.trim() === "" && email.trim() === "" && password === "";
     }
     return (
-      cookie.name === name.trim() &&
-      cookie.email === email.trim() &&
-      cookie.password === password
+      sessionProfile.name === name.trim() &&
+      sessionProfile.email === email.trim() &&
+      sessionProfile.password === password
     );
-  }, [name, email, password]);
+  }, [name, email, password, sessionProfile]);
 
-  const hasCookieOnDisk = useMemo(() => readProfileFromCookie() !== null, [name, email, password, savedFlash]);
+  const hasSessionProfile = useMemo(() => sessionProfile !== null, [sessionProfile]);
 
   const handleSave = (e: FormEvent) => {
     e.preventDefault();
-    writeProfileToCookie({
+    updateSessionProfile({
       name: name.trim(),
       email: email.trim(),
       password,
     });
     setSavedFlash(true);
-    window.setTimeout(() => setSavedFlash(false), 2000);
+    globalThis.setTimeout(() => setSavedFlash(false), 2000);
   };
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto scrollbar-themed">
-      <div className="w-full max-w-3xl mx-auto flex-1 px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 pb-8">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
+        <div className="min-h-full flex flex-col">
+        <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 pb-8">
         <Button variant="ghost" size="sm" className="mb-6 -ml-2 gap-2 text-muted-foreground" asChild>
           <Link href="/">
             <ArrowLeft className="h-4 w-4" />
@@ -136,34 +102,33 @@ export default function Settings() {
           <div>
             <h1 className="text-2xl font-bold font-display text-foreground">Settings</h1>
             <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-              Saved in your browser as a cookie (this device only). Do not use a real password you
-              reuse elsewhere.
+              Saved in your local session on this browser. This profile is used for Midhtech submit.
             </p>
 
             <div
               className={cn(
                 "mt-4 flex items-start gap-2.5 rounded-xl border px-3 py-2.5 text-sm",
-                matchesSavedCookie
+                matchesSavedSession
                   ? "border-emerald-500/35 bg-emerald-500/[0.07] text-foreground"
                   : "border-amber-500/35 bg-amber-500/[0.06] text-foreground",
               )}
               role="status"
             >
-              {matchesSavedCookie ? (
+              {matchesSavedSession ? (
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500 mt-0.5" aria-hidden />
               ) : (
                 <XCircle className="h-4 w-4 shrink-0 text-amber-500 mt-0.5" aria-hidden />
               )}
               <span className="leading-snug">
-                {matchesSavedCookie ? (
+                {matchesSavedSession ? (
                   <>
                     <span className="font-medium text-emerald-700 dark:text-emerald-400">
-                      In sync with saved cookie
+                      In sync with session profile
                     </span>
-                    {hasCookieOnDisk ? (
-                      <span className="text-muted-foreground"> — form matches what is stored in this browser.</span>
+                    {hasSessionProfile ? (
+                      <span className="text-muted-foreground"> — form matches what is stored in this session.</span>
                     ) : (
-                      <span className="text-muted-foreground"> — nothing stored yet (all fields empty).</span>
+                      <span className="text-muted-foreground"> — no profile saved yet.</span>
                     )}
                   </>
                 ) : (
@@ -171,8 +136,8 @@ export default function Settings() {
                     <span className="font-medium text-amber-800 dark:text-amber-200/95">Unsaved changes</span>
                     <span className="text-muted-foreground">
                       {" "}
-                      — click <strong className="text-foreground font-medium">Save to cookie</strong> to update what
-                      Accept/Reject uses.
+                      — click <strong className="text-foreground font-medium">Save session profile</strong> to update
+                      what Accept uses.
                     </span>
                   </>
                 )}
@@ -250,7 +215,7 @@ export default function Settings() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <Button type="submit" className="rounded-xl gap-2 w-full sm:w-auto">
                 <Save className="h-4 w-4" />
-                Save to cookie
+                Save session profile
               </Button>
               {savedFlash ? (
                 <span className="inline-flex items-center gap-1.5 text-sm text-emerald-600 dark:text-emerald-400 font-medium">
@@ -261,61 +226,10 @@ export default function Settings() {
             </div>
           </form>
         </motion.div>
-      </div>
-
-      <footer
-        className="shrink-0 border-t border-border bg-muted/30 dark:bg-muted/20"
-        aria-label="Site footer and credits"
-      >
-        <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-          <div className="grid gap-8 sm:grid-cols-2 sm:gap-10 lg:gap-12">
-            <div className="space-y-4">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Developer
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
-                <span className="inline-flex items-center gap-1.5 text-foreground font-medium">
-                  <Heart className="h-3.5 w-3.5 text-primary shrink-0 fill-primary/25" aria-hidden />
-                  Made with keyboard and mouse by ThatInsaneGuy
-                </span>
-              </p>
-              <div className="flex flex-col gap-2.5 sm:max-w-xs">
-                <FooterExternalLink href={DEV_YOUTUBE}>
-                  <Youtube className="h-4 w-4 shrink-0 text-red-500/90" aria-hidden />
-                  YouTube
-                </FooterExternalLink>
-                <FooterExternalLink href={DEV_GITHUB_PROFILE}>
-                  <Github className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                  GitHub · UttU28
-                </FooterExternalLink>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                Open source
-              </h2>
-              <p className="text-sm text-muted-foreground leading-relaxed max-w-sm">
-                Like what you see? Clone or fork{" "}
-                <strong className="text-foreground font-medium">Saral Job Viewer</strong> and run it locally.
-              </p>
-              <FooterExternalLink href={PROJECT_REPO} className="w-full sm:w-max font-mono text-xs sm:text-sm">
-                <Github className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                UttU28/Saral-Job-Viewer
-              </FooterExternalLink>
-            </div>
-          </div>
-
-          <div className="mt-8 sm:mt-10 pt-6 border-t border-border/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-center sm:text-left">
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground/90">Saral Job Viewer</span>
-              <span className="mx-1.5 text-border">·</span>
-              Not affiliated with job platforms
-            </p>
-            <p className="text-xs text-muted-foreground">Thanks for using this tool</p>
-          </div>
         </div>
-      </footer>
+        <Footer />
+        </div>
+      </div>
     </div>
   );
 }
