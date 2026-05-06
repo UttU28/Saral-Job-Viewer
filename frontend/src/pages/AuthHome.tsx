@@ -436,7 +436,7 @@ export default function AuthHome() {
         </motion.section>
 
         <p className="pb-1 text-center text-[11px] sm:text-xs text-muted-foreground/85">
-          <span className="font-medium text-foreground/90">Utsav × ThatInsaneGuy</span>
+          <span className="font-medium text-foreground/90">ThatInsaneGuy</span>
         </p>
       </div>
     </div>

@@ -136,6 +136,56 @@ def fetchCurrentWeekAcceptedCount(*, userId: str) -> dict[str, Any]:
     }
 
 
+def fetchCurrentWeekAcceptedCountsByUsers(*, userIds: list[str]) -> dict[str, int]:
+    """
+    Bulk accepted counts for the current ISO week.
+    Missing users default to 0.
+    """
+    cleanIds = [str(uid or "").strip() for uid in userIds if str(uid or "").strip()]
+    if not cleanIds:
+        return {}
+    _ensureIndexes()
+    now = _utcNow()
+    week_key, _, _ = _weekWindow(now)
+    coll = getMongoDb()[USER_WEEKLY_STATS_COLLECTION]
+    rows = coll.find(
+        {"userId": {"$in": cleanIds}, "weekKey": week_key},
+        {"_id": 0, "userId": 1, "acceptedCount": 1},
+    )
+    out: dict[str, int] = {}
+    for row in rows:
+        uid = str(row.get("userId") or "").strip()
+        if not uid:
+            continue
+        out[uid] = int(row.get("acceptedCount") or 0)
+    return out
+
+
+def fetchCurrentWeekRejectedCountsByUsers(*, userIds: list[str]) -> dict[str, int]:
+    """
+    Bulk rejected counts for the current ISO week.
+    Missing users default to 0.
+    """
+    cleanIds = [str(uid or "").strip() for uid in userIds if str(uid or "").strip()]
+    if not cleanIds:
+        return {}
+    _ensureIndexes()
+    now = _utcNow()
+    week_key, _, _ = _weekWindow(now)
+    coll = getMongoDb()[USER_WEEKLY_STATS_COLLECTION]
+    rows = coll.find(
+        {"userId": {"$in": cleanIds}, "weekKey": week_key},
+        {"_id": 0, "userId": 1, "rejectedCount": 1},
+    )
+    out: dict[str, int] = {}
+    for row in rows:
+        uid = str(row.get("userId") or "").strip()
+        if not uid:
+            continue
+        out[uid] = int(row.get("rejectedCount") or 0)
+    return out
+
+
 def fetchWeeklyReportByUser(*, userId: str) -> dict[str, Any]:
     uid = str(userId or "").strip()
     if not uid:

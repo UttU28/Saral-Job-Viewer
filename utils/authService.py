@@ -5,6 +5,10 @@ from typing import Any
 
 from utils.dataManager import getMongoDb
 from utils.jwtAuth import createJwtToken, verifyJwtToken
+from utils.userWeeklyStats import (
+    fetchCurrentWeekAcceptedCountsByUsers,
+    fetchCurrentWeekRejectedCountsByUsers,
+)
 
 USER_COLLECTION = "users"
 
@@ -180,6 +184,18 @@ def listAllUsersForAdmin() -> dict[str, Any]:
                 "updatedAt": str(row.get("updatedAt") or ""),
             }
         )
+
+    acceptedByUser = fetchCurrentWeekAcceptedCountsByUsers(
+        userIds=[str(row.get("userId") or "") for row in users]
+    )
+    rejectedByUser = fetchCurrentWeekRejectedCountsByUsers(
+        userIds=[str(row.get("userId") or "") for row in users]
+    )
+    for row in users:
+        uid = str(row.get("userId") or "")
+        # "currentWeekStreak" for admin panel: latest accepted count in this week.
+        row["currentWeekStreak"] = int(acceptedByUser.get(uid, 0))
+        row["currentWeekRejects"] = int(rejectedByUser.get(uid, 0))
 
     totalUsers = len(users)
     adminUsers = sum(1 for row in users if row.get("isAdmin"))

@@ -5,6 +5,7 @@ __pycache__
 *.py[cod]
 *.db
 .env
+gcp-sa.json
 zata
 *.md
 .github
@@ -13,7 +14,6 @@ zata
 linkedIn
 mcps
 agent-transcripts
-Dockerfile*
 .pytest_cache
 .mypy_cache
 dist

@@ -1,5 +1,7 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
+  fetchAdminCloudRunExecutions,
+  fetchAdminJobStatusSummary,
   fetchAdminUsers,
   fetchCurrentWeekAccepts,
   fetchJobDetail,
@@ -8,6 +10,7 @@ import {
   fetchJobSummary,
   fetchWeeklyReport,
 } from "@/lib/api";
+import type { AdminCloudRunExecutionsResponse } from "@/lib/api";
 
 export function useJobSummaryQuery() {
   return useQuery({
@@ -83,5 +86,30 @@ export function useAdminUsersQuery(enabled: boolean) {
     queryFn: fetchAdminUsers,
     staleTime: 15_000,
     enabled,
+  });
+}
+
+export function useAdminJobStatusSummaryQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: ["adminJobStatusSummary"],
+    queryFn: fetchAdminJobStatusSummary,
+    staleTime: 15_000,
+    enabled,
+  });
+}
+
+export function useAdminCloudRunExecutionsQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: ["adminCloudRunExecutions"],
+    queryFn: () => fetchAdminCloudRunExecutions({ limit: 25 }),
+    staleTime: 5_000,
+    enabled,
+    refetchInterval: (query) => {
+      const data = query.state.data as AdminCloudRunExecutionsResponse | undefined;
+      if (!data?.executions?.some((row) => row.state === "RUNNING")) {
+        return false;
+      }
+      return 5_000;
+    },
   });
 }

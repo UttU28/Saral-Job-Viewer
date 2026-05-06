@@ -175,3 +175,7 @@ def keyProfileCurrentWeekAccepts(userId: str) -> str:
 
 def keyAdminUsers() -> str:
     return "admin:users"
+
+
+def keyAdminJobStatusSummary() -> str:
+    return "admin:jobs:statusSummary"

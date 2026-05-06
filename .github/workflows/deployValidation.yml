@@ -46,7 +46,7 @@ jobs:
           IMAGE_TAG="${GITHUB_SHA}"
           FULL_IMAGE="${IMAGE_URI}:${IMAGE_TAG}"
 
-          docker build -t "${FULL_IMAGE}" .
+          docker build -f docker/Dockerfile.validation -t "${FULL_IMAGE}" .
           docker push "${FULL_IMAGE}"
 
           docker tag "${FULL_IMAGE}" "${IMAGE_URI}:latest"
@@ -65,7 +65,7 @@ jobs:
               --region "${{ env.GCP_REGION }}" \
               --image "${FULL_IMAGE}" \
               --command python \
-              --args dValidate.py,-1 \
+              --args validation.py,-1 \
               --task-timeout 3600s \
               --max-retries 1 \
               --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \
@@ -75,7 +75,7 @@ jobs:
               --region "${{ env.GCP_REGION }}" \
               --image "${FULL_IMAGE}" \
               --command python \
-              --args dValidate.py,-1 \
+              --args validation.py,-1 \
               --task-timeout 3600s \
               --max-retries 1 \
               --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \

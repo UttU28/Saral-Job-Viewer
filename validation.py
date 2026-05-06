@@ -5,9 +5,6 @@ import time
 import traceback
 
 from utils.dataManager import (
-    deleteJobsByApplyStatusNotIn,
-    deletePastDataOlderThanHours,
-    jobDataApplyStatusSummary,
     loadAllJobs,
     loadJobsByApplyStatus,
     loadJobsWithEmptyApplyStatus,
@@ -66,7 +63,6 @@ APPLY_STATUS_EXISTING = "EXISTING"
 KEEP_STATUS = "APPLY"
 STATUS_APPLIED = "APPLIED"
 STATUS_REDO = "REDO"
-PAST_DATA_RETENTION_HOURS = 48
 
 
 def maybePersistClassifierApplyStatus(
@@ -220,26 +216,6 @@ def syncEmptyApplyStatuses() -> None:
     log.info(f"Done. Wrote applyStatus for {written} job(s).")
 
 
-def cleanupKeepOnlyApply() -> int:
-    """
-    Delete rows with a set applyStatus other than APPLY (e.g. DO_NOT_APPLY, EXISTING).
-    Keeps NULL/blank applyStatus (still pending) and APPLY. Prunes stale pastData.
-    """
-    deleted = deleteJobsByApplyStatusNotIn((KEEP_STATUS,))
-    keptAfter = loadJobsByApplyStatus(KEEP_STATUS)
-    print(
-        f"Cleanup complete: deleted {deleted} classified non-{KEEP_STATUS} row(s); "
-        f"{len(keptAfter)} {KEEP_STATUS} row(s) in jobData "
-        "(NULL/blank applyStatus rows were kept)."
-    )
-    pruned = deletePastDataOlderThanHours(hours=PAST_DATA_RETENTION_HOURS)
-    print(
-        f"pastData: deleted {pruned} row(s) older than {PAST_DATA_RETENTION_HOURS}h (UTC), "
-        "unparseable or blank timestamps kept."
-    )
-    return deleted
-
-
 def pushApplyJobsAfterValidate() -> int:
     """Submit rows with applyStatus APPLY to suggest endpoint; set APPLIED or REDO."""
     log = ScraperRunLog(PLATFORM_MIDHTECH, "suggest", mirrorToScrapeLog=False)
@@ -292,20 +268,6 @@ def pushApplyJobsAfterValidate() -> int:
     return applied
 
 
-def runValidatePushCleanupPipeline() -> None:
-    """
-    1) Validate all pending (applyStatus NULL) via check API.
-    2) Push all APPLY rows to midhtech suggest.
-    3) Delete classified non-APPLY rows (keep NULL/blank pending + APPLY); prune pastData.
-    """
-    print("--- Phase 1: validate (NULL applyStatus) ---")
-    syncEmptyApplyStatuses()
-    print("--- Phase 2: push APPLY to midhtech.in ---")
-    pushApplyJobsAfterValidate()
-    print("--- Phase 3: cleanup jobData + prune pastData ---")
-    cleanupKeepOnlyApply()
-
-
 def _parseDelay(raw: str | None) -> float:
     if not raw:
         return 0.0
@@ -315,50 +277,23 @@ def _parseDelay(raw: str | None) -> float:
         return 0.0
 
 
-def showDatabaseStatusReport() -> None:
-    """Print jobData / pastData counts by applyStatus (option 4)."""
-    log = ScraperRunLog(PLATFORM_MIDHTECH, "stats", mirrorToScrapeLog=False)
-    s = jobDataApplyStatusSummary()
-    log.info("── jobData (MongoDB) ──")
-    log.info(f"  Total rows:           {s['total']}")
-    log.info(f"  NULL / pending:       {s['nullPending']}")
-    log.info(
-        f"  APPLY:                {s['apply']}  "
-        f"({formatApplyStatusBadge('APPLY')})"
-    )
-    log.info(
-        f"  DO_NOT_APPLY:         {s['doNotApply']}  "
-        f"({formatApplyStatusBadge('DO_NOT_APPLY')})"
-    )
-    log.info(
-        f"  EXISTING:             {s['existing']}  "
-        f"({formatApplyStatusBadge('EXISTING')})"
-    )
-    if s["otherStatus"]:
-        log.info(f"  Other applyStatus:    {s['otherStatus']}  (APPLIED, REDO, …)")
-    log.info(f"── pastData ──")
-    log.info(f"  Total rows:           {s['pastDataRows']}")
-
-
 def promptMenu() -> str | None:
     print()
     print("  1  Validate all pending (applyStatus NULL -> check API, FIFO)")
-    print("  2  Delete classified non-APPLY rows (keep NULL / empty / APPLY; cleanup + pastData)")
-    print("  3  Push all APPLY jobs to API, then same cleanup as 2 (suggest + cleanup)")
-    print("  4  Show DB status (totals: jobs, APPLY, DO_NOT_APPLY, EXISTING, NULL, pastData)")
+    print("  2  Push all APPLY jobs to API (suggest)")
     print("  q  Quit")
     while True:
-        raw = input("Choose 1, 2, 3, 4, or q: ").strip().lower()
+        raw = input("Choose 1, 2, or q: ").strip().lower()
         if raw in ("q", "quit", ""):
             return None
-        if raw in ("1", "2", "3", "4"):
+        if raw in ("1", "2"):
             return raw
-        print("Invalid choice. Enter 1, 2, 3, 4, or q.")
+        print("Invalid choice. Enter 1, 2, or q.")
 
 
 def _parseCliChoice(argv: list[str]) -> str | None:
     """
-    If the first argument is -1..-4 (or 1..4), return normalized '1'..'4'.
+    If the first argument is -1..-2 (or 1..2), return normalized '1'..'2'.
     If there are no arguments, return None → caller shows interactive menu.
     """
     if len(argv) < 2:
@@ -366,29 +301,23 @@ def _parseCliChoice(argv: list[str]) -> str | None:
     raw = argv[1].strip()
     if raw in ("-h", "--help"):
         print(
-            "Usage: python dValidate.py [-1|-2|-3|-4]\n\n"
+            "Usage: python validation.py [-1|-2]\n\n"
             "  -1  Validate all pending (applyStatus NULL -> check API, FIFO)\n"
-            "  -2  Delete classified non-APPLY rows; cleanup + pastData prune\n"
-            "  -3  Push all APPLY jobs to suggest API, then same cleanup as -2\n"
-            "  -4  Show DB status (counts by applyStatus, pastData)\n\n"
+            "  -2  Push all APPLY jobs to suggest API\n\n"
             "With no arguments, an interactive menu is shown."
         )
         raise SystemExit(0)
     mapping = {
         "-1": "1",
         "-2": "2",
-        "-3": "3",
-        "-4": "4",
         "1": "1",
         "2": "2",
-        "3": "3",
-        "4": "4",
     }
     if raw in mapping:
         return mapping[raw]
     print(
-        f"Unknown argument: {raw!r}. Use -1, -2, -3, -4, or run with no arguments for the menu.\n"
-        "Try: python dValidate.py --help",
+        f"Unknown argument: {raw!r}. Use -1, -2, or run with no arguments for the menu.\n"
+        "Try: python validation.py --help",
         file=sys.stderr,
     )
     raise SystemExit(2)
@@ -403,13 +332,8 @@ def main() -> int:
         return 0
     if choice == "1":
         syncEmptyApplyStatuses()
-    elif choice == "2":
-        cleanupKeepOnlyApply()
-    elif choice == "3":
-        pushApplyJobsAfterValidate()
-        cleanupKeepOnlyApply()
     else:
-        showDatabaseStatusReport()
+        pushApplyJobsAfterValidate()
     return 0
 
 
