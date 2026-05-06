@@ -5,7 +5,7 @@ export type JobListCardDecisionUi = {
   loading: boolean;
   kind?: JobDecision;
   flash?: {
-    variant: "success" | "error";
+    variant: "success" | "error" | "warning";
     message: string;
     detail?: string;
     applyStatus?: string | null;
@@ -20,5 +20,6 @@ export type JobCardDecisionState =
       loading: false;
       flash:
         | { variant: "success"; message: string; applyStatus?: string | null }
-        | { variant: "error"; message: string; detail: string };
+        | { variant: "error"; message: string; detail: string }
+        | { variant: "warning"; message: string; detail: string; applyStatus?: string | null };
     };

@@ -385,6 +385,11 @@ export function JobDetailPane({
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden />
                   Accept complete
                 </>
+              ) : acceptProgressResult?.skippedReason ? (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden />
+                  Accept skipped
+                </>
               ) : (
                 <>
                   <XCircle className="h-5 w-5 text-destructive shrink-0" aria-hidden />
@@ -421,7 +426,11 @@ export function JobDetailPane({
                       </p>
                     ) : (
                       <>
-                        {acceptProgressResult.error ? (
+                        {acceptProgressResult.skippedReason ? (
+                          <p className="text-amber-800 dark:text-amber-100/90 font-medium whitespace-pre-wrap break-words">
+                            {acceptProgressResult.error}
+                          </p>
+                        ) : acceptProgressResult.error ? (
                           <p className="text-destructive font-medium whitespace-pre-wrap break-words">
                             {acceptProgressResult.error}
                           </p>
@@ -436,8 +445,21 @@ export function JobDetailPane({
                                 </li>
                               ))}
                           </ol>
-                        ) : !acceptProgressResult.error ? (
+                        ) : !acceptProgressResult.error && !acceptProgressResult.skippedReason ? (
                           <p className="text-destructive">{formatApiDecisionError(acceptProgressResult)}</p>
+                        ) : null}
+                        {acceptProgressResult.dbApplyStatus ? (
+                          <p className="text-xs text-muted-foreground pt-2 border-t border-border/60 mt-2">
+                            Database apply status:{" "}
+                            <strong className="text-foreground">
+                              {acceptProgressResult.dbApplyStatus.replaceAll("_", " ")}
+                            </strong>
+                            {acceptProgressResult.skippedReason ? (
+                              <span className="block mt-1 opacity-90">
+                                Code: <code className="text-[11px]">{acceptProgressResult.skippedReason}</code>
+                              </span>
+                            ) : null}
+                          </p>
                         ) : null}
                       </>
                     )}

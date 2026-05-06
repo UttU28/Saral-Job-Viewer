@@ -83,12 +83,21 @@ export type JobDecisionStep = {
   message: string;
 };
 
+export type JobDecisionSkippedReason =
+  | "ALREADY_APPLIED"
+  | "APPLY_IN_PROGRESS"
+  | "INVALID_STATUS_FOR_ACCEPT";
+
 export type JobDecisionResponse = {
   ok: boolean;
   decision: JobDecision;
   steps: JobDecisionStep[];
   applyStatusUpdated: string | null;
   error: string | null;
+  /** Apply status in Mongo after this response (or at skip time). */
+  dbApplyStatus: string | null;
+  /** Set when the action was blocked without calling Midhtech / without changing status as requested. */
+  skippedReason: JobDecisionSkippedReason | null;
 };
 
 export async function postRejectedJobToApply(jobId: string): Promise<{ ok: boolean; applyStatus: string }> {

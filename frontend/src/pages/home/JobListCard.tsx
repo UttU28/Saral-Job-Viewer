@@ -24,7 +24,7 @@ export function JobListCard({
   const locationText = (job.location ?? "").trim();
 
   const badgeApplyStatus =
-    decisionUi?.flash?.variant === "success" &&
+    (decisionUi?.flash?.variant === "success" || decisionUi?.flash?.variant === "warning") &&
     decisionUi.flash.applyStatus != null &&
     decisionUi.flash.applyStatus !== ""
       ? decisionUi.flash.applyStatus
@@ -126,16 +126,19 @@ export function JobListCard({
             "mt-1.5 rounded-lg border px-2.5 py-2 text-left text-[11px] sm:text-xs leading-snug",
             decisionUi.flash.variant === "success"
               ? "border-emerald-500/35 bg-emerald-500/[0.08] text-emerald-900 dark:text-emerald-100/95"
-              : "border-destructive/40 bg-destructive/10 text-destructive",
+              : decisionUi.flash.variant === "warning"
+                ? "border-amber-500/40 bg-amber-500/[0.1] text-amber-950 dark:text-amber-100/90"
+                : "border-destructive/40 bg-destructive/10 text-destructive",
           )}
         >
           <p className="font-medium">{decisionUi.flash.message}</p>
-          {decisionUi.flash.variant === "error" && decisionUi.flash.detail ? (
+          {(decisionUi.flash.variant === "error" || decisionUi.flash.variant === "warning") &&
+          decisionUi.flash.detail ? (
             <pre className="mt-1.5 whitespace-pre-wrap break-words font-sans text-[10px] sm:text-[11px] opacity-95">
               {decisionUi.flash.detail}
             </pre>
           ) : null}
-          {decisionUi.flash.variant === "error" ? (
+          {decisionUi.flash.variant === "error" || decisionUi.flash.variant === "warning" ? (
             <button
               type="button"
               onClick={(e) => {

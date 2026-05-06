@@ -9,13 +9,18 @@ export function isAppliedStatus(applyStatus: string | null | undefined): boolean
   return normalizedApplyStatus(applyStatus) === "APPLIED";
 }
 
+export function isApplyingStatus(applyStatus: string | null | undefined): boolean {
+  return normalizedApplyStatus(applyStatus) === "APPLYING";
+}
+
+/** Accept is only valid when the row is APPLY in Mongo (server enforces the same). */
 export function showAcceptForStatus(applyStatus: string | null | undefined): boolean {
-  return !isAppliedStatus(applyStatus);
+  return normalizedApplyStatus(applyStatus) === "APPLY";
 }
 
 export function showRejectForStatus(applyStatus: string | null | undefined): boolean {
   const s = normalizedApplyStatus(applyStatus);
-  return s !== "REJECTED" && !isAppliedStatus(applyStatus);
+  return s !== "REJECTED" && !isAppliedStatus(applyStatus) && !isApplyingStatus(applyStatus);
 }
 
 export function isRejectedStatus(applyStatus: string | null | undefined): boolean {
@@ -34,6 +39,7 @@ export function applyStatusBadgeVariant(
   const s = (raw ?? "").trim();
   if (!s) return "outline";
   if (s === "APPLY" || s === "APPLIED") return "default";
+  if (s === "APPLYING") return "secondary";
   if (s === "DO_NOT_APPLY" || s === "REJECTED") return "destructive";
   if (s === "EXISTING") return "secondary";
   return "outline";

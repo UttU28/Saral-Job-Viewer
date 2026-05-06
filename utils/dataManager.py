@@ -217,6 +217,76 @@ def updateApplyStatusByJobId(jobId: str, applyStatus: str) -> bool:
     return res.matched_count > 0
 
 
+def getApplyStatusUpperByJobId(jobId: str) -> str | None:
+    """Return trimmed upper-case applyStatus for jobId, or None if missing/blank/job not found."""
+    jid = str(jobId or "").strip()
+    if not jid:
+        return None
+    createTables(recreate=False)
+    doc = _getMongoDb()[JOB_DATA_COLLECTION].find_one({"jobId": jid}, {"applyStatus": 1})
+    if not doc:
+        return None
+    raw = doc.get("applyStatus")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    return str(raw).strip().upper()
+
+
+def claimApplyingFromApply(jobId: str) -> tuple[str, str | None]:
+    """
+    Atomically set applyStatus from APPLY -> APPLYING.
+    Returns (outcome, db_status_hint):
+      claimed -> ("claimed", "APPLY") pre-image was APPLY
+      not_found -> ("not_found", None)
+      already_applied / already_applying / wrong_status -> second element is current status upper or None
+    """
+    jid = str(jobId or "").strip()
+    if not jid:
+        return "not_found", None
+    createTables(recreate=False)
+    col = _getMongoDb()[JOB_DATA_COLLECTION]
+    before = col.find_one_and_update(
+        {"jobId": jid, "applyStatus": "APPLY"},
+        {"$set": {"applyStatus": "APPLYING"}},
+    )
+    if before is not None:
+        return "claimed", "APPLY"
+    row = col.find_one({"jobId": jid}, {"applyStatus": 1})
+    if not row:
+        return "not_found", None
+    st = str(row.get("applyStatus") or "").strip().upper()
+    if st == "APPLIED":
+        return "already_applied", "APPLIED"
+    if st == "APPLYING":
+        return "already_applying", "APPLYING"
+    return "wrong_status", st or None
+
+
+def finalizeAppliedFromApplying(jobId: str) -> bool:
+    jid = str(jobId or "").strip()
+    if not jid:
+        return False
+    createTables(recreate=False)
+    res = _getMongoDb()[JOB_DATA_COLLECTION].update_one(
+        {"jobId": jid, "applyStatus": "APPLYING"},
+        {"$set": {"applyStatus": "APPLIED"}},
+    )
+    return res.matched_count > 0
+
+
+def revertApplyingToApply(jobId: str) -> bool:
+    """After failed Midhtech submit: APPLYING -> APPLY so another attempt is possible."""
+    jid = str(jobId or "").strip()
+    if not jid:
+        return False
+    createTables(recreate=False)
+    res = _getMongoDb()[JOB_DATA_COLLECTION].update_one(
+        {"jobId": jid, "applyStatus": "APPLYING"},
+        {"$set": {"applyStatus": "APPLY"}},
+    )
+    return res.matched_count > 0
+
+
 def loadJobsByApplyStatus(applyStatus: str) -> list[dict]:
     status = str(applyStatus or "").strip()
     if not status:

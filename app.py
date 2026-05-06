@@ -72,9 +72,10 @@ def getJobPlatforms():
 @app.post("/api/jobs/decision")
 def postJobDecision(body: JobDecisionBody):
     """
-    Reject: set applyStatus to REJECTED in Mongo.
-    Accept: Midhtech login (Settings email/password) + submit suggestion + set applyStatus to APPLIED on success (unchanged on failure).
-    Returns structured steps for the UI; logs phases to stdout.
+    Reject: set applyStatus to REJECTED (blocked if APPLIED or APPLYING).
+    Accept: requires APPLY in Mongo; atomically APPLY→APPLYING, then Midhtech login + suggest, then APPLIED;
+    on Midhtech failure reverts APPLYING→APPLY. Duplicate accepts see APPLYING/APPLIED via skippedReason.
+    Response always includes dbApplyStatus and skippedReason when applicable.
     """
     email = (body.profileEmail or "").strip()
     password = (body.profilePassword or "").strip()

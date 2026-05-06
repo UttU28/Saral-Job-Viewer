@@ -6,6 +6,7 @@ export const APPLY_OPTIONS = [
   { value: ALL_VALUE, label: "All statuses" },
   { value: "pending", label: "Pending (no status)" },
   { value: DEFAULT_APPLY_FILTER, label: "APPLY" },
+  { value: "APPLYING", label: "APPLYING (in progress)" },
   { value: "DO_NOT_APPLY", label: "DO NOT APPLY" },
   { value: "EXISTING", label: "EXISTING" },
   { value: "APPLIED", label: "APPLIED" },

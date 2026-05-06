@@ -86,6 +86,40 @@ export default function Home() {
 
       if (!result) return;
 
+      if (!result.ok && result.skippedReason) {
+        void queryClient.invalidateQueries({ queryKey: ["jobDetail", actingJobId] });
+        void queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
+        void queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
+        const detail = result.error?.trim() || "This action was skipped.";
+        const title =
+          result.skippedReason === "ALREADY_APPLIED"
+            ? "Already applied"
+            : result.skippedReason === "APPLY_IN_PROGRESS"
+              ? "Someone is submitting this job"
+              : result.skippedReason === "INVALID_STATUS_FOR_ACCEPT"
+                ? "Not in APPLY status"
+                : "Skipped";
+        const detailWithDb =
+          result.dbApplyStatus && !detail.includes(result.dbApplyStatus)
+            ? `${detail}\n\nCurrent DB status: ${result.dbApplyStatus.replaceAll("_", " ")}`
+            : detail;
+        setJobCardDecisionState({
+          jobId: actingJobId,
+          loading: false,
+          flash: {
+            variant: "warning",
+            message: title,
+            detail: detailWithDb,
+            applyStatus: result.dbApplyStatus,
+          },
+        });
+        toast({
+          title,
+          description: detail.length > 280 ? `${detail.slice(0, 280)}…` : detail,
+        });
+        return;
+      }
+
       if (result.ok) {
         void queryClient.invalidateQueries({ queryKey: ["jobDetail", actingJobId] });
         void queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
