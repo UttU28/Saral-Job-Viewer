@@ -7,9 +7,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import ChangePassword from "@/pages/ChangePassword";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
-import Login from "@/pages/Login";
+import AuthHome from "@/pages/AuthHome";
 import Profile from "@/pages/Profile";
-import Register from "@/pages/Register";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -17,9 +16,9 @@ function Router() {
   if (!isAuthenticated) {
     return (
       <Switch>
-        <Route path="/login" component={Login} />
-        <Route path="/register" component={Register} />
-        <Route component={Login} />
+        <Route path="/login" component={AuthHome} />
+        <Route path="/register" component={AuthHome} />
+        <Route component={AuthHome} />
       </Switch>
     );
   }
@@ -49,9 +48,9 @@ function App() {
 
   return (
     <TooltipProvider>
-      <div className="flex-1 flex flex-col min-h-0 w-full overflow-hidden">
+      <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
         {isAuthenticated ? <AppNav /> : null}
-        <main className="flex-1 w-full min-w-0 min-h-0 flex flex-col overflow-hidden">
+        <main className="flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden">
           <Router />
         </main>
       </div>

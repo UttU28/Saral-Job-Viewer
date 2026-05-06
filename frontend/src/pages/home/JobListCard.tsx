@@ -36,7 +36,7 @@ export function JobListCard({
         type="button"
         onClick={onSelect}
         className={cn(
-          "relative z-0 w-full text-left rounded-xl border px-3 py-2.5 sm:px-3.5 sm:py-3 transition-all duration-200",
+          "relative z-0 w-full text-left rounded-xl border px-3 py-3 sm:px-3.5 sm:py-3 min-h-[3.25rem] transition-all duration-200 touch-manipulation active:scale-[0.99]",
           "hover:border-primary/35 hover:bg-muted/60 dark:hover:bg-white/[0.04]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           selected

@@ -522,13 +522,13 @@ export function JobDetailPane({
               ))}
             </div>
           ) : null}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-3">
             {showAcceptForStatus(job.applyStatus) ? (
               <Button
                 type="button"
                 size="default"
                 disabled={decisionBusyHere}
-                className="rounded-xl gap-2 bg-emerald-600 text-white hover:bg-emerald-600/90 border border-emerald-500/40 shadow-sm shadow-emerald-950/30"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation bg-emerald-600 text-white hover:bg-emerald-600/90 border border-emerald-500/40 shadow-sm shadow-emerald-950/30"
                 onClick={() => sendJobDecision("accept")}
               >
                 {decisionBusyHere && decisionBusyKind === "accept" ? (
@@ -545,7 +545,7 @@ export function JobDetailPane({
                 size="default"
                 variant="destructive"
                 disabled={decisionBusyHere}
-                className="rounded-xl gap-2"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation"
                 onClick={() => sendJobDecision("reject")}
               >
                 {decisionBusyHere && decisionBusyKind === "reject" ? (
@@ -562,7 +562,7 @@ export function JobDetailPane({
                 size="default"
                 variant="outline"
                 disabled={decisionBusyHere || moveToApplyPending}
-                className="rounded-xl gap-2 border-violet-500/40 bg-violet-500/[0.08] text-foreground hover:bg-violet-500/15 dark:border-violet-400/35"
+                className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-violet-500/40 bg-violet-500/[0.08] text-foreground hover:bg-violet-500/15 dark:border-violet-400/35"
                 onClick={() => void handleMoveRejectedToApply()}
               >
                 {moveToApplyPending ? (
@@ -574,7 +574,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {originalUrl ? (
-              <Button size="default" variant="default" className="rounded-xl gap-2" asChild>
+              <Button size="default" variant="default" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
                 <a href={originalUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Original URL
@@ -582,7 +582,7 @@ export function JobDetailPane({
               </Button>
             ) : null}
             {platformUrl ? (
-              <Button size="default" variant="secondary" className="rounded-xl gap-2" asChild>
+              <Button size="default" variant="secondary" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation" asChild>
                 <a href={platformUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Platform URL

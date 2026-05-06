@@ -165,6 +165,13 @@ export type WeeklyReportResponse = {
   };
 };
 
+export type CurrentWeekAcceptsResponse = {
+  weekKey: string;
+  weekStartIso: string;
+  weekEndIso: string;
+  acceptedCount: number;
+};
+
 export type JobDecisionProfile = {
   name: string;
   email: string;
@@ -240,4 +247,8 @@ export function logoutUser(): Promise<{ ok: boolean; userId: string }> {
 
 export function fetchWeeklyReport(): Promise<WeeklyReportResponse> {
   return fetchJson<WeeklyReportResponse>("/api/profile/weekly-report");
+}
+
+export function fetchCurrentWeekAccepts(): Promise<CurrentWeekAcceptsResponse> {
+  return fetchJson<CurrentWeekAcceptsResponse>("/api/profile/current-week-accepts");
 }

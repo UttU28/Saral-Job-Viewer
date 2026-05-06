@@ -1,4 +1,6 @@
-import { BarChart3, CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, Loader2, Sparkles, XCircle } from "lucide-react";
+import { useAuth } from "@/auth/AuthProvider";
+import { Footer } from "@/components/Footer";
 import { useWeeklyReportQuery } from "@/hooks/use-jobs";
 import {
   Table,
@@ -15,13 +17,45 @@ function formatWeekRange(startIso: string, endIso: string): string {
 }
 
 export default function Profile() {
+  const { user } = useAuth();
   const weeklyReportQuery = useWeeklyReportQuery();
   const summary = weeklyReportQuery.data?.summary;
   const rows = weeklyReportQuery.data?.weeks ?? [];
+  const firstName = (user?.name ?? "").trim().split(/\s+/)[0] || "there";
+  const weekCount = rows.length;
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto scrollbar-themed">
-      <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
+        <div className="min-h-full flex flex-col">
+        <div className="flex-1 w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 sm:space-y-6 min-w-0">
+        <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card/50 to-emerald-500/[0.06] p-6 sm:p-7 shadow-sm shadow-primary/5">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 border border-primary/25">
+              <Sparkles className="h-6 w-6 text-primary" aria-hidden />
+            </div>
+            <div className="space-y-2 min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wider text-primary">Your profile</p>
+              <h2 className="text-xl sm:text-2xl font-bold font-display text-foreground">
+                Hey {firstName}, here’s how you’ve been deciding
+              </h2>
+              <p className="text-sm text-muted-foreground leading-relaxed max-w-2xl">
+                This page is your personal weekly ledger: every accept and reject is tied to ISO weeks (Monday through
+                Sunday) so you can compare periods at a glance. Totals below are across{" "}
+                <strong className="text-foreground font-medium">all time</strong>
+                {weeklyReportQuery.isLoading
+                  ? "—loading your history…"
+                  : weekCount > 0
+                    ? ` (${weekCount} week${weekCount === 1 ? "" : "s"} in the table).`
+                    : "—start browsing jobs to build history."}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Tip: the flame next to your name in the navbar counts <strong className="text-foreground/90">full applies this week only</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-border bg-card/50 p-6 sm:p-7">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div className="space-y-2">
@@ -65,7 +99,8 @@ export default function Profile() {
               No weekly stats yet. Accept or reject a few jobs and this report will populate.
             </div>
           ) : (
-            <Table>
+            <div className="-mx-1 overflow-x-auto scrollbar-themed rounded-lg border border-border/50">
+              <Table className="min-w-[640px] w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>Week</TableHead>
@@ -101,7 +136,11 @@ export default function Profile() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
+        </div>
+        </div>
+        <Footer />
         </div>
       </div>
     </div>

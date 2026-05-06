@@ -33,6 +33,7 @@ from utils.jobViewerQueries import (
 )
 from utils.userWeeklyStats import (
     decrementWeeklyRejectedCount,
+    fetchCurrentWeekAcceptedCount,
     fetchWeeklyReportByUser,
     incrementWeeklyDecisionCount,
 )
@@ -250,6 +251,14 @@ def postRejectedJobToApply(jobId: str, currentUser: dict[str, str] = Depends(req
 def getProfileWeeklyReport(currentUser: dict[str, str] = Depends(requireAuth)):
     try:
         return fetchWeeklyReportByUser(userId=currentUser["userId"])
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/profile/current-week-accepts")
+def getProfileCurrentWeekAccepts(currentUser: dict[str, str] = Depends(requireAuth)):
+    try:
+        return fetchCurrentWeekAcceptedCount(userId=currentUser["userId"])
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

@@ -62,6 +62,8 @@ def incrementWeeklyDecisionCount(*, userId: str, decision: DecisionKind, jobId: 
         incField = "rejectedCount"
         eventType = "rejected"
 
+    # Do not put acceptedCount/rejectedCount/totalCount/events in $setOnInsert: MongoDB rejects
+    # the same path in $setOnInsert and $inc (or $push) in one update (error 40 path conflict).
     coll.update_one(
         {"userId": uid, "weekKey": weekKey},
         {
@@ -71,10 +73,6 @@ def incrementWeeklyDecisionCount(*, userId: str, decision: DecisionKind, jobId: 
                 "weekStartIso": weekStartIso,
                 "weekEndIso": weekEndIso,
                 "createdAt": _utcNowIso(),
-                "acceptedCount": 0,
-                "rejectedCount": 0,
-                "totalCount": 0,
-                "events": [],
             },
             "$set": {"updatedAt": _utcNowIso()},
             "$inc": {incField: 1, "totalCount": 1},
@@ -108,6 +106,34 @@ def decrementWeeklyRejectedCount(*, userId: str, jobId: str | None) -> None:
             "$push": {"events": _eventDoc(eventType="rejectedToApply", jobId=jobId, delta=-1)},
         },
     )
+
+
+def fetchCurrentWeekAcceptedCount(*, userId: str) -> dict[str, Any]:
+    """Accepted count for the ISO week that contains *now* (Monday start)."""
+    uid = str(userId or "").strip()
+    if not uid:
+        week_key, week_start_iso, week_end_iso = _weekWindow(_utcNow())
+        return {
+            "weekKey": week_key,
+            "weekStartIso": week_start_iso,
+            "weekEndIso": week_end_iso,
+            "acceptedCount": 0,
+        }
+    _ensureIndexes()
+    now = _utcNow()
+    week_key, week_start_iso, week_end_iso = _weekWindow(now)
+    coll = getMongoDb()[USER_WEEKLY_STATS_COLLECTION]
+    doc = coll.find_one(
+        {"userId": uid, "weekKey": week_key},
+        {"acceptedCount": 1},
+    )
+    accepted = int(doc.get("acceptedCount") or 0) if doc else 0
+    return {
+        "weekKey": week_key,
+        "weekStartIso": week_start_iso,
+        "weekEndIso": week_end_iso,
+        "acceptedCount": accepted,
+    }
 
 
 def fetchWeeklyReportByUser(*, userId: str) -> dict[str, Any]:
