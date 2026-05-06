@@ -182,7 +182,7 @@ export default function Settings() {
 
           <form onSubmit={handleSave} className="space-y-5">
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Label htmlFor="settings-name">Name</Label>
                 <FieldRowStatus
                   label="Name"
@@ -200,7 +200,7 @@ export default function Settings() {
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Label htmlFor="settings-email">Email</Label>
                 <FieldRowStatus label="Email" ok={emailLooksValid(email)} />
               </div>
@@ -215,7 +215,7 @@ export default function Settings() {
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Label htmlFor="settings-password">Password</Label>
                 <FieldRowStatus label="Password" ok={password.length > 0} />
               </div>
