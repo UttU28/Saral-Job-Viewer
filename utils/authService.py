@@ -16,17 +16,43 @@ def _utcNowIso() -> str:
 def ensureUserIndexes() -> None:
     users = getMongoDb()[USER_COLLECTION]
     users.create_index("email", unique=True)
+    # Backfill missing admin flag for older users.
+    users.update_many({"isAdmin": {"$exists": False}}, {"$set": {"isAdmin": False}})
+    # Backfill profile photo URL for older users.
+    for row in users.find(
+        {"$or": [{"profilePhotoUrl": {"$exists": False}}, {"profilePhotoUrl": ""}]},
+        {"_id": 1, "userId": 1, "email": 1},
+    ):
+        seed = _profilePhotoSeed(
+            userId=str(row.get("userId") or ""),
+            email=str(row.get("email") or ""),
+        )
+        users.update_one(
+            {"_id": row["_id"]},
+            {"$set": {"profilePhotoUrl": _buildProfilePhotoUrl(seed=seed)}},
+        )
 
 
 def _normalizeEmail(email: str) -> str:
     return str(email or "").strip().lower()
 
 
-def _sanitizeUserDoc(userDoc: dict[str, Any]) -> dict[str, str]:
+def _buildProfilePhotoUrl(*, seed: str) -> str:
+    cleanSeed = str(seed or "").strip() or "default"
+    return f"https://api.dicebear.com/7.x/bottts/svg?seed={cleanSeed}"
+
+
+def _profilePhotoSeed(*, userId: str, email: str) -> str:
+    return str(userId or "").strip() or _normalizeEmail(email) or "default"
+
+
+def _sanitizeUserDoc(userDoc: dict[str, Any]) -> dict[str, Any]:
     return {
         "userId": str(userDoc.get("userId") or ""),
         "name": str(userDoc.get("name") or ""),
         "email": str(userDoc.get("email") or ""),
+        "isAdmin": bool(userDoc.get("isAdmin")),
+        "profilePhotoUrl": str(userDoc.get("profilePhotoUrl") or ""),
     }
 
 
@@ -56,11 +82,19 @@ def registerUser(*, name: str, email: str, password: str) -> dict[str, str]:
             "name": cleanName,
             "email": cleanEmail,
             "password": cleanPassword,
+            "isAdmin": False,
+            "profilePhotoUrl": _buildProfilePhotoUrl(seed=_profilePhotoSeed(userId=userId, email=cleanEmail)),
             "createdAt": _utcNowIso(),
             "updatedAt": _utcNowIso(),
         }
     )
-    return {"userId": userId, "name": cleanName, "email": cleanEmail}
+    return {
+        "userId": userId,
+        "name": cleanName,
+        "email": cleanEmail,
+        "isAdmin": False,
+        "profilePhotoUrl": _buildProfilePhotoUrl(seed=_profilePhotoSeed(userId=userId, email=cleanEmail)),
+    }
 
 
 def loginUser(*, email: str, password: str) -> dict[str, str]:
@@ -79,12 +113,14 @@ def loginUser(*, email: str, password: str) -> dict[str, str]:
     return _sanitizeUserDoc(userDoc)
 
 
-def createUserSessionToken(user: dict[str, str]) -> str:
+def createUserSessionToken(user: dict[str, Any]) -> str:
     return createJwtToken(
         {
             "sub": user["userId"],
             "email": user["email"],
             "name": user["name"],
+            "isAdmin": bool(user.get("isAdmin")),
+            "profilePhotoUrl": str(user.get("profilePhotoUrl") or ""),
         }
     )
 
@@ -102,6 +138,74 @@ def getUserFromToken(token: str) -> dict[str, str]:
     if not userDoc:
         raise ValueError("User no longer exists")
     return _sanitizeUserDoc(userDoc)
+
+
+def requireAdminUser(*, user: dict[str, Any]) -> None:
+    if not bool(user.get("isAdmin")):
+        raise ValueError("Admin access required")
+
+
+def listAllUsersForAdmin() -> dict[str, Any]:
+    ensureUserIndexes()
+    usersCollection = getMongoDb()[USER_COLLECTION]
+    cursor = usersCollection.find(
+        {},
+        {
+            "_id": 0,
+            "userId": 1,
+            "name": 1,
+            "email": 1,
+            "isAdmin": 1,
+            "profilePhotoUrl": 1,
+            "createdAt": 1,
+            "updatedAt": 1,
+        },
+    ).sort([("createdAt", -1), ("email", 1)])
+
+    users = []
+    for row in cursor:
+        users.append(
+            {
+                "userId": str(row.get("userId") or ""),
+                "name": str(row.get("name") or ""),
+                "email": str(row.get("email") or ""),
+                "isAdmin": bool(row.get("isAdmin")),
+                "profilePhotoUrl": str(row.get("profilePhotoUrl") or ""),
+                "createdAt": str(row.get("createdAt") or ""),
+                "updatedAt": str(row.get("updatedAt") or ""),
+            }
+        )
+
+    totalUsers = len(users)
+    adminUsers = sum(1 for row in users if row.get("isAdmin"))
+    return {
+        "users": users,
+        "summary": {
+            "totalUsers": totalUsers,
+            "adminUsers": adminUsers,
+            "nonAdminUsers": totalUsers - adminUsers,
+        },
+    }
+
+
+def setUserAdminStatus(*, targetUserId: str, isAdmin: bool) -> None:
+    cleanUserId = str(targetUserId or "").strip()
+    if not cleanUserId:
+        raise ValueError("Target user is required")
+
+    ensureUserIndexes()
+    usersCollection = getMongoDb()[USER_COLLECTION]
+    result = usersCollection.update_one(
+        {"userId": cleanUserId},
+        {
+            "$set": {
+                "isAdmin": bool(isAdmin),
+                "updatedAt": _utcNowIso(),
+            }
+        },
+    )
+    if result.matched_count == 0:
+        raise ValueError("User not found")
 
 
 def changeUserPassword(*, userId: str, currentPassword: str, newPassword: str) -> None:

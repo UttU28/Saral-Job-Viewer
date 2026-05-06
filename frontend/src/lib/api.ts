@@ -172,6 +172,25 @@ export type CurrentWeekAcceptsResponse = {
   acceptedCount: number;
 };
 
+export type AdminUserRow = {
+  userId: string;
+  name: string;
+  email: string;
+  isAdmin: boolean;
+  profilePhotoUrl: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminUsersResponse = {
+  users: AdminUserRow[];
+  summary: {
+    totalUsers: number;
+    adminUsers: number;
+    nonAdminUsers: number;
+  };
+};
+
 export type JobDecisionProfile = {
   name: string;
   email: string;
@@ -251,4 +270,14 @@ export function fetchWeeklyReport(): Promise<WeeklyReportResponse> {
 
 export function fetchCurrentWeekAccepts(): Promise<CurrentWeekAcceptsResponse> {
   return fetchJson<CurrentWeekAcceptsResponse>("/api/profile/current-week-accepts");
+}
+
+export function fetchAdminUsers(): Promise<AdminUsersResponse> {
+  return fetchJson<AdminUsersResponse>("/api/admin/users");
+}
+
+export function setUserAdminStatus(userId: string, isAdmin: boolean): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/set-admin`, {
+    isAdmin,
+  });
 }

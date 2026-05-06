@@ -21,8 +21,11 @@ from utils.authService import (
     changeUserPassword,
     createUserSessionToken,
     getUserFromToken,
+    listAllUsersForAdmin,
     loginUser,
+    requireAdminUser,
     registerUser,
+    setUserAdminStatus,
 )
 from utils.jobDecisionService import executeJobUiDecision
 from utils.jobViewerQueries import (
@@ -57,6 +60,10 @@ class ChangePasswordBody(BaseModel):
     newPassword: str = ""
 
 
+class SetUserAdminBody(BaseModel):
+    isAdmin: bool = False
+
+
 class JobDecisionBody(BaseModel):
     """Job payload plus optional profile from Settings (browser cookie)."""
 
@@ -83,6 +90,14 @@ def requireAuth(authorization: str | None = Header(default=None)) -> dict[str, s
         return getUserFromToken(token)
     except Exception as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def requireAdmin(currentUser: dict[str, Any] = Depends(requireAuth)) -> dict[str, Any]:
+    try:
+        requireAdminUser(user=currentUser)
+        return currentUser
+    except Exception as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 app.add_middleware(
@@ -160,6 +175,33 @@ def postAuthChangePassword(
 @app.post("/api/auth/logout")
 def postAuthLogout(currentUser: dict[str, str] = Depends(requireAuth)):
     return {"ok": True, "userId": currentUser["userId"]}
+
+
+@app.get("/api/admin/users")
+def getAdminUsers(currentUser: dict[str, Any] = Depends(requireAdmin)):
+    try:
+        return listAllUsersForAdmin()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/users/{targetUserId}/set-admin")
+def postAdminSetUserAdmin(
+    targetUserId: str,
+    body: SetUserAdminBody,
+    currentUser: dict[str, Any] = Depends(requireAdmin),
+):
+    try:
+        if str(currentUser.get("userId") or "") == str(targetUserId or ""):
+            raise HTTPException(status_code=400, detail="You cannot change your own admin access.")
+        setUserAdminStatus(targetUserId=targetUserId, isAdmin=bool(body.isAdmin))
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/api/jobs/summary")

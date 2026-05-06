@@ -6,6 +6,8 @@ export type AuthUser = {
   userId: string;
   name: string;
   email: string;
+  isAdmin: boolean;
+  profilePhotoUrl: string;
 };
 
 export type SessionProfile = {
@@ -36,6 +38,8 @@ export function readAuthUser(): AuthUser | null {
       userId: parsed.userId,
       name: parsed.name ?? "",
       email: parsed.email,
+      isAdmin: Boolean(parsed.isAdmin),
+      profilePhotoUrl: String(parsed.profilePhotoUrl ?? ""),
     };
   } catch {
     return null;

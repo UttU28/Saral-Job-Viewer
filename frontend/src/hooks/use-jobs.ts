@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
+  fetchAdminUsers,
   fetchCurrentWeekAccepts,
   fetchJobDetail,
   fetchJobList,
@@ -73,5 +74,14 @@ export function useCurrentWeekAcceptsQuery() {
     queryKey: ["currentWeekAccepts"],
     queryFn: fetchCurrentWeekAccepts,
     staleTime: 30_000,
+  });
+}
+
+export function useAdminUsersQuery(enabled: boolean) {
+  return useQuery({
+    queryKey: ["adminUsers"],
+    queryFn: fetchAdminUsers,
+    staleTime: 15_000,
+    enabled,
   });
 }
