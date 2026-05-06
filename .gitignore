@@ -8,3 +8,4 @@
 *.log
 venv/
 *.html
+gcp-sa.json

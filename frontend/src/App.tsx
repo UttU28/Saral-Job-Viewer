@@ -4,10 +4,10 @@ import { useAuth } from "@/auth/AuthProvider";
 import { AppNav } from "@/components/AppNav";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import ChangePassword from "@/pages/ChangePassword";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import AuthHome from "@/pages/AuthHome";
+import Admin from "@/pages/Admin";
 import Profile from "@/pages/Profile";
 
 function Router() {
@@ -27,7 +27,8 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/profile" component={Profile} />
-      <Route path="/change-password" component={ChangePassword} />
+      <Route path="/admin" component={Admin} />
+      <Route path="/change-password" component={Profile} />
       <Route path="/login" component={Home} />
       <Route path="/register" component={Home} />
       <Route component={NotFound} />

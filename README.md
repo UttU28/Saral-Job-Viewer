@@ -2,6 +2,8 @@
 
 Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, with MongoDB as the source of truth.
 
+**Docs:** see **[docs/README.md](docs/README.md)** (CI/CD, GCP inventory, Cloud Run).
+
 ## What This Repo Does
 
 - Scrapes jobs from multiple platforms:
@@ -9,21 +11,22 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
   - `bGlassDoor.py`
   - `cZipRecruiter.py`
 - Normalizes and writes jobs to MongoDB via `utils/dataManager.py`.
-- Runs validation/push flow against Midhtech using `dValidate.py`.
+- Runs validation/push flow against Midhtech using **`validation.py`**.
 - Supports local Docker runs and Cloud Run Job + Scheduler CI/CD.
 
 ## Current Architecture
 
 - **Scrapers**: browser-based collection and normalization
 - **Data layer**: `utils/dataManager.py` (MongoDB only)
-- **Validation pipeline**: `dValidate.py`
+- **Validation pipeline**: **`validation.py`**
 - **Maintenance**: `klean.py` for temp/cache cleanup
 - **Deploy**:
-  - `Dockerfile` (container for `dValidate.py`)
-  - `docker-compose.yml` (local one-shot run)
+  - **`docker/Dockerfile.validation`** (container for `validation.py`)
+  - **`docker/Dockerfile.api`** (FastAPI `app.py`)
+  - `docker-compose.yml` (local one-shot validation run)
   - `.github/workflows/deployValidation.yml` (build + deploy job + deploy scheduler)
   - `.github/workflows/runValidationManual.yml` (manual one-time run)
-  - `gcpCloudRun.md` (GCP setup guide)
+  - **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** (GCP setup guide)
 
 ## Environment Variables
 
@@ -64,36 +67,32 @@ python bGlassDoor.py
 python cZipRecruiter.py
 ```
 
-## Run Validation (`dValidate.py`)
+## Run Validation (`validation.py`)
 
 Interactive mode:
 
 ```bash
-python dValidate.py
+python validation.py
 ```
 
 CLI mode:
 
 ```bash
-python dValidate.py -1
-python dValidate.py -2
-python dValidate.py -3
-python dValidate.py -4
+python validation.py -1
+python validation.py -2
 ```
 
 Where:
 
-- `-1`: validate pending jobs
-- `-2`: cleanup non-APPLY + prune old pastData
-- `-3`: push APPLY jobs, then cleanup
-- `-4`: show DB status report
+- `-1`: validate all pending (NULL applyStatus → check API, FIFO)
+- `-2`: push all APPLY jobs to the suggest API
 
 ## Docker (Local)
 
-Build:
+**Validation job image** (`docker/Dockerfile.validation`):
 
 ```bash
-docker build -t saral-dvalidate .
+docker build -f docker/Dockerfile.validation -t saral-dvalidate .
 ```
 
 Run once:
@@ -104,8 +103,12 @@ docker run --rm \
   -e MONGODB_DATABASE="saralJobViewer" \
   -e MIDHTECH_EMAIL="..." \
   -e MIDHTECH_PASSWORD="..." \
+  -e GOOGLE_APPLICATION_CREDENTIALS="/app/secrets/gcp-sa.json" \
+  -v "$(pwd)/gcp-sa.json:/app/secrets/gcp-sa.json:ro" \
   saral-dvalidate
 ```
+
+For API deploys via `deploy.sh`, put your key at `./gcp-sa.json` (or set `SARAL_GCP_SA_PATH=/absolute/path/to/key.json` before running deploy). The script mounts it read-only to `/app/secrets/gcp-sa.json`.
 
 Compose one-shot:
 
@@ -115,20 +118,20 @@ docker compose up
 
 ## CI/CD + Cloud Run Job
 
-Automated deploy flow is documented in:
-
-- `gcpCloudRun.md`
+Automated deploy flow is documented in **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** and **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**.
 
 Current workflow:
 
-- Build and push Docker image to Artifact Registry
-- Update/create Cloud Run Job
+- Build and push Docker image to Artifact Registry (`docker/Dockerfile.validation`)
+- Update/create Cloud Run Job (container entrypoint uses `validation.py`)
 - Ensure Cloud Scheduler runs job daily at `00:00 UTC`
+
+After this repo change, run **Deploy Validation** once in GitHub Actions so the live job image and args match `validation.py`.
 
 ## Security Notes
 
 - Never commit real credentials in `.env`.
-- Docker image is configured to avoid baking `.env` into image layers.
+- Docker images avoid baking `.env` into layers; use Secret Manager on Cloud Run.
 - Use Secret Manager for Cloud Run runtime secrets.
 
 ## Cleanup

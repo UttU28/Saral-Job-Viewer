@@ -8,15 +8,15 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 RUN pip install --upgrade pip \
-    && pip install \
+    && pip install --no-cache-dir \
         "python-dotenv>=1.0.0,<2" \
         "requests>=2.31.0,<3" \
         "pymongo>=4.6,<5" \
         "dnspython>=2.0.0,<3"
 
 COPY utils/ ./utils/
-COPY dValidate.py .
-# Inject runtime env/secrets from Cloud Run (do not bake .env into image).
+COPY validation.py .
+# Runtime env/secrets from Cloud Run (do not bake .env into image).
 
-ENTRYPOINT ["python", "dValidate.py"]
+ENTRYPOINT ["python", "validation.py"]
 CMD ["-1"]

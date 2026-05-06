@@ -1,7 +1,0 @@
-# FastAPI job viewer API only (Docker backend). Omit Selenium/Chrome scraper stack.
-python-dotenv>=1.0.0,<2
-requests>=2.31.0,<3
-fastapi>=0.115.0,<1
-uvicorn[standard]>=0.30.0,<1
-pymongo>=4.6,<5
-dnspython>=2.0.0,<3

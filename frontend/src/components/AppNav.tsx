@@ -1,9 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Briefcase, Flame, Home, KeyRound, LogOut, Menu, Moon, Sun, UserRound } from "lucide-react";
+import { Briefcase, Flame, Home, LogOut, Menu, Moon, Shield, Sun, UserRound } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
 import { useCurrentWeekAcceptsQuery } from "@/hooks/use-jobs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -83,6 +84,13 @@ export function AppNav() {
   }, [location]);
 
   const closeMobile = () => setMobileOpen(false);
+  const userInitials =
+    (user?.name || "")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "U";
 
   const streakPill = (
     <span
@@ -133,6 +141,10 @@ export function AppNav() {
                 className="hidden md:flex items-center min-w-0 text-sm text-muted-foreground border-l border-border pl-3 md:pl-4"
                 title={user.name}
               >
+                <Avatar className="h-7 w-7 mr-2.5">
+                  <AvatarImage src={user.profilePhotoUrl} alt={user.name || "User"} />
+                  <AvatarFallback className="text-[11px] font-semibold">{userInitials}</AvatarFallback>
+                </Avatar>
                 Hi,{" "}
                 <span className="font-medium text-foreground truncate max-w-[180px] lg:max-w-[260px] ml-1">
                   {user.name}
@@ -178,20 +190,22 @@ export function AppNav() {
               <NavLink href="/profile" icon={UserRound}>
                 Profile
               </NavLink>
-              <NavLink href="/change-password" icon={KeyRound}>
-                Password
-              </NavLink>
+              {user?.isAdmin ? (
+                <NavLink href="/admin" icon={Shield}>
+                  Admin
+                </NavLink>
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                className="rounded-xl gap-2 h-9 sm:h-10 touch-manipulation"
+                className="rounded-xl gap-2 h-9 sm:h-10 touch-manipulation border-destructive/65 text-destructive hover:bg-transparent"
                 onClick={async () => {
                   await logout();
                   navigate("/login");
                 }}
               >
-                <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                <LogOut className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
                 <span className="text-xs sm:text-sm">Logout</span>
               </Button>
             </nav>
@@ -215,10 +229,16 @@ export function AppNav() {
                 <SheetHeader className="px-4 pt-6 pb-4 text-left border-b border-border/80 space-y-3">
                   <SheetTitle className="font-display text-lg">Menu</SheetTitle>
                   {user?.name ? (
-                    <p className="text-sm text-muted-foreground font-normal">
-                      Signed in as{" "}
-                      <span className="font-medium text-foreground break-words">{user.name}</span>
-                    </p>
+                    <div className="flex items-center gap-2.5">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.profilePhotoUrl} alt={user.name || "User"} />
+                        <AvatarFallback className="text-xs font-semibold">{userInitials}</AvatarFallback>
+                      </Avatar>
+                      <p className="text-sm text-muted-foreground font-normal">
+                        Signed in as{" "}
+                        <span className="font-medium text-foreground break-words">{user.name}</span>
+                      </p>
+                    </div>
                   ) : null}
                   {weekAcceptCount !== null ? (
                     <div className="flex items-center gap-2 flex-wrap">
@@ -230,12 +250,9 @@ export function AppNav() {
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 scrollbar-themed">
                   <MobileNavRow href="/" icon={Home} label="Browse jobs" onNavigate={closeMobile} />
                   <MobileNavRow href="/profile" icon={UserRound} label="Profile & report" onNavigate={closeMobile} />
-                  <MobileNavRow
-                    href="/change-password"
-                    icon={KeyRound}
-                    label="Password"
-                    onNavigate={closeMobile}
-                  />
+                  {user?.isAdmin ? (
+                    <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
+                  ) : null}
                 </div>
                 <div className="px-4 pb-4 pt-2 border-t border-border/80 space-y-2 mt-auto">
                   <Button
@@ -256,14 +273,14 @@ export function AppNav() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full rounded-xl gap-2 h-11 touch-manipulation justify-center text-destructive border-destructive/30 hover:bg-destructive/10"
+                    className="w-full rounded-xl gap-2 h-11 touch-manipulation justify-center text-destructive border-destructive/65 hover:bg-transparent"
                     onClick={async () => {
                       await logout();
                       closeMobile();
                       navigate("/login");
                     }}
                   >
-                    <LogOut className="h-4 w-4 shrink-0" aria-hidden />
+                    <LogOut className="h-4 w-4 shrink-0 text-destructive" aria-hidden />
                     Log out
                   </Button>
                 </div>

@@ -4,15 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: dValidate mode (1=validate, 2=cleanup, 3=push+cleanup, 4=status)
+        description: validation.py mode (1=verify pending NULL, 2=apply APPLY jobs)
         required: true
         default: "1"
         type: choice
         options:
           - "1"
           - "2"
-          - "3"
-          - "4"
       waitForCompletion:
         description: Wait for Cloud Run Job execution to finish
         required: true
@@ -48,11 +46,11 @@ jobs:
         run: |
           set -euo pipefail
           MODE="${{ inputs.mode }}"
-          echo "Executing dValidate with mode: -${MODE}"
+          echo "Executing validation.py with mode: -${MODE}"
           EXECUTION_NAME="$(gcloud run jobs execute "${{ env.RUN_JOB_NAME }}" \
             --region "${{ env.GCP_REGION }}" \
             --project "${{ env.GCP_PROJECT_ID }}" \
-            --args "dValidate.py,-${MODE}" \
+            --args "validation.py,-${MODE}" \
             --format='value(metadata.name)')"
           echo "executionName=${EXECUTION_NAME}" >> "$GITHUB_OUTPUT"
           echo "Started execution: ${EXECUTION_NAME}"
