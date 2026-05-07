@@ -2,7 +2,7 @@
 
 Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, with MongoDB as the source of truth.
 
-**Docs:** see **[docs/README.md](docs/README.md)** (CI/CD, GCP inventory, Cloud Run).
+**Docs:** **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** (workflows, LB, secrets) and **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** (done vs optional).
 
 ## What This Repo Does
 
@@ -25,10 +25,11 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
   - **`docker/Dockerfile.api`** (FastAPI `app.py`)
   - **`docker/Dockerfile.frontend`** (Vite UI + nginx for Cloud Run)
   - `docker-compose.yml` (default: validation job; `--profile dev`: API + Redis on :8000 / :6379)
-  - `.github/workflows/deployValidation.yml` (build + deploy job + deploy scheduler)
-  - `.github/workflows/deployApi.yml` / **`deployFrontend.yml`** (Cloud Run API + UI)
-  - `.github/workflows/runValidationManual.yml` (manual one-time run)
-  - **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** (GCP setup guide)
+  - **`.github/workflows/deployment.yml`** — main path: build/deploy API, UI, validation job + Scheduler (approval gate on `main`)
+  - **`.github/workflows/ensurePrereq.yml`** — bootstrap: secrets/images, optional Redis/VPC, optional LB, optional domain mappings
+  - **`.github/workflows/destroyStack.yml`** — teardown (optional LB/Redis/VPC/mappings)
+  - **`.github/workflows/runValidationManual.yml`** — manual Cloud Run job run
+  - **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for full CI/CD detail
 
 ## Environment Variables
 
@@ -120,15 +121,15 @@ docker compose up
 
 ## CI/CD + Cloud Run Job
 
-Automated deploy flow is documented in **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** and **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**. Current GCP/UI/API/Redis status: **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)**. Custom domain (paths vs subdomains): **[docs/CustomDomainCloudRun.md](docs/CustomDomainCloudRun.md)**.
+See **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for workflows, load balancer, and secrets. Status checklist: **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)**.
 
-Current workflow:
+**Typical Actions flow:**
 
-- Build and push Docker image to Artifact Registry (`docker/Dockerfile.validation`)
-- Update/create Cloud Run Job (container entrypoint uses `validation.py`)
-- Ensure Cloud Scheduler runs job daily at `00:00 UTC`
+- Push to **`main`** (or manual **deployment** workflow): path-filtered builds → **`saral-api`**, **`saral-ui`**, validation **job** + daily Scheduler (`00:00 UTC`), plus LB backend sync when API/UI change.
+- **Ensure Prerequisites** when standing up or fixing infra (Redis/VPC/LB/mappings).
+- **Run Validation Manual** for one-off job runs.
 
-After this repo change, run **Deploy Validation** once in GitHub Actions so the live job image and args match `validation.py`.
+Redeploy via GitHub Actions after changing `validation.py` or job/container settings so Cloud Run matches the repo.
 
 ## Security Notes
 

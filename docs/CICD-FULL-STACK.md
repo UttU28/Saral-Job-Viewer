@@ -1,6 +1,6 @@
 # Full-stack CI/CD — Saral Job Viewer
 
-**Status:** Implemented end-to-end — **FastAPI** + **Vite** on **Cloud Run**, **Memorystore Redis**, **validation job** + **Scheduler**, **WIF** from GitHub Actions, **Secret Manager**, **custom domains** (typical: `saral.*` + `saralapi.*` on `thatinsaneguy.com`). No `gcp-sa.json` in images for production paths.
+**Status:** Implemented end-to-end — **FastAPI** + **Vite** on **Cloud Run**, **Memorystore Redis**, **validation job** + **Scheduler**, **WIF** from GitHub Actions, **Secret Manager**, **custom domains** (`saral.*` + `saralapi.*` on `thatinsaneguy.com`), **global HTTPS external load balancer** (optional bootstrap via prereq; DNS **A** to LB IP where used). No `gcp-sa.json` in images for production paths.
 
 ---
 
@@ -9,13 +9,14 @@
 | Area | Details |
 |------|---------|
 | **GitHub → GCP** | OIDC: `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `GCP_API_RUN_SERVICE_ACCOUNT`. |
-| **Validation** | `docker/Dockerfile.validation` → AR `dvalidate`; `deployValidation.yml` updates job + Scheduler; `runValidationManual.yml` for one-off runs. |
-| **API** | `deployApi.yml`, `docker/Dockerfile.api` → **`saral-api`**; secrets: Mongo, JWT, Midhtech, `REDIS_URL`; env: `GCP_*`, `RUN_JOB_NAME`, Redis tuning; optional **`GCP_VPC_CONNECTOR_NAME`**. |
-| **Frontend** | `deployFrontend.yml`, `docker/Dockerfile.frontend`, `nginx.frontend.conf` → **`saral-ui`**; **`VITE_API_URL`** from Secret Manager at build (you maintain the secret). |
-| **Redis** | `provisionMemorystoreRedis.yml`; **`REDIS_URL`**; idempotent secret / IAM updates. |
-| **Domains** | Cloud Run domain mappings + DNS; **`VITE_API_URL`** points at public API hostname. See **`CustomDomainCloudRun.md`** if you add or change hosts. |
-
-**Optional:** uncomment `on.push` in `deployValidation.yml` (or add for API/UI) for merge-to-main deploys.
+| **Main deploy** | **`deployment.yml`** — `detectChanges` → **`production-approval`** (runs on every **`workflow_dispatch`**, or on **`push`** when any path filter matches) → **`deployApi`** / **`deployFrontend`** / **`deployValidation`** in **parallel** (each runs only if its paths changed) → **`ensureGlobalLoadBalancer`** after API **and** UI deploy jobs finish (success or skipped; waits for both so LB never precedes a failed deploy). LB does **not** wait on validation deploy (no shared resource). |
+| **Prereq / infra** | **`ensurePrereq.yml`** — enable APIs, verify secrets + Artifact Registry `:latest` images; optional Memorystore + VPC connector; optional Cloud Run **domain mappings**. Does **not** configure the global LB (that runs from **`deployment.yml`** after services exist). |
+| **Destroy** | **`destroyStack.yml`** — validate **`DESTROY_SARAL_STACK`** → **`production-approval`** environment → optional LB teardown → parallel Cloud Run **API** / **UI** jobs → validation job + Scheduler → optional domain mappings → Redis then VPC (single ordered job); optional **`deleteGlobalLoadBalancer`**. |
+| **Validation** | `docker/Dockerfile.validation` → AR **`dvalidate`**; image/job updates live in **`deployment.yml`**; **`runValidationManual.yml`** for one-off job runs with mode + wait. |
+| **API** | **`deployment.yml`** + `docker/Dockerfile.api` → **`saral-api`**; secrets: Mongo, JWT, Midhtech, `REDIS_URL`; env: `GCP_*`, `RUN_JOB_NAME`, Redis tuning; optional **`GCP_VPC_CONNECTOR_NAME`** (repo variable). |
+| **Frontend** | **`deployment.yml`** + `docker/Dockerfile.frontend`, `nginx.frontend.conf` → **`saral-ui`**; **`VITE_API_URL`** from Secret Manager at build. |
+| **Redis** | Created/maintained via **`ensurePrereq.yml`** (`ensureRedisInfra`); **`REDIS_URL`** in Secret Manager. Standalone `provisionMemorystoreRedis.yml` removed. |
+| **Domains & LB** | Registrar DNS (**A** → LB IP when using global LB); **`VITE_API_URL`** → public API URL (typically `https://saralapi…`). Cloud Run domain mappings optional via **`ensurePrereq`** (`ensureDomainMappings`). LB resource names and flow: **Global Load Balancer** section below. |
 
 ---
 
@@ -23,105 +24,75 @@
 
 | Workflow | Role |
 |----------|------|
-| `deployValidation.yml` | Job image + Cloud Scheduler |
-| `deployApi.yml` | **`saral-api`** (does not write `VITE_API_URL`) |
-| `deployFrontend.yml` | **`saral-ui`** |
-| `provisionMemorystoreRedis.yml` | Connector + `REDIS_URL` |
-| `runValidationManual.yml` | Manual job execution |
+| **`deployment.yml`** | Primary CD: changed-path builds; approval gate; deploy API, UI, validation job + Scheduler; sync LB NEG ↔ backends when applicable. |
+| **`ensurePrereq.yml`** | Bootstrap: APIs, secrets/images checks; optional Redis/VPC; optional domain mappings (no LB here). |
+| **`destroyStack.yml`** | Teardown: confirm phrase → **`production-approval`** → optional LB → **parallel** API/UI deletes → job + Scheduler → optional mappings → Redis then VPC (ordered); summary job. |
+| **`runValidationManual.yml`** | Manual execution of `saral-dvalidate-job` (mode + optional wait). |
 
 ---
 
 ## Runtime map
 
 | Component | GCP | Notes |
-|-----------|-----|--------|
-| Backend | Cloud Run **`saral-api`** | HTTP; attach runtime SA; VPC if Memorystore |
+|-----------|-----|-------|
+| Backend | Cloud Run **`saral-api`** | HTTP; runtime SA; VPC connector if Memorystore |
 | Frontend | Cloud Run **`saral-ui`** | Static nginx on port 8080 |
 | Redis | Memorystore + VPC connector | `REDIS_URL` secret |
-| Validation | Cloud Run **job** | Scheduler + manual; Mongo secrets |
-| TLS | Managed certs | Per Cloud Run domain mapping or `*.run.app` |
+| Validation | Cloud Run **job** `saral-dvalidate-job` | Scheduler + manual |
+| TLS | Managed certs | At **LB** (SAN cert) and/or **Cloud Run domain mappings** |
+| Edge | **Global HTTPS LB** (optional but implemented) | Host routing → serverless NEGs → Run |
 
 ---
 
-## Add Global Load Balancer (recommended)
+## Global Load Balancer (implemented)
 
-You can add a Google Cloud HTTPS Load Balancer in front of UI/API for cleaner routing, centralized TLS/WAF, and better traffic orchestration.
+Implemented in **`deployment.yml`** (`ensureGlobalLoadBalancer` job after **`deployApi`** / **`deployFrontend`**) and **`destroyStack.yml`** (`deleteGlobalLoadBalancer`):
 
-### Target design
+- Single global IPv4 (**`sjv-global-lb-ip`**) with HTTPS (:443) + HTTP (:80) forwarding rules.
+- Target proxies + **`sjv-host-routing`** URL map: **`saral.thatinsaneguy.com`** → UI backend + NEG → **`saral-ui`**; **`saralapi.thatinsaneguy.com`** → API backend + NEG → **`saral-api`**.
+- Google-managed certificate **`sjv-managed-cert`** on the HTTPS proxy.
 
-- Single external HTTPS LB entrypoint
-- Host/path routing:
-  - `saral.thatinsaneguy.com` -> UI Cloud Run service
-  - `saralapi.thatinsaneguy.com` (or `/api/*`) -> API Cloud Run service
-- Google-managed SSL cert(s) at LB
-- Optional Cloud Armor policy for IP/rate/WAF controls
-- Optional CDN for UI paths
+**CI/CD**
 
-### Why this helps
+- Create/update LB: end of **`deployment.yml`**, job **`ensureGlobalLoadBalancer`**, after **`deployApi`** / **`deployFrontend`** (so Cloud Run exists). Runs when **`api`** or **`frontend`** paths changed, or on **`workflow_dispatch`** when input **`ensureGlobalLoadBalancer`** is checked (default on).
+- Remove LB: **`destroyStack.yml`** with **`deleteGlobalLoadBalancer`**.
 
-- Central policy point (TLS, redirects, security headers, WAF)
-- Easier future multi-service routing
-- Better zero-downtime traffic cutovers by changing LB backend targets
+**Optional later:** Cloud Armor, Cloud CDN, remove redundant Cloud Run domain mappings after LB-only cutover.
 
-### Migration plan (safe)
-
-1. Keep existing Cloud Run domain mappings active.
-2. Create LB + serverless NEGs for `saral-ui` and `saral-api`.
-3. Validate LB with temporary hostnames.
-4. Move DNS to LB IP.
-5. After stable traffic period, optionally remove direct Cloud Run domain mappings.
-
-### CI/CD orchestration impact
-
-- Keep existing deploy workflows (`deployApi.yml`, `deployFrontend.yml`, `deployValidation.yml`).
-- Add one new infra workflow for LB config:
-  - create/update serverless NEGs
-  - URL map + target proxy + cert + forwarding rule
-  - Cloud Armor policy attach (optional)
-- Deploy order for app updates can remain:
-  - deploy API/UI image first
-  - LB unchanged unless routing/policy changed
-
-### Do we need a diff script?
-
-No mandatory diff script is needed.
-
-- Existing path-based deploy selection + workflow gating is enough for app deploys.
-- For LB infra changes, use:
-  - dedicated workflow on `.github/workflows/**` or `infra/**` path changes, or
-  - manual `workflow_dispatch` for explicit control.
+**Typical GCP object names** (must match workflows if you rename): global IP `sjv-global-lb-ip`; cert `sjv-managed-cert`; NEGs `sjv-ui-neg` / `sjv-api-neg`; backends `sjv-ui-bes` / `sjv-api-bes`; URL map `sjv-host-routing`; proxies `sjv-https-proxy` / `sjv-http-proxy`; forwarding rules `sjv-https-fr` / `sjv-http-fr`.
 
 ---
 
 ## Secrets (summary)
 
-- **Secret Manager:** `MONGODB_URI`, `MONGODB_DATABASE` (env on services), `MIDHTECH_*`, `JWT_SECRET`, `REDIS_URL`, `VITE_API_URL`.
-- **GitHub:** WIF + three secrets above; **Variable** `GCP_VPC_CONNECTOR_NAME` when using Memorystore from API.
+- **Secret Manager:** `MONGODB_URI`, `MIDHTECH_*`, `JWT_SECRET`, `REDIS_URL`, `VITE_API_URL`; Mongo DB name also set as env on services in deploy scripts.
+- **GitHub:** WIF secrets above; **Variable** `GCP_VPC_CONNECTOR_NAME` when API uses Memorystore via VPC.
 
 ---
 
-## CI/CD checklist (mainline — all done)
+## CI/CD checklist (mainline)
 
 **GCP**
 
-- [x] APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute as needed.
+- [x] APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute, Certificate Manager (as needed for LB).
 - [x] Artifact Registry `saral-job-viewer-cr`.
-- [x] Service accounts + IAM (deploy, runtime, `actAs`, Secret Manager, Run job, Redis/VPC provisioning).
+- [x] Service accounts + IAM (deploy, runtime, `actAs`, Secret Manager, Run job).
 - [x] Secrets + Cloud Run bindings.
 - [x] Redis + connector + `REDIS_URL`.
-- [x] Custom domain DNS + mappings + HTTPS (where you use custom hosts).
+- [x] Custom DNS + HTTPS (LB and/or domain mappings).
+- [x] Global HTTPS LB + host routing (where prereq/manual setup applied).
 
 **GitHub**
 
 - [x] OIDC + repository secrets/variables.
-- [x] All workflows listed above.
-- [ ] Optional: push triggers, staging, approval gates.
-- [ ] Optional: add LB infra workflow (serverless NEG + URL map + cert + forwarding rule).
+- [x] **`deployment.yml`**, **`ensurePrereq.yml`**, **`destroyStack.yml`**, **`runValidationManual.yml`**.
+- [x] Approval gate via **`production-approval`** on **`deployment.yml`** when filtered paths change.
+- [ ] Optional: staging env, stricter path triggers, Cloud Armor/CDN automation.
 
 **App**
 
-- [x] `VITE_API_URL` at frontend build time (manual secret updates + run `deployFrontend` when it changes).
-- [x] Backend env/secrets via `deployApi` / job definitions.
+- [x] `VITE_API_URL` at frontend build time (update secret + redeploy frontend when it changes).
+- [x] Backend env/secrets via deploy steps in **`deployment.yml`**.
 
 ---
 
@@ -133,12 +104,12 @@ flowchart TB
     U[Browser]
   end
   subgraph DNS
-    D[Domain + TLS]
+    D[DNS A records]
   end
   subgraph GCP["GCP"]
-    LB[HTTPS Load Balancer]
-    FE[Cloud Run: UI]
-    API[Cloud Run: API]
+    LB[Global HTTPS LB]
+    FE[Cloud Run UI]
+    API[Cloud Run API]
     JOB[Cloud Run Job]
     R[(Redis)]
     SM[Secret Manager]
@@ -155,9 +126,8 @@ flowchart TB
   FE -->|HTTPS| API
   API --> R
   API --> M
-  API --> JOB
-  JOB --> M
   SCH --> JOB
+  JOB --> M
   API -.-> SM
   JOB -.-> SM
   AR -.-> FE
@@ -169,11 +139,10 @@ flowchart TB
 
 ## References
 
-- **`PROJECT-STATUS-CHECKLIST.md`** — line-item status + optional polish.
-- **`CustomDomainCloudRun.md`** — domain verification, mappings, DNS.
-- **`GCP-INVENTORY-WINDOWS.md`** — re-scan commands.
-- `gcpCloudRun.md`, `docker-compose.yml`, Dockerfiles under `docker/`.
+- **`PROJECT-STATUS-CHECKLIST.md`** — line-item status + optional polish (same folder); **keep in sync** with workflow changes.
+- **Workflows:** `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`.
+- **Local:** `docker-compose.yml`, `docker/Dockerfile.*`.
 
 ---
 
-*Last updated: 2026-05 — production CI/CD path complete; optional items are automation / tuning only.*
+*Last updated: 2026-05 — docs trimmed to `docs/*.md` pair + workflows; update both markdown files when CI/CD or infra changes.*

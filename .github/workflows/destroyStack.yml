@@ -1,5 +1,7 @@
 name: Destroy All Saral Stack (Cloud Run + Redis + Scheduler + optional LB)
 
+# Job DAG: validateConfirm → approvalGate → destroyLoadBalancer (optional) → destroyCloudRunApi ∥ destroyCloudRunUi → destroyValidationStack → destroyDomainMappings (optional) → destroyRedisThenVpc → destroySummary (always)
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,7 +10,7 @@ on:
         required: true
         type: string
       deleteGlobalLoadBalancer:
-        description: Delete global HTTPS LB (forwarding rules, proxies, URL map, backends, NEGs, cert, IP) — matches ensurePrereq resource names
+        description: Delete global HTTPS LB — resource names match deployment.yml ensureGlobalLoadBalancer
         required: true
         default: false
         type: boolean
@@ -52,12 +54,9 @@ env:
   LB_HTTP_FWD_RULE_NAME: sjv-http-fr
 
 jobs:
-  destroy:
+  validateConfirm:
+    name: Validate confirmation phrase
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-
     steps:
       - name: Confirm destructive action
         shell: bash
@@ -67,7 +66,27 @@ jobs:
             echo "Confirmation text mismatch. Type exactly: DESTROY_SARAL_STACK"
             exit 1
           fi
+          echo "Confirmation phrase OK."
 
+  approvalGate:
+    name: Approval Required (Destroy)
+    runs-on: ubuntu-latest
+    needs: validateConfirm
+    environment:
+      name: production-approval
+    steps:
+      - name: Human approval recorded
+        run: echo "Destroy approved. Proceeding with teardown jobs."
+
+  destroyLoadBalancer:
+    name: Destroy global HTTPS LB
+    runs-on: ubuntu-latest
+    needs: approvalGate
+    if: inputs.deleteGlobalLoadBalancer
+    permissions:
+      contents: read
+      id-token: write
+    steps:
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -77,8 +96,7 @@ jobs:
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Delete global HTTPS load balancer (optional)
-        if: inputs.deleteGlobalLoadBalancer
+      - name: Delete global HTTPS load balancer
         shell: bash
         run: |
           set -euo pipefail
@@ -174,21 +192,89 @@ jobs:
           delete_ip
           echo "Global LB teardown finished. Remove or update DNS A records for saral/saralapi if they still point at the old IP."
 
-      - name: Delete Cloud Run services
+  destroyCloudRunApi:
+    name: Destroy Cloud Run API
+    runs-on: ubuntu-latest
+    needs: [approvalGate, destroyLoadBalancer]
+    if: ${{ needs.approvalGate.result == 'success' && (needs.destroyLoadBalancer.result == 'success' || needs.destroyLoadBalancer.result == 'skipped') }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete Cloud Run API service
         shell: bash
         run: |
           set -euo pipefail
-          for SVC in "${{ env.API_SERVICE_NAME }}" "${{ env.UI_SERVICE_NAME }}"; do
-            if gcloud run services describe "$SVC" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
-              gcloud run services delete "$SVC" \
-                --project "${{ env.GCP_PROJECT_ID }}" \
-                --region "${{ env.GCP_REGION }}" \
-                --quiet
-              echo "Deleted service: $SVC"
-            else
-              echo "Service not found (skip): $SVC"
-            fi
-          done
+          SVC="${{ env.API_SERVICE_NAME }}"
+          if gcloud run services describe "$SVC" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud run services delete "$SVC" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted service: $SVC"
+          else
+            echo "Service not found (skip): $SVC"
+          fi
+
+  destroyCloudRunUi:
+    name: Destroy Cloud Run UI
+    runs-on: ubuntu-latest
+    needs: [approvalGate, destroyLoadBalancer]
+    if: ${{ needs.approvalGate.result == 'success' && (needs.destroyLoadBalancer.result == 'success' || needs.destroyLoadBalancer.result == 'skipped') }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete Cloud Run UI service
+        shell: bash
+        run: |
+          set -euo pipefail
+          SVC="${{ env.UI_SERVICE_NAME }}"
+          if gcloud run services describe "$SVC" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud run services delete "$SVC" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted service: $SVC"
+          else
+            echo "Service not found (skip): $SVC"
+          fi
+
+  destroyValidationStack:
+    name: Destroy validation job + Scheduler
+    runs-on: ubuntu-latest
+    needs: [approvalGate, destroyLoadBalancer, destroyCloudRunApi, destroyCloudRunUi]
+    if: ${{ needs.approvalGate.result == 'success' && (needs.destroyLoadBalancer.result == 'success' || needs.destroyLoadBalancer.result == 'skipped') && needs.destroyCloudRunApi.result == 'success' && needs.destroyCloudRunUi.result == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Delete Cloud Run job
         shell: bash
@@ -218,15 +304,31 @@ jobs:
             echo "Scheduler job not found (skip): ${{ env.SCHEDULER_JOB_NAME }}"
           fi
 
+  destroyDomainMappings:
+    name: Destroy Cloud Run domain mappings
+    runs-on: ubuntu-latest
+    needs: [approvalGate, destroyLoadBalancer, destroyCloudRunApi, destroyCloudRunUi, destroyValidationStack]
+    if: ${{ inputs.deleteDomainMappings && needs.approvalGate.result == 'success' && (needs.destroyLoadBalancer.result == 'success' || needs.destroyLoadBalancer.result == 'skipped') && needs.destroyCloudRunApi.result == 'success' && needs.destroyCloudRunUi.result == 'success' && needs.destroyValidationStack.result == 'success' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
       - name: Ensure gcloud beta commands are installed
-        if: inputs.deleteDomainMappings
         shell: bash
         run: |
           set -euo pipefail
           gcloud components install beta --quiet
 
-      - name: Delete custom domain mappings (optional)
-        if: inputs.deleteDomainMappings
+      - name: Delete custom domain mappings
         shell: bash
         run: |
           set -euo pipefail
@@ -243,7 +345,29 @@ jobs:
             fi
           done
 
-      - name: Delete Memorystore Redis instance (optional)
+  destroyRedisThenVpc:
+    name: Destroy Redis then VPC connector
+    runs-on: ubuntu-latest
+    needs: [approvalGate, destroyLoadBalancer, destroyCloudRunApi, destroyCloudRunUi, destroyValidationStack, destroyDomainMappings]
+    if: ${{ needs.approvalGate.result == 'success' && (needs.destroyLoadBalancer.result == 'success' || needs.destroyLoadBalancer.result == 'skipped') && needs.destroyCloudRunApi.result == 'success' && needs.destroyCloudRunUi.result == 'success' && needs.destroyValidationStack.result == 'success' && (needs.destroyDomainMappings.result == 'success' || needs.destroyDomainMappings.result == 'skipped') }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Skip Redis/VPC (both toggles off)
+        if: ${{ !inputs.deleteRedis && !inputs.deleteVpcConnector }}
+        run: echo "Skipping Redis and VPC teardown (inputs disabled)."
+
+      - name: Delete Memorystore Redis (optional)
         if: inputs.deleteRedis
         shell: bash
         run: |
@@ -273,10 +397,42 @@ jobs:
             echo "VPC connector not found (skip): ${{ env.VPC_CONNECTOR_NAME }}"
           fi
 
-      - name: Summary
+  destroySummary:
+    name: Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - validateConfirm
+      - approvalGate
+      - destroyLoadBalancer
+      - destroyCloudRunApi
+      - destroyCloudRunUi
+      - destroyValidationStack
+      - destroyDomainMappings
+      - destroyRedisThenVpc
+    steps:
+      - name: Workflow outcome
         shell: bash
+        env:
+          VALIDATE: ${{ needs.validateConfirm.result }}
+          APPROVAL: ${{ needs.approvalGate.result }}
+          LB: ${{ needs.destroyLoadBalancer.result }}
+          API: ${{ needs.destroyCloudRunApi.result }}
+          UI: ${{ needs.destroyCloudRunUi.result }}
+          VAL: ${{ needs.destroyValidationStack.result }}
+          DM: ${{ needs.destroyDomainMappings.result }}
+          REDIS_VPC: ${{ needs.destroyRedisThenVpc.result }}
         run: |
-          echo "Destroy workflow completed."
-          echo "Deleted where present: API/UI services, validation job, scheduler."
-          echo "Optional deletions based on inputs: global HTTPS load balancer, domain mappings, Redis instance, VPC connector."
-
+          set -euo pipefail
+          echo "=== Destroy workflow finished ==="
+          echo "validateConfirm: ${VALIDATE}"
+          echo "approvalGate (production-approval): ${APPROVAL}"
+          echo "destroyLoadBalancer: ${LB}"
+          echo "destroyCloudRunApi: ${API}"
+          echo "destroyCloudRunUi: ${UI}"
+          echo "destroyValidationStack: ${VAL}"
+          echo "destroyDomainMappings: ${DM}"
+          echo "destroyRedisThenVpc: ${REDIS_VPC}"
+          echo ""
+          echo "Sequence: typed phrase → production-approval → optional LB → API + UI (parallel) → job + scheduler → optional mappings → optional Redis then VPC (one job)."
+          echo "Skipped jobs are normal when inputs disable optional teardown."

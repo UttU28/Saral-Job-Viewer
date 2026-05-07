@@ -1,5 +1,7 @@
 name: Validation Manual Run (Cloud Run Job)
 
+# Single job: auth → gcloud → execute job → optional wait loop (depends on executeJob output).
+
 on:
   workflow_dispatch:
     inputs:
