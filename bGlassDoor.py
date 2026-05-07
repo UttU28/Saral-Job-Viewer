@@ -24,7 +24,6 @@ from utils.startChrome import (
 )
 from utils.dataManager import loadKnownJobIdsByPlatform
 from utils.fileManagement import (
-    DEFAULT_SCRAPER_SEARCH_KEYWORDS,
     inferPlatformFromPath,
     loadJobsDocumentOrEmpty,
     mergeNewJobsIntoDocument,
@@ -37,7 +36,10 @@ load_dotenv()
 
 
 def getDefaultGlassdoorSearchParams() -> dict[str, str]:
-    primary = DEFAULT_SCRAPER_SEARCH_KEYWORDS[0]
+    keywords = resolveScraperSearchKeywords()
+    if not keywords:
+        raise ValueError("No scraper search keywords found in MongoDB.")
+    primary = keywords[0]
     return {
         "location": "united-states",
         "role": primary,
@@ -68,7 +70,6 @@ def buildDefaultGlassdoorSearchUrl(params: dict[str, str] | None = None) -> str:
         url += "?" + urlencode(query)
     return url
 
-defaultGlassdoorSearchUrl = buildDefaultGlassdoorSearchUrl()
 GLASSDOOR_SOURCE_PATH = resolveOutputJsonPath("glassdoor.source")
 
 
@@ -84,14 +85,14 @@ def resolveGlassdoorSearchUrl(cliUrl: str | None = None) -> str:
     """Optional URL arg, else default Glassdoor search URL."""
     if cliUrl and str(cliUrl).strip():
         return str(cliUrl).strip()
-    return defaultGlassdoorSearchUrl
+    return buildDefaultGlassdoorSearchUrl()
 
 
 def resolveGlassdoorSearchPhases(cliUrl: str | None = None) -> list[tuple[str, str]]:
     """
     Each phase is (searchUrl, label). One phase finishes list + detail scrape
     before the next. Optional cliUrl forces a single phase.
-    Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
+    Keyword list comes from MongoDB scraper settings.
     """
     if cliUrl and str(cliUrl).strip():
         return [(str(cliUrl).strip(), "cli")]

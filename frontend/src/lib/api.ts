@@ -216,8 +216,14 @@ export type AdminJobStatusSummaryResponse = {
 export type AdminJobAction =
   | "classify_all_pending_null_jobs"
   | "delete_unwanted_classified_jobs"
+  | "flush_db"
   | "push_apply_jobs"
   | "push_apply_jobs_then_cleanup";
+
+export type AdminScraperKeywordsResponse = {
+  keywords: string[];
+  count: number;
+};
 
 export type JobDecisionProfile = {
   name: string;
@@ -356,7 +362,12 @@ export type AdminJobActionResponse = {
   action: AdminJobAction;
   message: string;
   deletedCount?: number;
+  pastDeletedCount?: number;
   cloudRun?: AdminJobCloudRunInfo;
+  flushed?: {
+    jobDataDeleted: number;
+    pastDataDeleted: number;
+  };
 };
 
 export function runAdminJobAction(action: AdminJobAction): Promise<AdminJobActionResponse> {
@@ -366,5 +377,17 @@ export function runAdminJobAction(action: AdminJobAction): Promise<AdminJobActio
 export function setUserAdminStatus(userId: string, isAdmin: boolean): Promise<{ ok: boolean }> {
   return postJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/set-admin`, {
     isAdmin,
+  });
+}
+
+export function fetchAdminScraperKeywords(): Promise<AdminScraperKeywordsResponse> {
+  return fetchJson<AdminScraperKeywordsResponse>("/api/admin/scraper-keywords");
+}
+
+export function saveAdminScraperKeywords(
+  keywords: string[],
+): Promise<{ ok: boolean; keywords: string[]; count: number }> {
+  return postJson<{ ok: boolean; keywords: string[]; count: number }>("/api/admin/scraper-keywords", {
+    keywords,
   });
 }

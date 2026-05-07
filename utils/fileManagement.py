@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,6 +9,7 @@ from .dataManager import (
     appendScrapeLog,
     loadJobsByPlatform,
     loadKnownJobIdsByPlatform,
+    loadScraperSearchKeywords,
     recordPastData,
     upsertJobs,
 )
@@ -18,20 +18,9 @@ from .urlCleaner import cleanUrl, normalizeCompanyName
 # Project root = parent of utils/ folder.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-DEFAULT_SCRAPER_SEARCH_KEYWORDS: list[str] = ["devops"]
-
-
 def resolveScraperSearchKeywords() -> list[str]:
-    """
-    Comma- or pipe-separated terms from env SCRAPER_SEARCH_KEYWORDS.
-    Same list is used by all platform scrapers for sequential keyword phases.
-    """
-    raw = os.getenv("SCRAPER_SEARCH_KEYWORDS")
-    if isinstance(raw, str) and raw.strip():
-        parts = [p.strip() for p in re.split(r"[,|]", raw) if p.strip()]
-        if parts:
-            return parts
-    return list(DEFAULT_SCRAPER_SEARCH_KEYWORDS)
+    """Keyword list used by all platform scrapers for sequential phases."""
+    return loadScraperSearchKeywords()
 
 
 CORE_JOB_FIELDS: tuple[str, ...] = (

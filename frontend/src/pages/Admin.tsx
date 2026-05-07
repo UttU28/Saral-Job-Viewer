@@ -1,14 +1,25 @@
-import { useEffect, useState } from "react";
-import { CircleX, Flame, Loader2, RefreshCw, Shield, ShieldCheck, ShieldX } from "lucide-react";
+import { useEffect, useReducer, useState } from "react";
+import { CircleX, Flame, Loader2, RefreshCw, Shield, ShieldCheck, ShieldX, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { Footer } from "@/components/Footer";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   runAdminJobAction,
   setUserAdminStatus,
+  saveAdminScraperKeywords,
   type AdminJobAction,
   type CloudRunExecutionRow,
 } from "@/lib/api";
@@ -16,10 +27,12 @@ import { formatClientError } from "@/lib/api";
 import {
   useAdminCloudRunExecutionsQuery,
   useAdminJobStatusSummaryQuery,
+  useAdminScraperKeywordsQuery,
   useAdminUsersQuery,
 } from "@/hooks/use-jobs";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 function parseExecutionInstant(raw: string): Date | null {
   const s = (raw || "").trim();
@@ -88,6 +101,7 @@ function cloudRunExecutionDisplayId(shortName: string, executionName: string): s
 }
 
 const CLOUD_RUN_EXECUTIONS_INITIAL = 4;
+const CLOUD_RUN_ERROR_LIMIT = 5;
 
 function executionStateStyles(state: string): string {
   switch (state) {
@@ -104,15 +118,69 @@ function executionStateStyles(state: string): string {
   }
 }
 
+type AdminActionDialogConfig = {
+  action: AdminJobAction;
+  runTitle: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  destructive?: boolean;
+};
+
 export default function Admin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [cloudRunPollingEnabled, setCloudRunPollingEnabled] = useState(true);
+  const [cloudRunErrorCount, setCloudRunErrorCount] = useState(0);
+  const [lastCloudRunErrorAt, setLastCloudRunErrorAt] = useState(0);
   const adminUsersQuery = useAdminUsersQuery(Boolean(user?.isAdmin));
   const adminJobStatusQuery = useAdminJobStatusSummaryQuery(Boolean(user?.isAdmin));
-  const cloudRunExecQuery = useAdminCloudRunExecutionsQuery(Boolean(user?.isAdmin));
+  const cloudRunExecQuery = useAdminCloudRunExecutionsQuery(
+    Boolean(user?.isAdmin) && cloudRunPollingEnabled,
+  );
+  const adminScraperKeywordsQuery = useAdminScraperKeywordsQuery(Boolean(user?.isAdmin));
   const [cloudRunExecutionsExpanded, setCloudRunExecutionsExpanded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<AdminJobAction | null>(null);
+  const [keywordDrafts, setKeywordDrafts] = useState<string[]>([]);
+  const [newKeywordDraft, setNewKeywordDraft] = useState("");
+  const [keywordMutationInFlight, setKeywordMutationInFlight] = useState(false);
+  const [adminActionDialog, setAdminActionDialog] = useState<AdminActionDialogConfig | null>(null);
+  const [, forceCloudRunTick] = useReducer((value: number) => value + 1, 0);
+
+  const cloudRunExecutionsAll = cloudRunExecQuery.data?.executions ?? [];
+  const hasRunningCloudExecution = cloudRunExecutionsAll.some((r) => r.state === "RUNNING");
+
+  useEffect(() => {
+    if (!hasRunningCloudExecution) return;
+    const id = globalThis.setInterval(() => forceCloudRunTick(), 1000);
+    return () => clearInterval(id);
+  }, [hasRunningCloudExecution]);
+
+  useEffect(() => {
+    if (!adminScraperKeywordsQuery.data) return;
+    setKeywordDrafts(adminScraperKeywordsQuery.data.keywords ?? []);
+  }, [adminScraperKeywordsQuery.data]);
+
+  useEffect(() => {
+    if (!cloudRunExecQuery.isError) return;
+    if (!cloudRunExecQuery.errorUpdatedAt) return;
+    if (cloudRunExecQuery.errorUpdatedAt === lastCloudRunErrorAt) return;
+    setLastCloudRunErrorAt(cloudRunExecQuery.errorUpdatedAt);
+    setCloudRunErrorCount((prev) => {
+      const next = prev + 1;
+      if (next >= CLOUD_RUN_ERROR_LIMIT) {
+        setCloudRunPollingEnabled(false);
+      }
+      return next;
+    });
+  }, [cloudRunExecQuery.isError, cloudRunExecQuery.errorUpdatedAt, lastCloudRunErrorAt]);
+
+  useEffect(() => {
+    if (!cloudRunExecQuery.isSuccess) return;
+    if (cloudRunErrorCount === 0) return;
+    setCloudRunErrorCount(0);
+  }, [cloudRunExecQuery.isSuccess, cloudRunErrorCount]);
 
   if (!user?.isAdmin) {
     return (
@@ -139,15 +207,6 @@ export default function Admin() {
   const statusSummary = adminJobStatusQuery.data;
   const mergedRejectedCount =
     (statusSummary?.rejected ?? 0) + (statusSummary?.doNotApply ?? 0) + (statusSummary?.existing ?? 0);
-
-  const cloudRunExecutionsAll = cloudRunExecQuery.data?.executions ?? [];
-  const hasRunningCloudExecution = cloudRunExecutionsAll.some((r) => r.state === "RUNNING");
-  const [, setCloudRunNowTick] = useState(0);
-  useEffect(() => {
-    if (!hasRunningCloudExecution) return;
-    const id = window.setInterval(() => setCloudRunNowTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [hasRunningCloudExecution]);
 
   const cloudRunExecutionsVisible =
     cloudRunExecutionsExpanded || cloudRunExecutionsAll.length <= CLOUD_RUN_EXECUTIONS_INITIAL
@@ -184,6 +243,11 @@ export default function Admin() {
         await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
       }
+      if (action === "flush_db") {
+        await queryClient.invalidateQueries({ queryKey: ["adminJobStatusSummary"] });
+        await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
+        await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
+      }
       if (result.cloudRun?.executionName) {
         await queryClient.invalidateQueries({ queryKey: ["adminCloudRunExecutions"] });
       }
@@ -209,6 +273,51 @@ export default function Admin() {
     } finally {
       setRunningAction(null);
     }
+  };
+
+  const openAdminActionDialog = (config: AdminActionDialogConfig) => {
+    setAdminActionDialog(config);
+  };
+
+  const saveKeywordsNow = async (nextKeywords: string[]) => {
+    setKeywordMutationInFlight(true);
+    try {
+      const result = await saveAdminScraperKeywords(nextKeywords);
+      setKeywordDrafts(result.keywords);
+      await queryClient.invalidateQueries({ queryKey: ["adminScraperKeywords"] });
+      return true;
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Could not save scraper keywords",
+        description: formatClientError(error, "Request failed"),
+      });
+      return false;
+    } finally {
+      setKeywordMutationInFlight(false);
+    }
+  };
+
+  const onDeleteKeyword = async (index: number) => {
+    const nextKeywords = keywordDrafts.filter((_, i) => i !== index).map((value) => value.trim()).filter(Boolean);
+    await saveKeywordsNow(nextKeywords);
+  };
+
+  const onAddKeyword = async () => {
+    const next = newKeywordDraft.trim();
+    if (!next) return;
+    if (keywordDrafts.some((item) => item.trim().toLowerCase() === next.toLowerCase())) {
+      toast({
+        variant: "destructive",
+        title: "Keyword already exists",
+        description: next,
+      });
+      return;
+    }
+    const nextKeywords = [...keywordDrafts, next].map((value) => value.trim()).filter(Boolean);
+    const ok = await saveKeywordsNow(nextKeywords);
+    if (!ok) return;
+    setNewKeywordDraft("");
   };
 
   return (
@@ -265,7 +374,9 @@ export default function Admin() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm sm:text-base font-semibold text-foreground">Job status overview</h3>
-                    <p className="text-xs text-muted-foreground">Top 4 counters</p>
+                    <p className="text-xs text-muted-foreground">
+                      Past Data: {statusSummary?.pastDataRows ?? 0}
+                    </p>
                   </div>
                   {adminJobStatusQuery.isLoading ? (
                     <div className="h-24 flex items-center justify-center text-muted-foreground">
@@ -303,9 +414,9 @@ export default function Admin() {
 
                 <div className="space-y-3 border-t border-border/60 pt-4">
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    Run bulk admin actions for pending-classification, direct delete cleanup, and APPLY push flow.
+                    Run bulk admin actions for pending-classification, direct delete cleanup, full DB flush, and APPLY push flow.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                     <div className="space-y-2 rounded-lg border border-border/60 bg-background/55 p-3">
                       <p className="text-xs text-muted-foreground leading-relaxed">
                         Classifies every job that still has a NULL or pending status so decisions are up to date.
@@ -317,10 +428,14 @@ export default function Admin() {
                         className="w-full"
                         disabled={Boolean(runningAction)}
                         onClick={() =>
-                          onRunAdminAction(
-                            "classify_all_pending_null_jobs",
-                            "Classify pending null jobs",
-                          )
+                          openAdminActionDialog({
+                            action: "classify_all_pending_null_jobs",
+                            runTitle: "Classify pending null jobs",
+                            title: "Run Cloud Run classify job?",
+                            description:
+                              "This will trigger a Cloud Run container job for pending classification. It can take some time to execute and finish.",
+                            confirmLabel: "Yes, run classify job",
+                          })
                         }
                       >
                         {runningAction === "classify_all_pending_null_jobs" ? (
@@ -341,16 +456,50 @@ export default function Admin() {
                         className="w-full"
                         disabled={Boolean(runningAction)}
                         onClick={() =>
-                          onRunAdminAction(
-                            "delete_unwanted_classified_jobs",
-                            "Delete unwanted classified jobs",
-                          )
+                          openAdminActionDialog({
+                            action: "delete_unwanted_classified_jobs",
+                            runTitle: "Delete unwanted classified jobs",
+                            title: "Delete unwanted jobs?",
+                            description:
+                              "This will delete non-APPLY classified jobs and also clean pastData rows older than 48 hours.",
+                            confirmLabel: "Yes, delete unwanted jobs",
+                            destructive: true,
+                          })
                         }
                       >
                         {runningAction === "delete_unwanted_classified_jobs" ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" aria-hidden />
                         ) : null}
                         Delete Unwanted Jobs
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-border/60 bg-background/55 p-3">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Flushes all rows from jobData and pastData immediately. Use only when you want a full reset.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="w-full"
+                        disabled={Boolean(runningAction)}
+                        onClick={() =>
+                          openAdminActionDialog({
+                            action: "flush_db",
+                            runTitle: "Flush database",
+                            title: "Flush all jobs from database?",
+                            description:
+                              "This will permanently delete all rows from both jobData and pastData. This action cannot be undone.",
+                            confirmLabel: "Yes, flush all jobs",
+                            destructive: true,
+                          })
+                        }
+                      >
+                        {runningAction === "flush_db" ? (
+                          <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" aria-hidden />
+                        ) : null}
+                        Flush the DB
                       </Button>
                     </div>
 
@@ -364,10 +513,14 @@ export default function Admin() {
                         className="w-full"
                         disabled={Boolean(runningAction)}
                         onClick={() =>
-                          onRunAdminAction(
-                            "push_apply_jobs",
-                            "Push APPLY jobs",
-                          )
+                          openAdminActionDialog({
+                            action: "push_apply_jobs",
+                            runTitle: "Push APPLY jobs",
+                            title: "Run Cloud Run apply job?",
+                            description:
+                              "This will trigger a Cloud Run container job to process APPLY jobs. It can take some time to execute and finish.",
+                            confirmLabel: "Yes, run apply job",
+                          })
                         }
                       >
                         {runningAction === "push_apply_jobs" ? (
@@ -396,7 +549,12 @@ export default function Admin() {
                   size="sm"
                   className="shrink-0 self-start"
                   disabled={cloudRunExecQuery.isFetching}
-                  onClick={() => queryClient.invalidateQueries({ queryKey: ["adminCloudRunExecutions"] })}
+                  onClick={() => {
+                    setCloudRunErrorCount(0);
+                    setLastCloudRunErrorAt(0);
+                    setCloudRunPollingEnabled(true);
+                    queryClient.invalidateQueries({ queryKey: ["adminCloudRunExecutions"] });
+                  }}
                 >
                   <RefreshCw
                     className={cn("h-4 w-4 mr-2", cloudRunExecQuery.isFetching && "animate-spin")}
@@ -415,6 +573,11 @@ export default function Admin() {
                   <AlertTitle>Could not load Cloud Run executions</AlertTitle>
                   <AlertDescription>
                     {formatClientError(cloudRunExecQuery.error, "Check GCP credentials and RUN_JOB_NAME / region.")}
+                    {cloudRunErrorCount >= CLOUD_RUN_ERROR_LIMIT ? (
+                      <span className="block mt-1">
+                        Auto-requests paused after {CLOUD_RUN_ERROR_LIMIT} errors. Click Refresh to try again.
+                      </span>
+                    ) : null}
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -483,6 +646,80 @@ export default function Admin() {
                       More executions exist in GCP; only the first page is shown here.
                     </p>
                   ) : null}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card/45 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm sm:text-base font-semibold text-foreground">Scraper search keywords</h2>
+                  <p className="text-xs text-muted-foreground">Managed in MongoDB and used by all scrapers.</p>
+                </div>
+              </div>
+              {adminScraperKeywordsQuery.isLoading ? (
+                <div className="h-24 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  Loading scraper keywords...
+                </div>
+              ) : adminScraperKeywordsQuery.isError ? (
+                <Alert variant="destructive" className="rounded-xl">
+                  <AlertTitle>Failed to load scraper keywords</AlertTitle>
+                  <AlertDescription>
+                    {formatClientError(adminScraperKeywordsQuery.error, "Could not fetch scraper keyword settings.")}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {keywordDrafts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No keywords yet. Add at least one keyword.</p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {keywordDrafts.map((keyword, index) => (
+                        <div
+                          key={`${index}-${keyword}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 py-1.5 text-sm"
+                        >
+                          <span className="max-w-[220px] truncate sm:max-w-[320px]" title={keyword}>
+                            {keyword}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
+                            aria-label={`Remove keyword ${keyword}`}
+                            disabled={keywordMutationInFlight}
+                            onClick={() => void onDeleteKeyword(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={newKeywordDraft}
+                      onChange={(event) => setNewKeywordDraft(event.target.value)}
+                      placeholder="Add new keyword"
+                      className="w-full"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void onAddKeyword();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      className="sm:w-auto w-full"
+                      disabled={keywordMutationInFlight}
+                      onClick={() => void onAddKeyword()}
+                    >
+                      {keywordMutationInFlight ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden /> : null}
+                      Add keyword
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
@@ -596,6 +833,38 @@ export default function Admin() {
           <Footer />
         </div>
       </div>
+      <AlertDialog
+        open={Boolean(adminActionDialog)}
+        onOpenChange={(open) => {
+          if (!open) setAdminActionDialog(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{adminActionDialog?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{adminActionDialog?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={Boolean(runningAction)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                adminActionDialog?.destructive
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
+              disabled={Boolean(runningAction)}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!adminActionDialog) return;
+                void onRunAdminAction(adminActionDialog.action, adminActionDialog.runTitle);
+                setAdminActionDialog(null);
+              }}
+            >
+              {adminActionDialog?.confirmLabel || "Confirm"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

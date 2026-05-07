@@ -40,7 +40,7 @@ Copy `.env.example` to `.env` and set values.
 - `SCRAPING_CHROME_DIR`
 - `SCRAPING_PORT`
 - `DATA_DIR`
-- `SCRAPER_SEARCH_KEYWORDS`
+- Scraper search keywords are configured in Admin UI and stored in MongoDB (`scraperSettings` collection)
 - `SCRAPING_STALE_RETRIES`
 - `SCRAPING_STALE_DELAY`
 - `SCRAPING_HEADLESS`
