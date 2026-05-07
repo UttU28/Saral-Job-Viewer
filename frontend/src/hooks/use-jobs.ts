@@ -102,6 +102,7 @@ export function useAdminCloudRunExecutionsQuery(enabled: boolean) {
   return useQuery({
     queryKey: ["adminCloudRunExecutions"],
     queryFn: () => fetchAdminCloudRunExecutions({ limit: 25 }),
+    retry: false,
     staleTime: 5_000,
     enabled,
     refetchInterval: (query) => {

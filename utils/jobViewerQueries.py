@@ -35,6 +35,7 @@ def buildMatchStage(
     search: str | None,
 ) -> dict[str, Any]:
     matchClauses: list[dict[str, Any]] = []
+    hiddenStatuses = ("APPLYING", "DO_NOT_APPLY", "REDO")
     if platform and str(platform).strip():
         matchClauses.append({"platform": str(platform).strip()})
     if applyStatus and str(applyStatus).strip():
@@ -49,8 +50,31 @@ def buildMatchStage(
                     ]
                 }
             )
+        elif raw == "applied":
+            matchClauses.append({"applyStatus": {"$in": ["APPLIED", "EXISTING"]}})
         else:
             matchClauses.append({"applyStatus": str(applyStatus).strip()})
+        matchClauses.append(
+            {
+                "$or": [
+                    {"applyStatus": {"$exists": False}},
+                    {"applyStatus": None},
+                    {"applyStatus": ""},
+                    {"applyStatus": {"$nin": list(hiddenStatuses)}},
+                ]
+            }
+        )
+    else:
+        matchClauses.append(
+            {
+                "$or": [
+                    {"applyStatus": {"$exists": False}},
+                    {"applyStatus": None},
+                    {"applyStatus": ""},
+                    {"applyStatus": {"$nin": list(hiddenStatuses)}},
+                ]
+            }
+        )
     if search and str(search).strip():
         safe = escapeRegex(str(search).strip())
         matchClauses.append(

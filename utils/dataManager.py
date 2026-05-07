@@ -473,6 +473,15 @@ def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
     return int(res.deleted_count or 0)
 
 
+def flushJobsAndPastData() -> dict[str, int]:
+    """Delete all rows from jobData and pastData collections."""
+    createTables(recreate=False)
+    db = _getMongoDb()
+    job_deleted = int((db[JOB_DATA_COLLECTION].delete_many({}).deleted_count) or 0)
+    past_deleted = int((db[PAST_DATA_COLLECTION].delete_many({}).deleted_count) or 0)
+    return {"jobDataDeleted": job_deleted, "pastDataDeleted": past_deleted}
+
+
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:
     createTables(recreate=False)
     db = _getMongoDb()

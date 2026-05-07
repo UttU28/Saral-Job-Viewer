@@ -216,6 +216,7 @@ export type AdminJobStatusSummaryResponse = {
 export type AdminJobAction =
   | "classify_all_pending_null_jobs"
   | "delete_unwanted_classified_jobs"
+  | "flush_db"
   | "push_apply_jobs"
   | "push_apply_jobs_then_cleanup";
 
@@ -361,7 +362,12 @@ export type AdminJobActionResponse = {
   action: AdminJobAction;
   message: string;
   deletedCount?: number;
+  pastDeletedCount?: number;
   cloudRun?: AdminJobCloudRunInfo;
+  flushed?: {
+    jobDataDeleted: number;
+    pastDataDeleted: number;
+  };
 };
 
 export function runAdminJobAction(action: AdminJobAction): Promise<AdminJobActionResponse> {

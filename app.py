@@ -22,6 +22,8 @@ load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from utils.dataManager import (
     deleteJobsByApplyStatusNotIn,
+    deletePastDataOlderThanHours,
+    flushJobsAndPastData,
     loadScraperSearchKeywords,
     saveScraperSearchKeywords,
     updateApplyStatusByJobId,
@@ -491,6 +493,7 @@ def postAdminJobAction(
     allowedActions = {
         "classify_all_pending_null_jobs",
         "delete_unwanted_classified_jobs",
+        "flush_db",
         "push_apply_jobs",
         "push_apply_jobs_then_cleanup",
     }
@@ -528,6 +531,7 @@ def postAdminJobAction(
     beforeMergedRejected = int(before["rejected"]) + int(before["doNotApply"]) + int(before["existing"])
     if action == "delete_unwanted_classified_jobs":
         deletedCount = int(deleteJobsByApplyStatusNotIn(("APPLY",)))
+        pastDeletedCount = int(deletePastDataOlderThanHours(hours=48))
         invalidateJobCaches()
         after = _adminStatusDebugSnapshot()
         afterMergedRejected = (
@@ -535,13 +539,15 @@ def postAdminJobAction(
         )
         message = (
             "Delete completed successfully. "
-            f"Removed {deletedCount} job(s). Kept NULL/blank and APPLY jobs."
+            f"Removed {deletedCount} job(s). Kept NULL/blank and APPLY jobs. "
+            f"Also removed {pastDeletedCount} pastData row(s) older than 48 hours."
         )
         logger.info(
-            "[ADMIN_ACTION_DONE] action=%s deleted=%s keep=%s admin=%s before=%s "
+            "[ADMIN_ACTION_DONE] action=%s deleted=%s pastDeletedOlder48h=%s keep=%s admin=%s before=%s "
             "mergedRejectedBefore=%s after=%s mergedRejectedAfter=%s",
             action,
             deletedCount,
+            pastDeletedCount,
             ["NULL/blank", "APPLY"],
             adminDetails,
             before,
@@ -555,10 +561,32 @@ def postAdminJobAction(
             "admin": adminDetails,
             "message": message,
             "deletedCount": deletedCount,
+            "pastDeletedCount": pastDeletedCount,
             "before": before,
             "after": after,
             "mergedRejectedBefore": beforeMergedRejected,
             "mergedRejectedAfter": afterMergedRejected,
+        }
+    if action == "flush_db":
+        flushed = flushJobsAndPastData()
+        invalidateJobCaches()
+        message = (
+            "Flush completed successfully. "
+            f"Removed {int(flushed.get('jobDataDeleted') or 0)} jobData row(s) and "
+            f"{int(flushed.get('pastDataDeleted') or 0)} pastData row(s)."
+        )
+        logger.info(
+            "[ADMIN_ACTION_DONE] action=%s flushed=%s admin=%s",
+            action,
+            flushed,
+            adminDetails,
+        )
+        return {
+            "ok": True,
+            "action": action,
+            "admin": adminDetails,
+            "message": message,
+            "flushed": flushed,
         }
     logger.info("[ADMIN_ACTION_DONE] action=%s admin=%s before=%s", action, adminDetails, before)
     return {"ok": True, "action": action, "admin": adminDetails, "message": "Action logged."}
