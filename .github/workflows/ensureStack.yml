@@ -1,0 +1,300 @@
+name: Ensure Saral Stack (create missing resources)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmText:
+        description: Type ENSURE_SARAL_STACK to continue
+        required: true
+        type: string
+      ensureRedisInfra:
+        description: Ensure Memorystore + VPC connector exist
+        required: true
+        default: true
+        type: boolean
+      ensureDomainMappings:
+        description: Try to ensure custom domain mappings (requires verified domains)
+        required: true
+        default: false
+        type: boolean
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  AR_REPOSITORY: saral-job-viewer-cr
+
+  API_SERVICE_NAME: saral-api
+  UI_SERVICE_NAME: saral-ui
+  RUN_JOB_NAME: saral-dvalidate-job
+  SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
+
+  API_IMAGE_NAME: api
+  UI_IMAGE_NAME: frontend
+  VALIDATION_IMAGE_NAME: dvalidate
+
+  MONGODB_DATABASE: saralJobViewer
+  REDIS_INSTANCE_ID: saral-memorystore-redis
+  VPC_CONNECTOR_NAME: sjv-run-vpc
+  VPC_NETWORK: default
+  VPC_CONNECTOR_CIDR: 10.8.0.0/28
+
+  UI_DOMAIN: saral.thatinsaneguy.com
+  API_DOMAIN: saralapi.thatinsaneguy.com
+
+jobs:
+  ensureStack:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Confirm action
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirmText }}" != "ENSURE_SARAL_STACK" ]]; then
+            echo "Confirmation text mismatch. Type exactly: ENSURE_SARAL_STACK"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable required APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud services enable \
+            run.googleapis.com \
+            artifactregistry.googleapis.com \
+            secretmanager.googleapis.com \
+            cloudscheduler.googleapis.com \
+            iamcredentials.googleapis.com \
+            redis.googleapis.com \
+            vpcaccess.googleapis.com \
+            compute.googleapis.com \
+            --project "${{ env.GCP_PROJECT_ID }}"
+
+      - name: Check required secrets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          REQUIRED_SECRETS=(
+            MONGODB_URI
+            JWT_SECRET
+            MIDHTECH_EMAIL
+            MIDHTECH_PASSWORD
+            REDIS_URL
+            VITE_API_URL
+          )
+          MISSING=()
+          for S in "${REQUIRED_SECRETS[@]}"; do
+            if ! gcloud secrets describe "$S" --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+              MISSING+=("$S")
+            fi
+          done
+          if [[ "${#MISSING[@]}" -gt 0 ]]; then
+            echo "Missing required secrets: ${MISSING[*]}"
+            echo "Create them in Secret Manager first, then rerun."
+            exit 1
+          fi
+          echo "All required secrets exist."
+
+      - name: Ensure Artifact Registry images exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}"
+          IMAGES=("${{ env.API_IMAGE_NAME }}" "${{ env.UI_IMAGE_NAME }}" "${{ env.VALIDATION_IMAGE_NAME }}")
+          for IMG in "${IMAGES[@]}"; do
+            if gcloud artifacts docker images describe "${BASE}/${IMG}:latest" --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+              echo "Image exists: ${BASE}/${IMG}:latest"
+            else
+              echo "Missing image: ${BASE}/${IMG}:latest"
+              echo "Build/push first using deploy workflows, then rerun."
+              exit 1
+            fi
+          done
+
+      - name: Ensure Redis infra (optional)
+        if: inputs.ensureRedisInfra
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+
+          if gcloud compute networks vpc-access connectors describe "${{ env.VPC_CONNECTOR_NAME }}" --project "$PROJECT" --region "$REGION" >/dev/null 2>&1; then
+            echo "VPC connector exists: ${{ env.VPC_CONNECTOR_NAME }}"
+          else
+            gcloud compute networks vpc-access connectors create "${{ env.VPC_CONNECTOR_NAME }}" \
+              --project "$PROJECT" \
+              --region "$REGION" \
+              --network "${{ env.VPC_NETWORK }}" \
+              --range "${{ env.VPC_CONNECTOR_CIDR }}" \
+              --min-instances 2 \
+              --max-instances 3
+            echo "Created VPC connector: ${{ env.VPC_CONNECTOR_NAME }}"
+          fi
+
+          if gcloud redis instances describe "${{ env.REDIS_INSTANCE_ID }}" --project "$PROJECT" --region "$REGION" >/dev/null 2>&1; then
+            echo "Redis instance exists: ${{ env.REDIS_INSTANCE_ID }}"
+          else
+            gcloud redis instances create "${{ env.REDIS_INSTANCE_ID }}" \
+              --project "$PROJECT" \
+              --region "$REGION" \
+              --network "projects/${PROJECT}/global/networks/${{ env.VPC_NETWORK }}" \
+              --tier "BASIC" \
+              --size "1" \
+              --redis-version "redis_7_0" \
+              --connect-mode "DIRECT_PEERING"
+            echo "Created Redis instance: ${{ env.REDIS_INSTANCE_ID }}"
+          fi
+
+      - name: Ensure API service
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.API_IMAGE_NAME }}:latest"
+          RUNTIME_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
+
+          EXTRA=()
+          if [[ "${{ inputs.ensureRedisInfra }}" == "true" ]]; then
+            EXTRA+=(--vpc-connector "${{ env.VPC_CONNECTOR_NAME }}" --vpc-egress private-ranges-only)
+          fi
+
+          gcloud run deploy "${{ env.API_SERVICE_NAME }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --platform managed \
+            --image "${IMAGE_URI}" \
+            --port 8000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 10 \
+            --timeout 300 \
+            --allow-unauthenticated \
+            --service-account "${RUNTIME_SA}" \
+            --set-env-vars "GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},RUN_JOB_NAME=${{ env.RUN_JOB_NAME }},MONGODB_DATABASE=${{ env.MONGODB_DATABASE }},REDIS_ENABLED=true,REDIS_PREFIX=sjv,REDIS_DEFAULT_TTL_SECONDS=60,REDIS_SOCKET_TIMEOUT_MS=500,REDIS_CONNECT_TIMEOUT_MS=500" \
+            --set-secrets "MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest,REDIS_URL=REDIS_URL:latest" \
+            "${EXTRA[@]}"
+
+      - name: Ensure UI service
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.UI_IMAGE_NAME }}:latest"
+          RUNTIME_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
+
+          gcloud run deploy "${{ env.UI_SERVICE_NAME }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --platform managed \
+            --image "${IMAGE_URI}" \
+            --port 8080 \
+            --cpu 1 \
+            --memory 256Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --timeout 60 \
+            --allow-unauthenticated \
+            --service-account "${RUNTIME_SA}"
+
+      - name: Ensure validation job
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.VALIDATION_IMAGE_NAME }}:latest"
+          if gcloud run jobs describe "${{ env.RUN_JOB_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud run jobs update "${{ env.RUN_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --image "${IMAGE_URI}" \
+              --command python \
+              --args validation.py,-1 \
+              --task-timeout 3600s \
+              --max-retries 1 \
+              --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \
+              --set-secrets "MONGODB_URI=MONGODB_URI:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest"
+            echo "Updated Cloud Run job: ${{ env.RUN_JOB_NAME }}"
+          else
+            gcloud run jobs create "${{ env.RUN_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --image "${IMAGE_URI}" \
+              --command python \
+              --args validation.py,-1 \
+              --task-timeout 3600s \
+              --max-retries 1 \
+              --set-env-vars "MONGODB_DATABASE=${{ env.MONGODB_DATABASE }}" \
+              --set-secrets "MONGODB_URI=MONGODB_URI:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest"
+            echo "Created Cloud Run job: ${{ env.RUN_JOB_NAME }}"
+          fi
+
+      - name: Ensure scheduler job
+        shell: bash
+        run: |
+          set -euo pipefail
+          JOB_URI="https://${{ env.GCP_REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.GCP_PROJECT_ID }}/jobs/${{ env.RUN_JOB_NAME }}:run"
+          SA_EMAIL="${{ secrets.GCP_SERVICE_ACCOUNT }}"
+          if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --location "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${{ env.SCHEDULER_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --location "${{ env.GCP_REGION }}" \
+              --schedule "0 0 * * *" \
+              --time-zone "Etc/UTC" \
+              --uri "${JOB_URI}" \
+              --http-method POST \
+              --oauth-service-account-email "${SA_EMAIL}"
+            echo "Updated scheduler: ${{ env.SCHEDULER_JOB_NAME }}"
+          else
+            gcloud scheduler jobs create http "${{ env.SCHEDULER_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --location "${{ env.GCP_REGION }}" \
+              --schedule "0 0 * * *" \
+              --time-zone "Etc/UTC" \
+              --uri "${JOB_URI}" \
+              --http-method POST \
+              --oauth-service-account-email "${SA_EMAIL}"
+            echo "Created scheduler: ${{ env.SCHEDULER_JOB_NAME }}"
+          fi
+
+      - name: Ensure domain mappings (optional)
+        if: inputs.ensureDomainMappings
+        shell: bash
+        run: |
+          set -euo pipefail
+          ensure_mapping() {
+            local domain="$1"
+            local service="$2"
+            if gcloud beta run domain-mappings describe --domain "$domain" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+              echo "Domain mapping exists: $domain -> $service"
+            else
+              gcloud beta run domain-mappings create \
+                --domain "$domain" \
+                --service "$service" \
+                --project "${{ env.GCP_PROJECT_ID }}" \
+                --region "${{ env.GCP_REGION }}"
+              echo "Created domain mapping: $domain -> $service"
+            fi
+          }
+          ensure_mapping "${{ env.UI_DOMAIN }}" "${{ env.UI_SERVICE_NAME }}"
+          ensure_mapping "${{ env.API_DOMAIN }}" "${{ env.API_SERVICE_NAME }}"
+
+      - name: Summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Stack ensure completed."
+          echo "API URL:"
+          gcloud run services describe "${{ env.API_SERVICE_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" --format='value(status.url)' || true
+          echo "UI URL:"
+          gcloud run services describe "${{ env.UI_SERVICE_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" --format='value(status.url)' || true
