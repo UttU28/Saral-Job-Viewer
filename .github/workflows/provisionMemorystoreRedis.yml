@@ -1,4 +1,4 @@
-name: Provision Memorystore Redis (connector + REDIS_URL secret)
+name: Memorystore Redis Provision (connector + REDIS_URL secret)
 
 on:
   workflow_dispatch:
@@ -125,32 +125,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
           RID="${{ inputs.redisInstanceId }}"
           HOST=$(gcloud redis instances describe "$RID" \
             --region "${{ env.GCP_REGION }}" \
-            --project "${{ env.GCP_PROJECT_ID }}" \
+            --project "$PROJECT" \
             --format='value(host)')
           PORT=$(gcloud redis instances describe "$RID" \
             --region "${{ env.GCP_REGION }}" \
-            --project "${{ env.GCP_PROJECT_ID }}" \
+            --project "$PROJECT" \
             --format='value(port)')
           REDIS_URL="redis://${HOST}:${PORT}/0"
-          echo "REDIS_URL (no password) length: ${#REDIS_URL}"
+          REDIS_URL="$(printf '%s' "$REDIS_URL" | tr -d '\n\r')"
+          echo "Computed REDIS_URL length: ${#REDIS_URL}"
 
-          if ! gcloud secrets describe REDIS_URL --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
-            gcloud secrets create REDIS_URL \
-              --project "${{ env.GCP_PROJECT_ID }}" \
+          if gcloud secrets describe REDIS_URL --project "$PROJECT" >/dev/null 2>&1; then
+            CUR="$(gcloud secrets versions access latest --secret=REDIS_URL --project "$PROJECT" 2>/dev/null | tr -d '\n\r' || true)"
+            if [[ "$CUR" == "$REDIS_URL" ]]; then
+              echo "Secret REDIS_URL already matches Memorystore endpoint; no new version."
+            else
+              printf '%s' "$REDIS_URL" | gcloud secrets versions add REDIS_URL --project "$PROJECT" --data-file=-
+              echo "Updated REDIS_URL (value changed)."
+            fi
+          else
+            printf '%s' "$REDIS_URL" | gcloud secrets create REDIS_URL \
+              --project "$PROJECT" \
+              --data-file=- \
               --replication-policy=automatic
+            echo "Created REDIS_URL."
           fi
-          printf '%s' "$REDIS_URL" | gcloud secrets versions add REDIS_URL \
-            --project "${{ env.GCP_PROJECT_ID }}" \
-            --data-file=-
 
           API_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
-          gcloud secrets add-iam-policy-binding REDIS_URL \
-            --project "${{ env.GCP_PROJECT_ID }}" \
-            --member="serviceAccount:${API_SA}" \
-            --role="roles/secretmanager.secretAccessor"
+          MEMBER="serviceAccount:${API_SA}"
+          if gcloud secrets get-iam-policy REDIS_URL --project "$PROJECT" --format=json | jq -e --arg m "$MEMBER" '
+            [(.bindings // [])[] | select(.role=="roles/secretmanager.secretAccessor") | .members[]?] | index($m) != null
+          ' >/dev/null 2>&1; then
+            echo "IAM: $MEMBER already has secretAccessor on REDIS_URL."
+          else
+            gcloud secrets add-iam-policy-binding REDIS_URL \
+              --project "$PROJECT" \
+              --member="$MEMBER" \
+              --role="roles/secretmanager.secretAccessor"
+            echo "Granted secretAccessor on REDIS_URL to $MEMBER."
+          fi
 
       - name: Summary
         shell: bash

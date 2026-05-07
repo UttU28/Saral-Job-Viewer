@@ -1,4 +1,4 @@
-name: Build and Deploy Validation Job and Scheduler (Cloud Run Job and Cloud Scheduler)
+name: Validation & Scheduler Build & Deploy (Cloud Run Job & Cloud Scheduler)
 
 on:
   workflow_dispatch:

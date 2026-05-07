@@ -1,8 +1,4 @@
-# Build frontend (Vite → nginx), push to Artifact Registry, deploy Cloud Run service.
-# Secret Manager: secret id VITE_API_URL = API base URL. deployApi syncs it after each API deploy; this workflow reads latest at build time.
-# Same WIF secrets as deployApi. Grant deploy SA secretAccessor on that secret.
-# Runtime SA: GCP_API_RUN_SERVICE_ACCOUNT (static UI has no mounted secrets).
-name: Build and deploy frontend (Cloud Run Service)
+name: Frontend Build & Deploy (Cloud Run Service)
 
 on:
   workflow_dispatch:

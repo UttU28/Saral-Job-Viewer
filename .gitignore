@@ -8,4 +8,5 @@
 *.log
 venv/
 *.html
+!frontend/index.html
 gcp-sa.json

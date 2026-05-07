@@ -1,6 +1,4 @@
-# After deploy, writes the service HTTPS URL to Secret Manager as VITE_API_URL (no trailing slash)
-# so deployFrontend.yml can build the SPA against the current API URL without manual updates.
-name: Build and deploy API (Cloud Run Service)
+name: Backend Build & Deploy (Cloud Run Service)
 
 on:
   workflow_dispatch:
@@ -94,8 +92,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          SECRET_ID="${{ env.VITE_API_URL_SECRET_ID }}"
           URL="$(gcloud run services describe "${{ env.CLOUD_RUN_SERVICE }}" \
-            --project "${{ env.GCP_PROJECT_ID }}" \
+            --project "$PROJECT" \
             --region "${{ env.GCP_REGION }}" \
             --format='value(status.url)' | tr -d '\n\r')"
           URL="${URL%/}"
@@ -104,16 +104,19 @@ jobs:
             exit 1
           fi
           echo "::add-mask::${URL}"
-          echo "VITE_API_URL secret target: ${URL}"
 
-          if ! gcloud secrets describe "${{ env.VITE_API_URL_SECRET_ID }}" \
-            --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
-            printf '%s' "$URL" | gcloud secrets create "${{ env.VITE_API_URL_SECRET_ID }}" \
-              --project "${{ env.GCP_PROJECT_ID }}" \
+          if gcloud secrets describe "$SECRET_ID" --project="$PROJECT" >/dev/null 2>&1; then
+            CUR="$(gcloud secrets versions access latest --secret="$SECRET_ID" --project="$PROJECT" 2>/dev/null | tr -d '\n\r' || true)"
+            if [[ "$CUR" == "$URL" ]]; then
+              echo "Secret $SECRET_ID already matches service URL; no new version."
+              exit 0
+            fi
+            printf '%s' "$URL" | gcloud secrets versions add "$SECRET_ID" --project="$PROJECT" --data-file=-
+            echo "Updated $SECRET_ID (value changed)."
+          else
+            printf '%s' "$URL" | gcloud secrets create "$SECRET_ID" \
+              --project="$PROJECT" \
               --data-file=- \
               --replication-policy=automatic
-          else
-            printf '%s' "$URL" | gcloud secrets versions add "${{ env.VITE_API_URL_SECRET_ID }}" \
-              --project "${{ env.GCP_PROJECT_ID }}" \
-              --data-file=-
+            echo "Created $SECRET_ID."
           fi
