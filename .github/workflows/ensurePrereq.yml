@@ -17,6 +17,11 @@ on:
         required: true
         default: false
         type: boolean
+      ensureLoadBalancer:
+        description: Ensure global HTTPS load balancer with host routing for UI/API domains
+        required: true
+        default: true
+        type: boolean
 
 env:
   GCP_PROJECT_ID: saraljobviewer
@@ -40,6 +45,17 @@ env:
 
   UI_DOMAIN: saral.thatinsaneguy.com
   API_DOMAIN: saralapi.thatinsaneguy.com
+  LB_IP_NAME: sjv-global-lb-ip
+  LB_CERT_NAME: sjv-managed-cert
+  LB_UI_NEG_NAME: sjv-ui-neg
+  LB_API_NEG_NAME: sjv-api-neg
+  LB_UI_BACKEND_NAME: sjv-ui-bes
+  LB_API_BACKEND_NAME: sjv-api-bes
+  LB_URL_MAP_NAME: sjv-host-routing
+  LB_HTTPS_PROXY_NAME: sjv-https-proxy
+  LB_HTTP_PROXY_NAME: sjv-http-proxy
+  LB_HTTPS_FWD_RULE_NAME: sjv-https-fr
+  LB_HTTP_FWD_RULE_NAME: sjv-http-fr
 
 jobs:
   ensureStack:
@@ -80,6 +96,7 @@ jobs:
             redis.googleapis.com \
             vpcaccess.googleapis.com \
             compute.googleapis.com \
+            certificatemanager.googleapis.com \
             --project "${{ env.GCP_PROJECT_ID }}"
 
       - name: Check required secrets exist
@@ -194,11 +211,160 @@ jobs:
           ensure_mapping "${{ env.UI_DOMAIN }}" "${{ env.UI_SERVICE_NAME }}"
           ensure_mapping "${{ env.API_DOMAIN }}" "${{ env.API_SERVICE_NAME }}"
 
+      - name: Ensure global HTTPS Load Balancer (optional)
+        if: inputs.ensureLoadBalancer
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+          UI_DOMAIN="${{ env.UI_DOMAIN }}"
+          API_DOMAIN="${{ env.API_DOMAIN }}"
+
+          for service in "${{ env.UI_SERVICE_NAME }}" "${{ env.API_SERVICE_NAME }}"; do
+            if ! gcloud run services describe "$service" --project "$PROJECT" --region "$REGION" >/dev/null 2>&1; then
+              echo "Cloud Run service missing: $service. Deploy with deployment.yml first, then rerun ensureLoadBalancer=true."
+              exit 1
+            fi
+          done
+
+          if ! gcloud compute addresses describe "${{ env.LB_IP_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute addresses create "${{ env.LB_IP_NAME }}" --global --ip-version IPV4 --project "$PROJECT"
+            echo "Created global static IP: ${{ env.LB_IP_NAME }}"
+          fi
+
+          if ! gcloud compute ssl-certificates describe "${{ env.LB_CERT_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute ssl-certificates create "${{ env.LB_CERT_NAME }}" \
+              --global \
+              --domains "${UI_DOMAIN},${API_DOMAIN}" \
+              --project "$PROJECT"
+            echo "Created managed SSL cert: ${{ env.LB_CERT_NAME }}"
+          fi
+
+          if ! gcloud compute network-endpoint-groups describe "${{ env.LB_UI_NEG_NAME }}" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute network-endpoint-groups create "${{ env.LB_UI_NEG_NAME }}" \
+              --project "$PROJECT" \
+              --region "$REGION" \
+              --network-endpoint-type serverless \
+              --cloud-run-service "${{ env.UI_SERVICE_NAME }}"
+          fi
+
+          if ! gcloud compute network-endpoint-groups describe "${{ env.LB_API_NEG_NAME }}" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute network-endpoint-groups create "${{ env.LB_API_NEG_NAME }}" \
+              --project "$PROJECT" \
+              --region "$REGION" \
+              --network-endpoint-type serverless \
+              --cloud-run-service "${{ env.API_SERVICE_NAME }}"
+          fi
+
+          if ! gcloud compute backend-services describe "${{ env.LB_UI_BACKEND_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute backend-services create "${{ env.LB_UI_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --load-balancing-scheme EXTERNAL_MANAGED
+          fi
+          if ! gcloud compute backend-services describe "${{ env.LB_API_BACKEND_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute backend-services create "${{ env.LB_API_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --load-balancing-scheme EXTERNAL_MANAGED
+          fi
+
+          if ! gcloud compute backend-services describe "${{ env.LB_UI_BACKEND_NAME }}" --global --project "$PROJECT" --format="value(backends.group)" | grep -q "${{ env.LB_UI_NEG_NAME }}"; then
+            gcloud compute backend-services add-backend "${{ env.LB_UI_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --network-endpoint-group "${{ env.LB_UI_NEG_NAME }}" \
+              --network-endpoint-group-region "$REGION"
+          fi
+          if ! gcloud compute backend-services describe "${{ env.LB_API_BACKEND_NAME }}" --global --project "$PROJECT" --format="value(backends.group)" | grep -q "${{ env.LB_API_NEG_NAME }}"; then
+            gcloud compute backend-services add-backend "${{ env.LB_API_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --network-endpoint-group "${{ env.LB_API_NEG_NAME }}" \
+              --network-endpoint-group-region "$REGION"
+          fi
+
+          if gcloud compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute url-maps set-default-service "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
+              --project "$PROJECT"
+          else
+            gcloud compute url-maps create "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
+              --project "$PROJECT"
+          fi
+
+          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+            --global \
+            --project "$PROJECT" \
+            --path-matcher-name sjv-hosts \
+            --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
+            --new-hosts "${UI_DOMAIN}" \
+            --quiet || true
+
+          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+            --global \
+            --project "$PROJECT" \
+            --path-matcher-name sjv-api-host \
+            --default-service "${{ env.LB_API_BACKEND_NAME }}" \
+            --new-hosts "${API_DOMAIN}" \
+            --quiet || true
+
+          if ! gcloud compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute target-https-proxies create "${{ env.LB_HTTPS_PROXY_NAME }}" \
+              --project "$PROJECT" \
+              --url-map "${{ env.LB_URL_MAP_NAME }}" \
+              --ssl-certificates "${{ env.LB_CERT_NAME }}"
+          else
+            gcloud compute target-https-proxies update "${{ env.LB_HTTPS_PROXY_NAME }}" \
+              --project "$PROJECT" \
+              --url-map "${{ env.LB_URL_MAP_NAME }}" \
+              --ssl-certificates "${{ env.LB_CERT_NAME }}"
+          fi
+
+          if ! gcloud compute target-http-proxies describe "${{ env.LB_HTTP_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute target-http-proxies create "${{ env.LB_HTTP_PROXY_NAME }}" \
+              --project "$PROJECT" \
+              --url-map "${{ env.LB_URL_MAP_NAME }}"
+          else
+            gcloud compute target-http-proxies update "${{ env.LB_HTTP_PROXY_NAME }}" \
+              --project "$PROJECT" \
+              --url-map "${{ env.LB_URL_MAP_NAME }}"
+          fi
+
+          if ! gcloud compute forwarding-rules describe "${{ env.LB_HTTPS_FWD_RULE_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute forwarding-rules create "${{ env.LB_HTTPS_FWD_RULE_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --load-balancing-scheme EXTERNAL_MANAGED \
+              --network-tier PREMIUM \
+              --address "${{ env.LB_IP_NAME }}" \
+              --target-https-proxy "${{ env.LB_HTTPS_PROXY_NAME }}" \
+              --ports 443
+          fi
+
+          if ! gcloud compute forwarding-rules describe "${{ env.LB_HTTP_FWD_RULE_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute forwarding-rules create "${{ env.LB_HTTP_FWD_RULE_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --load-balancing-scheme EXTERNAL_MANAGED \
+              --network-tier PREMIUM \
+              --address "${{ env.LB_IP_NAME }}" \
+              --target-http-proxy "${{ env.LB_HTTP_PROXY_NAME }}" \
+              --ports 80
+          fi
+
+          LB_IP="$(gcloud compute addresses describe "${{ env.LB_IP_NAME }}" --global --project "$PROJECT" --format='value(address)')"
+          echo "Load balancer is ensured. Point both DNS A records to: ${LB_IP}"
+
       - name: Summary
         shell: bash
         run: |
           set -euo pipefail
           echo "Prereq ensure completed."
-          echo "What this workflow handles: APIs enabled, required secrets verified, required images checked, optional Redis/VPC infra, optional domain mappings."
+          echo "What this workflow handles: APIs enabled, required secrets verified, required images checked, optional Redis/VPC infra, optional domain mappings, optional global HTTPS load balancer."
           echo "Deploy app/runtime resources via deployOnMainApproved."
 

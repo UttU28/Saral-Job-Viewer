@@ -1,4 +1,4 @@
-name: Destroy All Saral Stack (Cloud Run + Redis + Scheduler)
+name: Destroy All Saral Stack (Cloud Run + Redis + Scheduler + optional LB)
 
 on:
   workflow_dispatch:
@@ -7,6 +7,11 @@ on:
         description: Type DESTROY_SARAL_STACK to continue
         required: true
         type: string
+      deleteGlobalLoadBalancer:
+        description: Delete global HTTPS LB (forwarding rules, proxies, URL map, backends, NEGs, cert, IP) — matches ensurePrereq resource names
+        required: true
+        default: false
+        type: boolean
       deleteDomainMappings:
         description: Also delete custom domain mappings (beta)
         required: true
@@ -34,6 +39,17 @@ env:
   VPC_CONNECTOR_NAME: sjv-run-vpc
   UI_DOMAIN: saral.thatinsaneguy.com
   API_DOMAIN: saralapi.thatinsaneguy.com
+  LB_IP_NAME: sjv-global-lb-ip
+  LB_CERT_NAME: sjv-managed-cert
+  LB_UI_NEG_NAME: sjv-ui-neg
+  LB_API_NEG_NAME: sjv-api-neg
+  LB_UI_BACKEND_NAME: sjv-ui-bes
+  LB_API_BACKEND_NAME: sjv-api-bes
+  LB_URL_MAP_NAME: sjv-host-routing
+  LB_HTTPS_PROXY_NAME: sjv-https-proxy
+  LB_HTTP_PROXY_NAME: sjv-http-proxy
+  LB_HTTPS_FWD_RULE_NAME: sjv-https-fr
+  LB_HTTP_FWD_RULE_NAME: sjv-http-fr
 
 jobs:
   destroy:
@@ -60,6 +76,103 @@ jobs:
 
       - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete global HTTPS load balancer (optional)
+        if: inputs.deleteGlobalLoadBalancer
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+
+          delete_fwd() {
+            local name="$1"
+            if gcloud compute forwarding-rules describe "$name" --global --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute forwarding-rules delete "$name" --global --project "$PROJECT" --quiet
+              echo "Deleted forwarding rule: $name"
+            else
+              echo "Forwarding rule not found (skip): $name"
+            fi
+          }
+
+          delete_proxy_https() {
+            if gcloud compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute target-https-proxies delete "${{ env.LB_HTTPS_PROXY_NAME }}" --project "$PROJECT" --quiet
+              echo "Deleted HTTPS target proxy."
+            else
+              echo "HTTPS target proxy not found (skip)."
+            fi
+          }
+
+          delete_proxy_http() {
+            if gcloud compute target-http-proxies describe "${{ env.LB_HTTP_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute target-http-proxies delete "${{ env.LB_HTTP_PROXY_NAME }}" --project "$PROJECT" --quiet
+              echo "Deleted HTTP target proxy."
+            else
+              echo "HTTP target proxy not found (skip)."
+            fi
+          }
+
+          delete_url_map() {
+            if gcloud compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute url-maps delete "${{ env.LB_URL_MAP_NAME }}" --global --project "$PROJECT" --quiet
+              echo "Deleted URL map."
+            else
+              echo "URL map not found (skip)."
+            fi
+          }
+
+          delete_backend() {
+            local name="$1"
+            if gcloud compute backend-services describe "$name" --global --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute backend-services delete "$name" --global --project "$PROJECT" --quiet
+              echo "Deleted backend service: $name"
+            else
+              echo "Backend service not found (skip): $name"
+            fi
+          }
+
+          delete_neg() {
+            local name="$1"
+            if gcloud compute network-endpoint-groups describe "$name" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute network-endpoint-groups delete "$name" --region "$REGION" --project "$PROJECT" --quiet
+              echo "Deleted NEG: $name"
+            else
+              echo "NEG not found (skip): $name"
+            fi
+          }
+
+          delete_cert() {
+            if gcloud compute ssl-certificates describe "${{ env.LB_CERT_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute ssl-certificates delete "${{ env.LB_CERT_NAME }}" --global --project "$PROJECT" --quiet
+              echo "Deleted SSL certificate."
+            else
+              echo "SSL certificate not found (skip)."
+            fi
+          }
+
+          delete_ip() {
+            if gcloud compute addresses describe "${{ env.LB_IP_NAME }}" --global --project "$PROJECT" >/dev/null 2>&1; then
+              gcloud compute addresses delete "${{ env.LB_IP_NAME }}" --global --project "$PROJECT" --quiet
+              echo "Deleted global static IP."
+            else
+              echo "Global IP not found (skip)."
+            fi
+          }
+
+          echo "Tearing down global LB (order: forwarding rules → proxies → URL map → backends → NEGs → cert → IP)."
+          delete_fwd "${{ env.LB_HTTP_FWD_RULE_NAME }}"
+          delete_fwd "${{ env.LB_HTTPS_FWD_RULE_NAME }}"
+          delete_proxy_https
+          delete_proxy_http
+          delete_url_map
+          delete_backend "${{ env.LB_UI_BACKEND_NAME }}"
+          delete_backend "${{ env.LB_API_BACKEND_NAME }}"
+          delete_neg "${{ env.LB_UI_NEG_NAME }}"
+          delete_neg "${{ env.LB_API_NEG_NAME }}"
+          delete_cert
+          delete_ip
+          echo "Global LB teardown finished. Remove or update DNS A records for saral/saralapi if they still point at the old IP."
 
       - name: Delete Cloud Run services
         shell: bash
@@ -165,5 +278,5 @@ jobs:
         run: |
           echo "Destroy workflow completed."
           echo "Deleted where present: API/UI services, validation job, scheduler."
-          echo "Optional deletions based on inputs: domain mappings, Redis instance, VPC connector."
+          echo "Optional deletions based on inputs: global HTTPS load balancer, domain mappings, Redis instance, VPC connector."
 

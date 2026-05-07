@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      syncLoadBalancerRouting:
+        description: Sync global LB serverless NEG routing after deploy
+        required: true
+        default: true
+        type: boolean
 
 env:
   GCP_PROJECT_ID: saraljobviewer
@@ -22,6 +28,10 @@ env:
 
   VALIDATION_IMAGE_NAME: dvalidate
   SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
+  LB_UI_NEG_NAME: sjv-ui-neg
+  LB_API_NEG_NAME: sjv-api-neg
+  LB_UI_BACKEND_NAME: sjv-ui-bes
+  LB_API_BACKEND_NAME: sjv-api-bes
 
 jobs:
   detectChanges:
@@ -287,4 +297,51 @@ jobs:
               --uri "${JOB_URI}" \
               --http-method POST \
               --oauth-service-account-email "${SA_EMAIL}"
+          fi
+
+  syncLoadBalancerRouting:
+    runs-on: ubuntu-latest
+    needs: [detectChanges, approvalGate]
+    if: needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Sync serverless NEG backends
+        if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.syncLoadBalancerRouting) }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+
+          if gcloud compute network-endpoint-groups describe "${{ env.LB_UI_NEG_NAME }}" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute backend-services add-backend "${{ env.LB_UI_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --network-endpoint-group "${{ env.LB_UI_NEG_NAME }}" \
+              --network-endpoint-group-region "$REGION" \
+              --quiet || true
+          else
+            echo "UI NEG not found (${{ env.LB_UI_NEG_NAME }}). Run ensurePrereq with ensureLoadBalancer=true."
+          fi
+
+          if gcloud compute network-endpoint-groups describe "${{ env.LB_API_NEG_NAME }}" --region "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
+            gcloud compute backend-services add-backend "${{ env.LB_API_BACKEND_NAME }}" \
+              --project "$PROJECT" \
+              --global \
+              --network-endpoint-group "${{ env.LB_API_NEG_NAME }}" \
+              --network-endpoint-group-region "$REGION" \
+              --quiet || true
+          else
+            echo "API NEG not found (${{ env.LB_API_NEG_NAME }}). Run ensurePrereq with ensureLoadBalancer=true."
           fi
