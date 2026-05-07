@@ -1,4 +1,4 @@
-name: Ensure Saral Stack (create missing resources)
+name: Create All Saral Stack (create missing resources)
 
 on:
   workflow_dispatch:
@@ -267,6 +267,13 @@ jobs:
             echo "Created scheduler: ${{ env.SCHEDULER_JOB_NAME }}"
           fi
 
+      - name: Ensure gcloud beta commands are installed
+        if: inputs.ensureDomainMappings
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud components install beta --quiet
+
       - name: Ensure domain mappings (optional)
         if: inputs.ensureDomainMappings
         shell: bash
@@ -298,3 +305,4 @@ jobs:
           gcloud run services describe "${{ env.API_SERVICE_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" --format='value(status.url)' || true
           echo "UI URL:"
           gcloud run services describe "${{ env.UI_SERVICE_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" --format='value(status.url)' || true
+

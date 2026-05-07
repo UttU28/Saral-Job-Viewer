@@ -1,4 +1,4 @@
-name: Destroy Saral Stack (Cloud Run + Redis + Scheduler)
+name: Destroy All Saral Stack (Cloud Run + Redis + Scheduler)
 
 on:
   workflow_dispatch:
@@ -105,6 +105,13 @@ jobs:
             echo "Scheduler job not found (skip): ${{ env.SCHEDULER_JOB_NAME }}"
           fi
 
+      - name: Ensure gcloud beta commands are installed
+        if: inputs.deleteDomainMappings
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcloud components install beta --quiet
+
       - name: Delete custom domain mappings (optional)
         if: inputs.deleteDomainMappings
         shell: bash
@@ -159,3 +166,4 @@ jobs:
           echo "Destroy workflow completed."
           echo "Deleted where present: API/UI services, validation job, scheduler."
           echo "Optional deletions based on inputs: domain mappings, Redis instance, VPC connector."
+
