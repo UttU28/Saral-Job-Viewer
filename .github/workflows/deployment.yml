@@ -1,4 +1,4 @@
-name: Deploy Updated Apps on Main (with approval)
+name: Main Deploy (Approval)
 
 on:
   push:

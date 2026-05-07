@@ -77,6 +77,8 @@ Use **`[x]` = done**, **`[ ]` = optional / not started**.
 | Redis: Memorystore + Serverless VPC connector + **`GCP_VPC_CONNECTOR_NAME`** (Actions variable) | [x] |
 | APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute | [x] |
 | **HTTPS** on custom hosts (managed certs via domain mappings) | [x] |
+| Global HTTPS Load Balancer (serverless NEG -> UI/API) | [ ] |
+| Cloud Armor policy on LB (optional WAF/rate limits) | [ ] |
 
 ---
 
@@ -88,6 +90,29 @@ Use **`[x]` = done**, **`[ ]` = optional / not started**.
 | **`min-instances` > 0** on API (or UI) to reduce cold starts | [ ] |
 | Stricter **CORS** in `app.py` (single origin instead of `*`) | [ ] |
 | Re-run GCP inventory: **`GCP-INVENTORY-WINDOWS.md`** | [ ] |
+| Add LB infra workflow (`workflow_dispatch` first, then optional path trigger) | [ ] |
+
+---
+
+## 8) Load balancer rollout plan (recommended)
+
+| Step | Status |
+|------|--------|
+| Create serverless NEGs for `saral-ui` and `saral-api` | [ ] |
+| Build LB: backend services, URL map, HTTPS proxy, forwarding rule | [ ] |
+| Attach Google-managed cert(s) at LB | [ ] |
+| Validate via temporary DNS/host | [ ] |
+| Cut DNS to LB public IP | [ ] |
+| Keep old Cloud Run domain mappings during bake-in window | [ ] |
+| Remove direct mappings after stable cutover (optional) | [ ] |
+
+**Suggested orchestration order**
+
+1. Deploy app images (API/UI) with existing workflows.
+2. Update LB infra only when routing/security changes.
+3. Use approval-gated main deploy path for production changes.
+
+**Diff script needed?** No. Existing path filters + approval gate are enough. Add LB workflow trigger on infra file changes when you introduce LB IaC/scripts.
 
 ---
 

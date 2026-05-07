@@ -43,6 +43,56 @@
 
 ---
 
+## Add Global Load Balancer (recommended)
+
+You can add a Google Cloud HTTPS Load Balancer in front of UI/API for cleaner routing, centralized TLS/WAF, and better traffic orchestration.
+
+### Target design
+
+- Single external HTTPS LB entrypoint
+- Host/path routing:
+  - `saral.thatinsaneguy.com` -> UI Cloud Run service
+  - `saralapi.thatinsaneguy.com` (or `/api/*`) -> API Cloud Run service
+- Google-managed SSL cert(s) at LB
+- Optional Cloud Armor policy for IP/rate/WAF controls
+- Optional CDN for UI paths
+
+### Why this helps
+
+- Central policy point (TLS, redirects, security headers, WAF)
+- Easier future multi-service routing
+- Better zero-downtime traffic cutovers by changing LB backend targets
+
+### Migration plan (safe)
+
+1. Keep existing Cloud Run domain mappings active.
+2. Create LB + serverless NEGs for `saral-ui` and `saral-api`.
+3. Validate LB with temporary hostnames.
+4. Move DNS to LB IP.
+5. After stable traffic period, optionally remove direct Cloud Run domain mappings.
+
+### CI/CD orchestration impact
+
+- Keep existing deploy workflows (`deployApi.yml`, `deployFrontend.yml`, `deployValidation.yml`).
+- Add one new infra workflow for LB config:
+  - create/update serverless NEGs
+  - URL map + target proxy + cert + forwarding rule
+  - Cloud Armor policy attach (optional)
+- Deploy order for app updates can remain:
+  - deploy API/UI image first
+  - LB unchanged unless routing/policy changed
+
+### Do we need a diff script?
+
+No mandatory diff script is needed.
+
+- Existing path-based deploy selection + workflow gating is enough for app deploys.
+- For LB infra changes, use:
+  - dedicated workflow on `.github/workflows/**` or `infra/**` path changes, or
+  - manual `workflow_dispatch` for explicit control.
+
+---
+
 ## Secrets (summary)
 
 - **Secret Manager:** `MONGODB_URI`, `MONGODB_DATABASE` (env on services), `MIDHTECH_*`, `JWT_SECRET`, `REDIS_URL`, `VITE_API_URL`.
@@ -66,6 +116,7 @@
 - [x] OIDC + repository secrets/variables.
 - [x] All workflows listed above.
 - [ ] Optional: push triggers, staging, approval gates.
+- [ ] Optional: add LB infra workflow (serverless NEG + URL map + cert + forwarding rule).
 
 **App**
 
@@ -85,6 +136,7 @@ flowchart TB
     D[Domain + TLS]
   end
   subgraph GCP["GCP"]
+    LB[HTTPS Load Balancer]
     FE[Cloud Run: UI]
     API[Cloud Run: API]
     JOB[Cloud Run Job]
@@ -97,8 +149,9 @@ flowchart TB
     M[(MongoDB)]
   end
   U --> D
-  D --> FE
-  D --> API
+  D --> LB
+  LB --> FE
+  LB --> API
   FE -->|HTTPS| API
   API --> R
   API --> M
