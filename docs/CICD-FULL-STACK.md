@@ -144,7 +144,7 @@ flowchart LR
 
 - Keep **`deployValidation.yml`** pattern for the **job** image.
 - Add **`deployApi.yml`**: build `docker/Dockerfile.api`, deploy Cloud Run service, set secrets.
-- Add **`deploy-frontend.yml`**: build static site + deploy (container or GCS), inject `VITE_API_URL`.
+- Add **`deployFrontend.yml`**: build `docker/Dockerfile.frontend` (Vite + nginx), deploy Cloud Run service; Secret Manager **`VITE_API_URL`** for the API base URL at build time (see **`DeployFrontendWindows.md`**).
 
 You can merge into one workflow with **matrix** or **jobs** if you prefer a single “deploy all” button.
 
@@ -155,6 +155,7 @@ You can merge into one workflow with **matrix** or **jobs** if you prefer a sing
 - Inventory vs gaps: **`PROJECT-STATUS-CHECKLIST.md`**, **`GCP-INVENTORY-WINDOWS.md`** (this folder)
 - Job + scheduler: `gcpCloudRun.md`, `.github/workflows/deployValidation.yml`
 - API container: `docker/Dockerfile.api`, `deploy.sh` (VPS path — replace with Cloud Run for “full GCP”)
+- Frontend container: `docker/Dockerfile.frontend`, `docker/nginx.frontend.conf`
 - Job container: `docker/Dockerfile.validation`, `docker-compose.yml`
 
 ---

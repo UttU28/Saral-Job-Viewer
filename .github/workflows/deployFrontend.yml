@@ -1,0 +1,88 @@
+# Build frontend (Vite → nginx), push to Artifact Registry, deploy Cloud Run service.
+# Secret Manager: secret id VITE_API_URL = API base URL. deployApi syncs it after each API deploy; this workflow reads latest at build time.
+# Same WIF secrets as deployApi. Grant deploy SA secretAccessor on that secret.
+# Runtime SA: GCP_API_RUN_SERVICE_ACCOUNT (static UI has no mounted secrets).
+name: Build and deploy frontend (Cloud Run Service)
+
+on:
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  AR_REPOSITORY: saral-job-viewer-cr
+  IMAGE_NAME: frontend
+  CLOUD_RUN_SERVICE: saral-ui
+  VITE_API_URL_SECRET_ID: VITE_API_URL
+
+jobs:
+  deployFrontend:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker auth for Artifact Registry
+        run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build and push frontend image
+        id: buildAndPushImage
+        shell: bash
+        run: |
+          set -euo pipefail
+          VITE_API_URL="$(gcloud secrets versions access latest \
+            --secret="${{ env.VITE_API_URL_SECRET_ID }}" \
+            --project="${{ env.GCP_PROJECT_ID }}" | tr -d '\n\r')"
+          if [[ -z "$VITE_API_URL" ]]; then
+            echo "Secret ${{ env.VITE_API_URL_SECRET_ID }} is missing or empty (create in Secret Manager; no trailing slash)."
+            exit 1
+          fi
+          echo "::add-mask::${VITE_API_URL}"
+
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.AR_REPOSITORY }}/${{ env.IMAGE_NAME }}"
+          IMAGE_TAG="${GITHUB_SHA}"
+          FULL_IMAGE="${IMAGE_URI}:${IMAGE_TAG}"
+
+          docker build -f docker/Dockerfile.frontend \
+            --build-arg "VITE_API_URL=${VITE_API_URL}" \
+            -t "${FULL_IMAGE}" .
+          docker push "${FULL_IMAGE}"
+
+          docker tag "${FULL_IMAGE}" "${IMAGE_URI}:latest"
+          docker push "${IMAGE_URI}:latest"
+
+          echo "fullImage=${FULL_IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloud Run service
+        shell: bash
+        run: |
+          set -euo pipefail
+          FULL_IMAGE="${{ steps.buildAndPushImage.outputs.fullImage }}"
+          RUNTIME_SA="${{ secrets.GCP_API_RUN_SERVICE_ACCOUNT }}"
+
+          gcloud run deploy "${{ env.CLOUD_RUN_SERVICE }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --platform managed \
+            --image "${FULL_IMAGE}" \
+            --port 8080 \
+            --cpu 1 \
+            --memory 256Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --timeout 60 \
+            --allow-unauthenticated \
+            --service-account "${RUNTIME_SA}"

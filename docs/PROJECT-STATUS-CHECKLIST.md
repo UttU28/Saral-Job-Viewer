@@ -12,7 +12,7 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 | Artifact Registry repo `saral-job-viewer-cr` (`us-east1`) | [x] |
 | Docker image **`dvalidate`** (verify/apply job) | [x] |
 | Docker image **`api`** (FastAPI / `docker/Dockerfile.api`) | [ ] |
-| Docker image **`frontend`** (optional; or use static hosting without a second image) | [ ] |
+| Docker image **`frontend`** (`docker/Dockerfile.frontend` → `deployFrontend.yml`) | [ ] |
 
 ---
 
@@ -35,6 +35,7 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 | `MIDHTECH_PASSWORD` | [x] |
 | `JWT_SECRET` (API auth) | [ ] |
 | `REDIS_URL` or equivalent (if using Redis in prod) | [ ] |
+| `VITE_API_URL` (SPA build: public **`saral-api`** URL; used by `deployFrontend.yml`) | [ ] |
 | Any other API-only secrets you use in `.env` | [ ] |
 
 ---
@@ -48,7 +49,7 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 | Cloud Scheduler job `saral-dvalidate-midnight-utc` (ENABLED) | [x] |
 | GitHub Actions: **validation** job deploy (`deployValidation.yml`) | [x] *(repo already has it)* |
 | GitHub Actions: **API** deploy (build `docker/Dockerfile.api` → Run **Service**) | [ ] |
-| GitHub Actions: **frontend** deploy (build + host) | [ ] |
+| GitHub Actions: **frontend** deploy (`deployFrontend.yml`) + Secret Manager **`VITE_API_URL`** | [ ] |
 
 ---
 
@@ -85,7 +86,7 @@ If you add **VPC Serverless Connector** for Memorystore, enable **`vpcaccess.goo
 
 1. [ ] Add **Cloud Run Service** for the **FastAPI** image; secrets + env (`GCP_*`, `RUN_JOB_NAME`, …).  
 2. [ ] Add **CI workflow** to build/push **`docker/Dockerfile.api`** and deploy that service.  
-3. [ ] Decide **frontend** hosting (Cloud Run static, Firebase, GCS+LB) + **CI**; set **`VITE_API_URL`**.  
+3. [ ] Run **`deployFrontend.yml`** (Cloud Run **`saral-ui`**); store **`saral-api`** URL in Secret Manager as **`VITE_API_URL`** (see **`DeployFrontendWindows.md`**).  
 4. [ ] Add **JWT** / **Redis** secrets (and Redis infra) if required in prod.  
 5. [ ] **Domain** + certs when you leave default Run URLs.  
 6. [ ] Confirm API triggers job via **attached SA**, not `gcp-sa.json` in the image.

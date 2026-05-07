@@ -23,8 +23,10 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
 - **Deploy**:
   - **`docker/Dockerfile.validation`** (container for `validation.py`)
   - **`docker/Dockerfile.api`** (FastAPI `app.py`)
+  - **`docker/Dockerfile.frontend`** (Vite UI + nginx for Cloud Run)
   - `docker-compose.yml` (local one-shot validation run)
   - `.github/workflows/deployValidation.yml` (build + deploy job + deploy scheduler)
+  - `.github/workflows/deployApi.yml` / **`deployFrontend.yml`** (Cloud Run API + UI)
   - `.github/workflows/runValidationManual.yml` (manual one-time run)
   - **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** (GCP setup guide)
 

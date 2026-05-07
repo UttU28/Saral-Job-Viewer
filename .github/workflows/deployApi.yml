@@ -1,7 +1,14 @@
+# After deploy, writes the service HTTPS URL to Secret Manager as VITE_API_URL (no trailing slash)
+# so deployFrontend.yml can build the SPA against the current API URL without manual updates.
 name: Build and deploy API (Cloud Run Service)
 
 on:
   workflow_dispatch:
+    inputs:
+      syncViteApiUrlSecret:
+        description: Write Cloud Run URL to Secret Manager VITE_API_URL (for deployFrontend). Turn off if you use a custom domain and set the secret manually.
+        type: boolean
+        default: true
 
 env:
   GCP_PROJECT_ID: saraljobviewer
@@ -11,6 +18,7 @@ env:
   CLOUD_RUN_SERVICE: saral-api
   RUN_JOB_NAME: saral-dvalidate-job
   MONGODB_DATABASE: saralJobViewer
+  VITE_API_URL_SECRET_ID: VITE_API_URL
 
 jobs:
   deployApi:
@@ -80,3 +88,32 @@ jobs:
             --set-env-vars "GCP_PROJECT_ID=${{ env.GCP_PROJECT_ID }},GCP_REGION=${{ env.GCP_REGION }},RUN_JOB_NAME=${{ env.RUN_JOB_NAME }},MONGODB_DATABASE=${{ env.MONGODB_DATABASE }},REDIS_ENABLED=true,REDIS_PREFIX=sjv,REDIS_DEFAULT_TTL_SECONDS=60,REDIS_SOCKET_TIMEOUT_MS=500,REDIS_CONNECT_TIMEOUT_MS=500" \
             --set-secrets "MONGODB_URI=MONGODB_URI:latest,JWT_SECRET=JWT_SECRET:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest,REDIS_URL=REDIS_URL:latest" \
             "${EXTRA[@]}"
+
+      - name: Sync API URL to Secret Manager for frontend builds
+        if: inputs.syncViteApiUrlSecret
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL="$(gcloud run services describe "${{ env.CLOUD_RUN_SERVICE }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" \
+            --region "${{ env.GCP_REGION }}" \
+            --format='value(status.url)' | tr -d '\n\r')"
+          URL="${URL%/}"
+          if [[ -z "$URL" ]]; then
+            echo "Could not read Cloud Run service URL."
+            exit 1
+          fi
+          echo "::add-mask::${URL}"
+          echo "VITE_API_URL secret target: ${URL}"
+
+          if ! gcloud secrets describe "${{ env.VITE_API_URL_SECRET_ID }}" \
+            --project "${{ env.GCP_PROJECT_ID }}" >/dev/null 2>&1; then
+            printf '%s' "$URL" | gcloud secrets create "${{ env.VITE_API_URL_SECRET_ID }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --data-file=- \
+              --replication-policy=automatic
+          else
+            printf '%s' "$URL" | gcloud secrets versions add "${{ env.VITE_API_URL_SECRET_ID }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --data-file=-
+          fi
