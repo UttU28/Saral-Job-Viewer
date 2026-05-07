@@ -1,16 +1,3 @@
-# Build docker/Dockerfile.api, push to Artifact Registry, deploy Cloud Run **Service** (HTTP).
-# Prerequisites (one-time GCP + GitHub): same WIF secrets as deployValidation.yml, plus
-# Secret Manager: JWT_SECRET (required for login). Grant the runtime SA roles/run.developer
-# (or run.jobs.runInvoker) on project/job so admin "trigger validation job" works without a key file.
-#
-# Redis (Memorystore): run provisionMemorystoreRedis.yml first, then set repo Variable GCP_VPC_CONNECTOR_NAME
-# to the connector id (same region). Secrets: REDIS_URL (redis://host:port/0). Optional tuning: REDIS_* envs below.
-#
-# GitHub secrets:
-#   GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT — same as validation workflow (deploy identity)
-#   GCP_API_RUN_SERVICE_ACCOUNT — email of the Cloud Run **runtime** service account (e.g. saral-api-trigger@...)
-# GitHub variables (Actions → Variables):
-#   GCP_VPC_CONNECTOR_NAME — serverless VPC connector **name** (required for private Memorystore)
 name: Build and deploy API (Cloud Run Service)
 
 on:

@@ -1,8 +1,6 @@
 name: Build and Deploy Validation Job and Scheduler (Cloud Run Job and Cloud Scheduler)
 
 on:
-  # push:
-  #   branches: ["main"]
   workflow_dispatch:
 
 env:

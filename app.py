@@ -333,6 +333,16 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root():
+    """Cloud Run root URL has no nginx path prefix; API lives under /api/…."""
+    return {
+        "service": "saral-job-viewer-api",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
+
+
 @app.get("/api/health")
 def healthCheck():
     return {"ok": True}

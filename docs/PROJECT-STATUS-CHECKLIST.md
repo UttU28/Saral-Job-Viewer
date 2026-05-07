@@ -41,6 +41,8 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 
 ## 4) Scheduler & automation
 
+**Note:** Cloud Scheduler here is only for the **validation Job** (daily run). **API and frontend** are normal **Cloud Run services** — they keep running after you deploy (no scheduler). You redeploy manually via Actions when you want a new build.
+
 | Item | Status |
 |------|--------|
 | Cloud Scheduler job `saral-dvalidate-midnight-utc` (ENABLED) | [x] |
