@@ -87,7 +87,7 @@ gcloud monitoring uptime create "Saral API LB health (HTTPS /api/health)" `
 Verify:
 
 ```powershell
-gcloud monitoring uptime list --project $PROJECT_ID --format="table(displayName,name)"
+gcloud monitoring uptime list-configs --project $PROJECT_ID --format="table(displayName,name)"
 ```
 
 ---

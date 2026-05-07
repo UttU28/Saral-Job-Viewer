@@ -37,6 +37,8 @@ jobs:
       - id: setupGcloudCli
         name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: beta
 
       - id: ensureMonitoringStack
         name: Ensure APIs, uptime, dashboard, alerts (idempotent)
@@ -74,8 +76,13 @@ jobs:
 
           uptime_exists() {
             local name="$1"
-            local n
-            n="$(gcloud monitoring uptime list --project="${PROJECT}" --format=json | jq --arg n "$name" '[.[]? | select(.displayName == $n)] | length')"
+            local raw n
+            raw="$(gcloud monitoring uptime list-configs --project="${PROJECT}" --format=json)"
+            n="$(echo "${raw}" | jq --arg n "$name" '
+              (if type == "array" then . elif .uptimeCheckConfigs then .uptimeCheckConfigs else [] end)
+              | [.[]? | select(.displayName == $n)]
+              | length
+            ')"
             [[ "${n}" -gt 0 ]]
           }
 
