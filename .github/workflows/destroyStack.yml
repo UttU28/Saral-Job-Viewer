@@ -1,0 +1,161 @@
+name: Destroy Saral Stack (Cloud Run + Redis + Scheduler)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmText:
+        description: Type DESTROY_SARAL_STACK to continue
+        required: true
+        type: string
+      deleteDomainMappings:
+        description: Also delete custom domain mappings (beta)
+        required: true
+        default: false
+        type: boolean
+      deleteRedis:
+        description: Delete Memorystore instance
+        required: true
+        default: true
+        type: boolean
+      deleteVpcConnector:
+        description: Delete Serverless VPC connector
+        required: true
+        default: true
+        type: boolean
+
+env:
+  GCP_PROJECT_ID: saraljobviewer
+  GCP_REGION: us-east1
+  API_SERVICE_NAME: saral-api
+  UI_SERVICE_NAME: saral-ui
+  RUN_JOB_NAME: saral-dvalidate-job
+  SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
+  REDIS_INSTANCE_ID: saral-memorystore-redis
+  VPC_CONNECTOR_NAME: sjv-run-vpc
+  UI_DOMAIN: saral.thatinsaneguy.com
+  API_DOMAIN: saralapi.thatinsaneguy.com
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Confirm destructive action
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ inputs.confirmText }}" != "DESTROY_SARAL_STACK" ]]; then
+            echo "Confirmation text mismatch. Type exactly: DESTROY_SARAL_STACK"
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Delete Cloud Run services
+        shell: bash
+        run: |
+          set -euo pipefail
+          for SVC in "${{ env.API_SERVICE_NAME }}" "${{ env.UI_SERVICE_NAME }}"; do
+            if gcloud run services describe "$SVC" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+              gcloud run services delete "$SVC" \
+                --project "${{ env.GCP_PROJECT_ID }}" \
+                --region "${{ env.GCP_REGION }}" \
+                --quiet
+              echo "Deleted service: $SVC"
+            else
+              echo "Service not found (skip): $SVC"
+            fi
+          done
+
+      - name: Delete Cloud Run job
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gcloud run jobs describe "${{ env.RUN_JOB_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud run jobs delete "${{ env.RUN_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted Cloud Run job: ${{ env.RUN_JOB_NAME }}"
+          else
+            echo "Cloud Run job not found (skip): ${{ env.RUN_JOB_NAME }}"
+          fi
+
+      - name: Delete Cloud Scheduler job
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --location "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud scheduler jobs delete "${{ env.SCHEDULER_JOB_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --location "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted Cloud Scheduler job: ${{ env.SCHEDULER_JOB_NAME }}"
+          else
+            echo "Scheduler job not found (skip): ${{ env.SCHEDULER_JOB_NAME }}"
+          fi
+
+      - name: Delete custom domain mappings (optional)
+        if: inputs.deleteDomainMappings
+        shell: bash
+        run: |
+          set -euo pipefail
+          for DOMAIN in "${{ env.UI_DOMAIN }}" "${{ env.API_DOMAIN }}"; do
+            if gcloud beta run domain-mappings describe --domain "$DOMAIN" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+              gcloud beta run domain-mappings delete \
+                --domain "$DOMAIN" \
+                --project "${{ env.GCP_PROJECT_ID }}" \
+                --region "${{ env.GCP_REGION }}" \
+                --quiet
+              echo "Deleted domain mapping: $DOMAIN"
+            else
+              echo "Domain mapping not found (skip): $DOMAIN"
+            fi
+          done
+
+      - name: Delete Memorystore Redis instance (optional)
+        if: inputs.deleteRedis
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gcloud redis instances describe "${{ env.REDIS_INSTANCE_ID }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud redis instances delete "${{ env.REDIS_INSTANCE_ID }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted Redis instance: ${{ env.REDIS_INSTANCE_ID }}"
+          else
+            echo "Redis instance not found (skip): ${{ env.REDIS_INSTANCE_ID }}"
+          fi
+
+      - name: Delete Serverless VPC connector (optional)
+        if: inputs.deleteVpcConnector
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gcloud compute networks vpc-access connectors describe "${{ env.VPC_CONNECTOR_NAME }}" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
+            gcloud compute networks vpc-access connectors delete "${{ env.VPC_CONNECTOR_NAME }}" \
+              --project "${{ env.GCP_PROJECT_ID }}" \
+              --region "${{ env.GCP_REGION }}" \
+              --quiet
+            echo "Deleted VPC connector: ${{ env.VPC_CONNECTOR_NAME }}"
+          else
+            echo "VPC connector not found (skip): ${{ env.VPC_CONNECTOR_NAME }}"
+          fi
+
+      - name: Summary
+        shell: bash
+        run: |
+          echo "Destroy workflow completed."
+          echo "Deleted where present: API/UI services, validation job, scheduler."
+          echo "Optional deletions based on inputs: domain mappings, Redis instance, VPC connector."

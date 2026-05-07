@@ -24,7 +24,7 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
   - **`docker/Dockerfile.validation`** (container for `validation.py`)
   - **`docker/Dockerfile.api`** (FastAPI `app.py`)
   - **`docker/Dockerfile.frontend`** (Vite UI + nginx for Cloud Run)
-  - `docker-compose.yml` (local one-shot validation run)
+  - `docker-compose.yml` (default: validation job; `--profile dev`: API + Redis on :8000 / :6379)
   - `.github/workflows/deployValidation.yml` (build + deploy job + deploy scheduler)
   - `.github/workflows/deployApi.yml` / **`deployFrontend.yml`** (Cloud Run API + UI)
   - `.github/workflows/runValidationManual.yml` (manual one-time run)
@@ -120,7 +120,7 @@ docker compose up
 
 ## CI/CD + Cloud Run Job
 
-Automated deploy flow is documented in **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** and **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**.
+Automated deploy flow is documented in **[docs/gcpCloudRun.md](docs/gcpCloudRun.md)** and **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**. Current GCP/UI/API/Redis status: **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)**. Custom domain (paths vs subdomains): **[docs/CustomDomainCloudRun.md](docs/CustomDomainCloudRun.md)**.
 
 Current workflow:
 

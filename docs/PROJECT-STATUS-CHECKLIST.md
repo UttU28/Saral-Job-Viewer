@@ -1,6 +1,8 @@
 # Project status — what you have vs what’s left
 
-Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Scheduler, SAs). Use **`[x]` = done**, **`[ ]` = not done yet**.
+**Current state:** Core production stack is **complete**: Cloud Run **`saral-api`** + **`saral-ui`**, validation **job** + Scheduler, **Memorystore Redis** + VPC connector, **WIF** GitHub Actions, **Secret Manager**, and **custom hostnames** (e.g. **`saral.thatinsaneguy.com`** / **`saralapi.thatinsaneguy.com`**) where configured.
+
+Use **`[x]` = done**, **`[ ]` = optional / not started**.
 
 ---
 
@@ -10,9 +12,9 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 |------|--------|
 | GCP project `saraljobviewer` | [x] |
 | Artifact Registry repo `saral-job-viewer-cr` (`us-east1`) | [x] |
-| Docker image **`dvalidate`** (verify/apply job) | [x] |
-| Docker image **`api`** (FastAPI / `docker/Dockerfile.api`) | [ ] |
-| Docker image **`frontend`** (`docker/Dockerfile.frontend` → `deployFrontend.yml`) | [ ] |
+| Docker image **`dvalidate`** (`docker/Dockerfile.validation` → `deployValidation.yml`) | [x] |
+| Docker image **`api`** (`docker/Dockerfile.api` → `deployApi.yml`) | [x] |
+| Docker image **`frontend`** (`docker/Dockerfile.frontend` → `deployFrontend.yml`) | [x] |
 
 ---
 
@@ -21,7 +23,8 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 | Item | Status |
 |------|--------|
 | **Cloud Run Job** `saral-dvalidate-job` (`us-east1`) | [x] |
-| **Cloud Run Services** (HTTP) — API + UI | [ ] *(you listed **0** services)* |
+| **Cloud Run services** **`saral-api`** + **`saral-ui`** (`us-east1`) | [x] |
+| Default URLs `*.run.app` + **custom domain mappings** (UI + API subdomains) | [x] |
 
 ---
 
@@ -30,65 +33,62 @@ Snapshot from your **`gcloud` inventory** (Artifact Registry, Run, Secrets, Sche
 | Item | Status |
 |------|--------|
 | `MONGODB_URI` | [x] |
-| `MONGODB_DATABASE` | [x] |
-| `MIDHTECH_EMAIL` | [x] |
-| `MIDHTECH_PASSWORD` | [x] |
-| `JWT_SECRET` (API auth) | [ ] |
-| `REDIS_URL` or equivalent (if using Redis in prod) | [ ] |
-| `VITE_API_URL` (SPA build: public **`saral-api`** URL; used by `deployFrontend.yml`) | [ ] |
-| Any other API-only secrets you use in `.env` | [ ] |
+| `MONGODB_DATABASE` (also set as env on API) | [x] |
+| `MIDHTECH_EMAIL` / `MIDHTECH_PASSWORD` | [x] |
+| `JWT_SECRET` | [x] |
+| `REDIS_URL` | [x] |
+| `VITE_API_URL` (manual; **`deployFrontend`** reads at build) | [x] |
+
+*Add rows here if you introduce new secrets for future features.*
 
 ---
 
 ## 4) Scheduler & automation
 
-**Note:** Cloud Scheduler here is only for the **validation Job** (daily run). **API and frontend** are normal **Cloud Run services** — they keep running after you deploy (no scheduler). You redeploy manually via Actions when you want a new build.
+**Note:** Scheduler only drives the **validation job**. **API** and **UI** stay up as Cloud Run services; redeploy via Actions when you want new revisions.
 
 | Item | Status |
 |------|--------|
-| Cloud Scheduler job `saral-dvalidate-midnight-utc` (ENABLED) | [x] |
-| GitHub Actions: **validation** job deploy (`deployValidation.yml`) | [x] *(repo already has it)* |
-| GitHub Actions: **API** deploy (build `docker/Dockerfile.api` → Run **Service**) | [ ] |
-| GitHub Actions: **frontend** deploy (`deployFrontend.yml`) + Secret Manager **`VITE_API_URL`** | [ ] |
+| Cloud Scheduler `saral-dvalidate-midnight-utc` | [x] |
+| `deployValidation.yml` | [x] |
+| `deployApi.yml` | [x] |
+| `deployFrontend.yml` | [x] |
+| `provisionMemorystoreRedis.yml` | [x] |
+| `runValidationManual.yml` | [x] |
 
 ---
 
-## 5) Identity (service accounts)
+## 5) Identity & IAM
 
 | Item | Status |
 |------|--------|
-| `saral-api-trigger@…` (API / job trigger use cases) | [x] |
-| `pipelineservice@…` (automation) | [x] |
-| Default compute SA | [x] |
-| Dedicated **Cloud Run service SA** for API with **`run.jobs.run`** on `saral-dvalidate-job` (no JSON key in container) | [ ] *(verify IAM when API moves to Cloud Run)* |
+| `saral-api-trigger@…` (runtime / job trigger) | [x] |
+| `pipelineservice@…` (WIF deploy SA) | [x] |
+| **Deploy SA:** Artifact Registry push, Cloud Run deploy, `iam.serviceAccountUser` on runtime SA | [x] |
+| **Runtime SA:** Secret Manager on API secrets, Run job execution, no `gcp-sa.json` in API image | [x] |
 
 ---
 
-## 6) Networking & data (full product)
+## 6) Networking & data
 
 | Item | Status |
 |------|--------|
-| MongoDB reachable from Cloud Run Job | [x] *(job runs)* |
-| **Redis** (Memorystore + VPC connector, or hosted Redis) for API | [ ] |
-| **Custom domain + HTTPS** for UI and/or API | [ ] *(optional if `*.run.app` is enough for a phase)* |
+| MongoDB reachable from job + **`saral-api`** | [x] |
+| Redis: Memorystore + Serverless VPC connector + **`GCP_VPC_CONNECTOR_NAME`** (Actions variable) | [x] |
+| APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute | [x] |
+| **HTTPS** on custom hosts (managed certs via domain mappings) | [x] |
 
 ---
 
-## 7) APIs enabled (you already have the important ones)
+## 7) Optional polish (only if you want it)
 
-Examples from your list: `run.googleapis.com`, `artifactregistry.googleapis.com`, `secretmanager.googleapis.com`, `cloudscheduler.googleapis.com`, `iamcredentials.googleapis.com` (WIF), etc. — treat as **[x]** for current scope.
-
-If you add **VPC Serverless Connector** for Memorystore, enable **`vpcaccess.googleapis.com`** when you get there.
+| Item | Status |
+|------|--------|
+| `deployValidation.yml` / API / UI: **`on.push`** to `main` for automatic rolls | [ ] |
+| **`min-instances` > 0** on API (or UI) to reduce cold starts | [ ] |
+| Stricter **CORS** in `app.py` (single origin instead of `*`) | [ ] |
+| Re-run GCP inventory: **`GCP-INVENTORY-WINDOWS.md`** | [ ] |
 
 ---
-
-## Short “what’s next” list
-
-1. [ ] Add **Cloud Run Service** for the **FastAPI** image; secrets + env (`GCP_*`, `RUN_JOB_NAME`, …).  
-2. [ ] Add **CI workflow** to build/push **`docker/Dockerfile.api`** and deploy that service.  
-3. [ ] Run **`deployFrontend.yml`** (Cloud Run **`saral-ui`**); store **`saral-api`** URL in Secret Manager as **`VITE_API_URL`** (see **`DeployFrontendWindows.md`**).  
-4. [ ] Add **JWT** / **Redis** secrets (and Redis infra) if required in prod.  
-5. [ ] **Domain** + certs when you leave default Run URLs.  
-6. [ ] Confirm API triggers job via **attached SA**, not `gcp-sa.json` in the image.
 
 For commands to re-scan GCP, see **`GCP-INVENTORY-WINDOWS.md`**.

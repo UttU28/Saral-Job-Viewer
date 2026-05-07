@@ -1,10 +1,42 @@
-# Run:  docker compose up        (build if needed, run validation -1, stream logs, exit)
-#       docker compose up -d     (detached: run then stop; use: docker compose logs dvalidate)
-#       docker compose up --build
+# Default: one-shot validation job (same as before).
+#   docker compose up
+#   docker compose up --build
 #
-# Requires `.env` with MONGODB_URI, MONGODB_DATABASE, MIDHTECH_* (same as local validation.py).
-# One-shot job: container stops when validation.py finishes. Re-run: docker compose up
+# Local API + Redis (matches .env.example REDIS_URL=redis://sjv-redis:6379/0):
+#   docker compose --profile dev up --build
+#   docker compose --profile dev up -d
+#
+# Requires `.env` at repo root (see `.env.example`). For `api`, set at least
+# MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, MIDHTECH_*, GCP_* / RUN_JOB_NAME if
+# you use admin job triggers; REDIS_* as needed.
+#
+# Optional: uncomment volumes on `api` to mount gcp-sa.json for local JobsClient.
 services:
+  sjv-redis:
+    profiles: ["dev"]
+    image: redis:7-alpine
+    container_name: saral-sjv-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  api:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: saral-api:local
+    container_name: saral-api-local
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - sjv-redis
+    init: true
+    # volumes:
+    #   - ./gcp-sa.json:/app/secrets/gcp-sa.json:ro
+
   dvalidate:
     build:
       context: .
