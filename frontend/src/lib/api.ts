@@ -219,6 +219,11 @@ export type AdminJobAction =
   | "push_apply_jobs"
   | "push_apply_jobs_then_cleanup";
 
+export type AdminScraperKeywordsResponse = {
+  keywords: string[];
+  count: number;
+};
+
 export type JobDecisionProfile = {
   name: string;
   email: string;
@@ -366,5 +371,17 @@ export function runAdminJobAction(action: AdminJobAction): Promise<AdminJobActio
 export function setUserAdminStatus(userId: string, isAdmin: boolean): Promise<{ ok: boolean }> {
   return postJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(userId)}/set-admin`, {
     isAdmin,
+  });
+}
+
+export function fetchAdminScraperKeywords(): Promise<AdminScraperKeywordsResponse> {
+  return fetchJson<AdminScraperKeywordsResponse>("/api/admin/scraper-keywords");
+}
+
+export function saveAdminScraperKeywords(
+  keywords: string[],
+): Promise<{ ok: boolean; keywords: string[]; count: number }> {
+  return postJson<{ ok: boolean; keywords: string[]; count: number }>("/api/admin/scraper-keywords", {
+    keywords,
   });
 }

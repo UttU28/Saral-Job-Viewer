@@ -29,7 +29,6 @@ from utils.startChrome import (
     promptBeforeClosingBrowserIfHeaded,
 )
 from utils.fileManagement import (
-    DEFAULT_SCRAPER_SEARCH_KEYWORDS,
     inferPlatformFromPath,
     isCompleteJobRow,
     loadExistingJobsAndMeta,
@@ -66,7 +65,10 @@ fetchHeaders = {
 
 
 def getDefaultSearchParams() -> dict[str, SearchParamValue]:
-    primary = DEFAULT_SCRAPER_SEARCH_KEYWORDS[0]
+    keywords = resolveScraperSearchKeywords()
+    if not keywords:
+        raise ValueError("No scraper search keywords found in MongoDB.")
+    primary = keywords[0]
     return {
         "value": [primary],
         "searchType": "job_title",
@@ -119,7 +121,6 @@ def buildSearchUrlForKeyword(keyword: str) -> str:
     )
 
 
-defaultSearchUrl = buildSearchUrl()
 skippedOriginalUrlIdsKey = "skippedOriginalUrlIds"
 JOBRIGHT_SOURCE_PATH = resolveOutputJsonPath("jobright.source")
 
@@ -259,14 +260,14 @@ def fetchAndMergeSearchHtml(
 def resolveSearchUrl(cliUrl: str | None) -> str:
     if cliUrl and cliUrl.strip():
         return cliUrl.strip()
-    return defaultSearchUrl
+    return buildSearchUrl()
 
 
 def resolveSearchPhases(cliUrl: str | None) -> list[tuple[str, str]]:
     """
     Each phase is (searchUrl, label). One phase finishes list scroll + detail
     scrape before the next. Optional cliUrl forces a single phase.
-    Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
+    Keyword list comes from MongoDB scraper settings.
     """
     if cliUrl and cliUrl.strip():
         return [(cliUrl.strip(), "cli")]

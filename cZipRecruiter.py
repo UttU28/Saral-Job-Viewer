@@ -22,7 +22,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from utils.dataManager import loadKnownJobIdsByPlatform
 from utils.scraperTerminalLog import PLATFORM_ZIPRECRUITER, ScraperRunLog
 from utils.fileManagement import (
-    DEFAULT_SCRAPER_SEARCH_KEYWORDS,
     inferPlatformFromPath,
     loadJobsDocumentOrEmpty,
     mergeNewJobsIntoDocument,
@@ -43,7 +42,10 @@ baseUrl = "https://www.ziprecruiter.com/jobs-search"
 
 def getDefaultZipRecruiterParams() -> dict:
     """Query parameters when no full URL override (used to build search URLs)."""
-    primary = DEFAULT_SCRAPER_SEARCH_KEYWORDS[0]
+    keywords = resolveScraperSearchKeywords()
+    if not keywords:
+        raise ValueError("No scraper search keywords found in MongoDB.")
+    primary = keywords[0]
     return {
         "search": primary,
         "location": "United States",
@@ -117,7 +119,7 @@ def resolveZipRecruiterSearchPhases(cliUrl: str | None = None) -> list[tuple[str
     """
     Each phase is (searchUrl, label). One phase paginates the full result set
     before the next. Optional cliUrl forces a single phase.
-    Keyword list: SCRAPER_SEARCH_KEYWORDS (see utils.fileManagement).
+    Keyword list comes from MongoDB scraper settings.
     """
     if cliUrl and str(cliUrl).strip():
         return [(str(cliUrl).strip(), "cli")]
@@ -691,7 +693,7 @@ def main() -> int:
         "searchUrl",
         nargs="?",
         default=None,
-        help="Optional full search URL (single run). Else SCRAPER_SEARCH_KEYWORDS / built-in defaults.",
+        help="Optional full search URL (single run). Else uses MongoDB scraper keywords.",
     )
     args = parser.parse_args()
 

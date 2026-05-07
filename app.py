@@ -20,7 +20,12 @@ from google.cloud import run_v2
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
-from utils.dataManager import deleteJobsByApplyStatusNotIn, updateApplyStatusByJobId
+from utils.dataManager import (
+    deleteJobsByApplyStatusNotIn,
+    loadScraperSearchKeywords,
+    saveScraperSearchKeywords,
+    updateApplyStatusByJobId,
+)
 from utils.authService import (
     changeUserPassword,
     createUserSessionToken,
@@ -104,6 +109,10 @@ class AdminJobActionBody(BaseModel):
 
 class AdminJobExecutionStatusBody(BaseModel):
     executionName: str = ""
+
+
+class AdminScraperKeywordsBody(BaseModel):
+    keywords: list[str] = Field(default_factory=list)
 
 
 class JobDecisionBody(BaseModel):
@@ -593,6 +602,27 @@ def getAdminCloudRunExecutions(
         return {"ok": True, **payload}
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/scraper-keywords")
+def getAdminScraperKeywords(currentUser: dict[str, Any] = Depends(requireAdmin)):
+    try:
+        keywords = loadScraperSearchKeywords()
+        return {"keywords": keywords, "count": len(keywords)}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/admin/scraper-keywords")
+def postAdminScraperKeywords(
+    body: AdminScraperKeywordsBody,
+    currentUser: dict[str, Any] = Depends(requireAdmin),
+):
+    try:
+        keywords = saveScraperSearchKeywords(body.keywords)
+        return {"ok": True, "keywords": keywords, "count": len(keywords)}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

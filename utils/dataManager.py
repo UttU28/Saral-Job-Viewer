@@ -19,6 +19,8 @@ except ImportError:  # pragma: no cover - fallback when pymongo missing at impor
 
 JOB_DATA_COLLECTION = "jobData"
 PAST_DATA_COLLECTION = "pastData"
+SCRAPER_SETTINGS_COLLECTION = "scraperSettings"
+SCRAPER_KEYWORDS_DOCUMENT_ID = "searchKeywords"
 
 _mongo_client: Any = None
 _mongo_db: Any = None
@@ -83,12 +85,16 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
                 db[JOB_DATA_COLLECTION].drop()
             if PAST_DATA_COLLECTION in names:
                 db[PAST_DATA_COLLECTION].drop()
+            if SCRAPER_SETTINGS_COLLECTION in names:
+                db[SCRAPER_SETTINGS_COLLECTION].drop()
         job_col = db[JOB_DATA_COLLECTION]
         past_col = db[PAST_DATA_COLLECTION]
+        settings_col = db[SCRAPER_SETTINGS_COLLECTION]
         job_col.create_index("jobId", unique=True)
         past_col.create_index("jobId", unique=True)
         job_col.create_index("platform")
         past_col.create_index("platform")
+        settings_col.create_index("_id", unique=True)
     except PyMongoError as exc:
         appendScrapeLog(
             f"Mongo index ensure skipped due to transient error: {type(exc).__name__}: {exc}",
@@ -99,6 +105,49 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
 def createTables(*, recreate: bool = False) -> None:
     """Ensure MongoDB collections and indexes exist (no-op when already present)."""
     _mongoEnsureIndexes(recreate)
+
+
+def _normalizeScraperKeyword(value: object) -> str:
+    return str(value or "").strip()
+
+
+def _normalizeScraperKeywords(values: list[object] | tuple[object, ...]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        keyword = _normalizeScraperKeyword(raw)
+        if not keyword:
+            continue
+        keyFold = keyword.casefold()
+        if keyFold in seen:
+            continue
+        seen.add(keyFold)
+        out.append(keyword)
+    return out
+
+
+def loadScraperSearchKeywords() -> list[str]:
+    createTables(recreate=False)
+    doc = _getMongoDb()[SCRAPER_SETTINGS_COLLECTION].find_one(
+        {"_id": SCRAPER_KEYWORDS_DOCUMENT_ID}
+    )
+    if not isinstance(doc, dict):
+        return []
+    raw = doc.get("keywords")
+    if not isinstance(raw, list):
+        return []
+    return _normalizeScraperKeywords(raw)
+
+
+def saveScraperSearchKeywords(keywords: list[object] | tuple[object, ...]) -> list[str]:
+    normalized = _normalizeScraperKeywords(keywords)
+    createTables(recreate=False)
+    _getMongoDb()[SCRAPER_SETTINGS_COLLECTION].update_one(
+        {"_id": SCRAPER_KEYWORDS_DOCUMENT_ID},
+        {"$set": {"keywords": normalized, "updatedAt": _utcNowIso()}},
+        upsert=True,
+    )
+    return normalized
 
 
 def _applyStatusParam(row: dict) -> str | None:

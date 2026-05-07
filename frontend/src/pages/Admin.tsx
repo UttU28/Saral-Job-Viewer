@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { CircleX, Flame, Loader2, RefreshCw, Shield, ShieldCheck, ShieldX } from "lucide-react";
+import { useEffect, useReducer, useState } from "react";
+import { CircleX, Flame, Loader2, RefreshCw, Shield, ShieldCheck, ShieldX, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { Footer } from "@/components/Footer";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   runAdminJobAction,
   setUserAdminStatus,
+  saveAdminScraperKeywords,
   type AdminJobAction,
   type CloudRunExecutionRow,
 } from "@/lib/api";
@@ -16,10 +17,12 @@ import { formatClientError } from "@/lib/api";
 import {
   useAdminCloudRunExecutionsQuery,
   useAdminJobStatusSummaryQuery,
+  useAdminScraperKeywordsQuery,
   useAdminUsersQuery,
 } from "@/hooks/use-jobs";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
 
 function parseExecutionInstant(raw: string): Date | null {
   const s = (raw || "").trim();
@@ -110,9 +113,28 @@ export default function Admin() {
   const adminUsersQuery = useAdminUsersQuery(Boolean(user?.isAdmin));
   const adminJobStatusQuery = useAdminJobStatusSummaryQuery(Boolean(user?.isAdmin));
   const cloudRunExecQuery = useAdminCloudRunExecutionsQuery(Boolean(user?.isAdmin));
+  const adminScraperKeywordsQuery = useAdminScraperKeywordsQuery(Boolean(user?.isAdmin));
   const [cloudRunExecutionsExpanded, setCloudRunExecutionsExpanded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<AdminJobAction | null>(null);
+  const [keywordDrafts, setKeywordDrafts] = useState<string[]>([]);
+  const [newKeywordDraft, setNewKeywordDraft] = useState("");
+  const [keywordMutationInFlight, setKeywordMutationInFlight] = useState(false);
+  const [, forceCloudRunTick] = useReducer((value: number) => value + 1, 0);
+
+  const cloudRunExecutionsAll = cloudRunExecQuery.data?.executions ?? [];
+  const hasRunningCloudExecution = cloudRunExecutionsAll.some((r) => r.state === "RUNNING");
+
+  useEffect(() => {
+    if (!hasRunningCloudExecution) return;
+    const id = globalThis.setInterval(() => forceCloudRunTick(), 1000);
+    return () => clearInterval(id);
+  }, [hasRunningCloudExecution]);
+
+  useEffect(() => {
+    if (!adminScraperKeywordsQuery.data) return;
+    setKeywordDrafts(adminScraperKeywordsQuery.data.keywords ?? []);
+  }, [adminScraperKeywordsQuery.data]);
 
   if (!user?.isAdmin) {
     return (
@@ -139,15 +161,6 @@ export default function Admin() {
   const statusSummary = adminJobStatusQuery.data;
   const mergedRejectedCount =
     (statusSummary?.rejected ?? 0) + (statusSummary?.doNotApply ?? 0) + (statusSummary?.existing ?? 0);
-
-  const cloudRunExecutionsAll = cloudRunExecQuery.data?.executions ?? [];
-  const hasRunningCloudExecution = cloudRunExecutionsAll.some((r) => r.state === "RUNNING");
-  const [, setCloudRunNowTick] = useState(0);
-  useEffect(() => {
-    if (!hasRunningCloudExecution) return;
-    const id = window.setInterval(() => setCloudRunNowTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [hasRunningCloudExecution]);
 
   const cloudRunExecutionsVisible =
     cloudRunExecutionsExpanded || cloudRunExecutionsAll.length <= CLOUD_RUN_EXECUTIONS_INITIAL
@@ -209,6 +222,47 @@ export default function Admin() {
     } finally {
       setRunningAction(null);
     }
+  };
+
+  const saveKeywordsNow = async (nextKeywords: string[]) => {
+    setKeywordMutationInFlight(true);
+    try {
+      const result = await saveAdminScraperKeywords(nextKeywords);
+      setKeywordDrafts(result.keywords);
+      await queryClient.invalidateQueries({ queryKey: ["adminScraperKeywords"] });
+      return true;
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Could not save scraper keywords",
+        description: formatClientError(error, "Request failed"),
+      });
+      return false;
+    } finally {
+      setKeywordMutationInFlight(false);
+    }
+  };
+
+  const onDeleteKeyword = async (index: number) => {
+    const nextKeywords = keywordDrafts.filter((_, i) => i !== index).map((value) => value.trim()).filter(Boolean);
+    await saveKeywordsNow(nextKeywords);
+  };
+
+  const onAddKeyword = async () => {
+    const next = newKeywordDraft.trim();
+    if (!next) return;
+    if (keywordDrafts.some((item) => item.trim().toLowerCase() === next.toLowerCase())) {
+      toast({
+        variant: "destructive",
+        title: "Keyword already exists",
+        description: next,
+      });
+      return;
+    }
+    const nextKeywords = [...keywordDrafts, next].map((value) => value.trim()).filter(Boolean);
+    const ok = await saveKeywordsNow(nextKeywords);
+    if (!ok) return;
+    setNewKeywordDraft("");
   };
 
   return (
@@ -483,6 +537,80 @@ export default function Admin() {
                       More executions exist in GCP; only the first page is shown here.
                     </p>
                   ) : null}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card/45 p-4 sm:p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-sm sm:text-base font-semibold text-foreground">Scraper search keywords</h2>
+                  <p className="text-xs text-muted-foreground">Managed in MongoDB and used by all scrapers.</p>
+                </div>
+              </div>
+              {adminScraperKeywordsQuery.isLoading ? (
+                <div className="h-24 flex items-center justify-center text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  Loading scraper keywords...
+                </div>
+              ) : adminScraperKeywordsQuery.isError ? (
+                <Alert variant="destructive" className="rounded-xl">
+                  <AlertTitle>Failed to load scraper keywords</AlertTitle>
+                  <AlertDescription>
+                    {formatClientError(adminScraperKeywordsQuery.error, "Could not fetch scraper keyword settings.")}
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {keywordDrafts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No keywords yet. Add at least one keyword.</p>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {keywordDrafts.map((keyword, index) => (
+                        <div
+                          key={`${index}-${keyword}`}
+                          className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 py-1.5 text-sm"
+                        >
+                          <span className="max-w-[220px] truncate sm:max-w-[320px]" title={keyword}>
+                            {keyword}
+                          </span>
+                          <button
+                            type="button"
+                            className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground transition hover:bg-background hover:text-foreground"
+                            aria-label={`Remove keyword ${keyword}`}
+                            disabled={keywordMutationInFlight}
+                            onClick={() => void onDeleteKeyword(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={newKeywordDraft}
+                      onChange={(event) => setNewKeywordDraft(event.target.value)}
+                      placeholder="Add new keyword"
+                      className="w-full"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          void onAddKeyword();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      className="sm:w-auto w-full"
+                      disabled={keywordMutationInFlight}
+                      onClick={() => void onAddKeyword()}
+                    >
+                      {keywordMutationInFlight ? <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden /> : null}
+                      Add keyword
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
