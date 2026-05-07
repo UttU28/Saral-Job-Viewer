@@ -1,4 +1,4 @@
-name: Run Validation Manually
+name: Run Validation Manually (Cloud Run Job)
 
 on:
   workflow_dispatch:

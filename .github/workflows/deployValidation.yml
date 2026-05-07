@@ -1,4 +1,4 @@
-name: Build, Deploy Job, Deploy Scheduler
+name: Build and Deploy Validation Job and Scheduler (Cloud Run Job and Cloud Scheduler)
 
 on:
   # push:
