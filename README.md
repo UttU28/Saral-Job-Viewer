@@ -2,7 +2,7 @@
 
 Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, with MongoDB as the source of truth.
 
-**Docs:** **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** (workflows, LB, secrets) and **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** (done vs optional).
+**Docs:** **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** (GCP architecture & KT); **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** (workflows, LB, secrets); **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** (monitoring plan); **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** (optional manual `gcloud`, IAM for **`setupMonitoring.yml`**); **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** (done vs optional).
 
 ## What This Repo Does
 
@@ -26,9 +26,12 @@ Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, wi
   - **`docker/Dockerfile.frontend`** (Vite UI + nginx for Cloud Run)
   - `docker-compose.yml` (default: validation job; `--profile dev`: API + Redis on :8000 / :6379)
   - **`.github/workflows/deployment.yml`** — main path: build/deploy API, UI, validation job + Scheduler (approval gate on `main`)
-  - **`.github/workflows/ensurePrereq.yml`** — bootstrap: secrets/images, optional Redis/VPC, optional LB, optional domain mappings
+  - **`.github/workflows/ensurePrereq.yml`** — bootstrap: secrets/images, optional Redis/VPC, optional domain mappings (LB runs from **`deployment.yml`**)
   - **`.github/workflows/destroyStack.yml`** — teardown (optional LB/Redis/VPC/mappings)
-  - **`.github/workflows/runValidationManual.yml`** — manual Cloud Run job run
+  - **`.github/workflows/setupMonitoring.yml`** — manual Monitoring (**dashboard + alerts defined inside workflow**); secret **`MONITORING_ALERT_EMAIL`** unless **`skipNotificationChannelAndAlerts`**
+  - **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** for GCP services and flow
+  - **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** for what to monitor on GCP
+  - **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** for optional manual `gcloud` commands + **`setupMonitoring.yml`** IAM
   - **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for full CI/CD detail
 
 ## Environment Variables
@@ -121,7 +124,7 @@ docker compose up
 
 ## CI/CD + Cloud Run Job
 
-See **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for workflows, load balancer, and secrets. Status checklist: **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)**.
+See **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** for GCP architecture and workflows-at-a-glance; **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** and **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** for observability; **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for CI/CD and secrets; **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** for status.
 
 **Typical Actions flow:**
 

@@ -28,6 +28,7 @@
 | **`ensurePrereq.yml`** | Bootstrap: APIs, secrets/images checks; optional Redis/VPC; optional domain mappings (no LB here). |
 | **`destroyStack.yml`** | Teardown: confirm phrase → **`production-approval`** → optional LB → **parallel** API/UI deletes → job + Scheduler → optional mappings → Redis then VPC (ordered); summary job. |
 | **`runValidationManual.yml`** | Manual execution of `saral-dvalidate-job` (mode + optional wait). |
+| **`setupMonitoring.yml`** | Manual: idempotent Monitoring (APIs, uptime, dashboard + alerts **embedded in workflow**); secret **`MONITORING_ALERT_EMAIL`**; input **`skipNotificationChannelAndAlerts`**. |
 
 ---
 
@@ -60,6 +61,32 @@ Implemented in **`deployment.yml`** (`ensureGlobalLoadBalancer` job after **`dep
 **Optional later:** Cloud Armor, Cloud CDN, remove redundant Cloud Run domain mappings after LB-only cutover.
 
 **Typical GCP object names** (must match workflows if you rename): global IP `sjv-global-lb-ip`; cert `sjv-managed-cert`; NEGs `sjv-ui-neg` / `sjv-api-neg`; backends `sjv-ui-bes` / `sjv-api-bes`; URL map `sjv-host-routing`; proxies `sjv-https-proxy` / `sjv-http-proxy`; forwarding rules `sjv-https-fr` / `sjv-http-fr`.
+
+##### IAM for **`ensureGlobalLoadBalancer`** (fixes `compute.globalAddresses.create` denied)
+
+The **deploy / WIF** service account (**`GCP_SERVICE_ACCOUNT`** in GitHub secrets — not the Cloud Run runtime SA) must be allowed to create Compute load balancer resources. If permission is missing you see:
+
+`Required 'compute.globalAddresses.create' permission for 'projects/…/global/addresses/sjv-global-lb-ip'`
+
+Bind these roles on project **`saraljobviewer`** to that pipeline SA (use the same email as **`GCP_SERVICE_ACCOUNT`**):
+
+```bash
+PROJECT=saraljobviewer
+SA="YOUR_PIPELINE_SA@YOUR_PROJECT_ID.iam.gserviceaccount.com"
+
+gcloud projects add-iam-policy-binding "${PROJECT}" \
+  --member="serviceAccount:${SA}" \
+  --role="roles/compute.networkAdmin"
+
+gcloud projects add-iam-policy-binding "${PROJECT}" \
+  --member="serviceAccount:${SA}" \
+  --role="roles/compute.loadBalancerAdmin"
+```
+
+- **`roles/compute.networkAdmin`** — global/regional addresses and related networking objects LB creation touches.
+- **`roles/compute.loadBalancerAdmin`** — URL maps, backend services, forwarding rules, target proxies, managed SSL certs on Compute.
+
+Wait for IAM to propagate, then rerun **`deployment.yml`**.
 
 ---
 
@@ -139,10 +166,13 @@ flowchart TB
 
 ## References
 
+- **`GCP-PLATFORM-KT.md`** — onboarding / architecture: **what each GCP service is**, **why we use it**, **names**, **traffic and credential flows**, and **which workflow touches what**.
+- **`MONITORING-OBSERVABILITY.md`** — observability goals; **Cloud Monitoring**, **Logging**, optional **Trace** / **Error Reporting**; dashboards and alerts outline.
+- **`MONITORING-WINDOWS-GCLOUD.md`** — Optional manual **`gcloud`** steps; IAM for **`setupMonitoring.yml`** (dashboard/policies live in that workflow).
 - **`PROJECT-STATUS-CHECKLIST.md`** — line-item status + optional polish (same folder); **keep in sync** with workflow changes.
-- **Workflows:** `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`.
+- **Workflows:** `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`, `setupMonitoring.yml`.
 - **Local:** `docker-compose.yml`, `docker/Dockerfile.*`.
 
 ---
 
-*Last updated: 2026-05 — docs trimmed to `docs/*.md` pair + workflows; update both markdown files when CI/CD or infra changes.*
+*Last updated: 2026-05 — update **`GCP-PLATFORM-KT.md`**, **`PROJECT-STATUS-CHECKLIST.md`**, **`MONITORING-OBSERVABILITY.md`**, **`MONITORING-WINDOWS-GCLOUD.md`** (if observability CLI scope changes), and this file when CI/CD or infra topology changes.*

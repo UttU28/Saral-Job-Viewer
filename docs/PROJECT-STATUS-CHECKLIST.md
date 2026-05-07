@@ -81,22 +81,10 @@ Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** a
 | APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute (LB), Certificate Manager (enabled with LB prereq) | [x] |
 | **HTTPS** on custom hosts (managed certs on LB **or** per Cloud Run domain mapping) | [x] |
 | **Global HTTPS Load Balancer** (serverless NEG → UI/API; URL map host routing) | [x] |
-| Cloud Armor policy on LB (optional WAF/rate limits) | [ ] |
 
 ---
 
-## 7) Optional polish (only if you want it)
-
-| Item | Status |
-|------|--------|
-| **`min-instances` > 0** on API (or UI) to reduce cold starts | [ ] |
-| Stricter **CORS** in `app.py` (single origin instead of `*`) | [ ] |
-| Periodic GCP audit (Console / `gcloud` lists on Run, LB, Scheduler, secrets) | [ ] |
-| Cloud CDN or Cloud Armor on LB | [ ] |
-
----
-
-## 8) Load balancer — implemented
+## 7) Load balancer — implemented
 
 | Step | Status |
 |------|--------|
@@ -105,7 +93,6 @@ Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** a
 | Google-managed cert at LB (`sjv-managed-cert`; SANs for UI + API hosts) | [x] |
 | DNS **A** for `saral` / `saralapi` → LB global IP | [x] where cut over |
 | CI: **`deployment.yml`** (`ensureGlobalLoadBalancer` after API/UI deploy), **`destroyStack.yml`** (`deleteGlobalLoadBalancer`) | [x] |
-| Remove duplicate Cloud Run domain mappings after stable LB-only traffic (optional) | [ ] |
 
 **Suggested orchestration order**
 
@@ -113,4 +100,17 @@ Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** a
 2. **`deployment.yml`** — build/deploy on `main` after approval; **LB** runs **after** **`saral-api`** / **`saral-ui`** deploy jobs when API/UI changed (or manual **`ensureGlobalLoadBalancer`**).
 3. **`destroyStack.yml`** — full teardown only when needed; enable LB delete if removing LB IP and GCP objects.
 
-**Documentation:** This repo keeps **`docs/CICD-FULL-STACK.md`** (workflows, LB, diagram, secrets) and **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update both whenever `.github/workflows/` or production topology changes.
+---
+
+## 8) Monitoring & observability (planned)
+
+| Item | Status |
+|------|--------|
+| **`docs/MONITORING-OBSERVABILITY.md`** — GCP services (Monitoring, Logging, Trace), dashboard sections, alerts | [x] doc |
+| Cloud Monitoring **dashboard** (LB + Run services + job + Scheduler + Redis) | [ ] |
+| **Uptime checks** + alerts (UI `/`, API `/api/health` via public hosts) | [ ] |
+| **Alert policies** (error rate, latency, job failures, Scheduler, Redis memory) | [ ] |
+| Optional **Cloud Trace** / **Error Reporting** on API | [ ] |
+| **`.github/workflows/setupMonitoring.yml`** + repo secret **`MONITORING_ALERT_EMAIL`** (optional **`skipNotificationChannelAndAlerts`**) | [x] |
+
+**Documentation:** **`docs/GCP-PLATFORM-KT.md`** (GCP services, naming, flows, KT); **`docs/CICD-FULL-STACK.md`** (workflows, LB, secrets); **`docs/MONITORING-OBSERVABILITY.md`** (observability goals); **`docs/MONITORING-WINDOWS-GCLOUD.md`** (optional manual **`gcloud`**, **`setupMonitoring.yml`** IAM); **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update the architecture docs when `.github/workflows/` or production topology changes; edit **`setupMonitoring.yml`** when dashboard or alert definitions change, then sync **`MONITORING-OBSERVABILITY.md`** / **`MONITORING-WINDOWS-GCLOUD.md`** if behavior or IAM wording shifts.
