@@ -9,6 +9,10 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlencode, urljoin
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -41,7 +45,7 @@ from utils.fileManagement import (
     saveOutputDocument,
 )
 
-load_dotenv()
+load_dotenv(_REPO_ROOT / ".env")
 
 
 # --- Job list fetch (HTTP) ---

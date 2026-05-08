@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
 from selenium.common.exceptions import (
@@ -32,7 +37,7 @@ from utils.fileManagement import (
     saveOutputDocument,
 )
 
-load_dotenv()
+load_dotenv(_REPO_ROOT / ".env")
 
 
 def getDefaultGlassdoorSearchParams() -> dict[str, str]:

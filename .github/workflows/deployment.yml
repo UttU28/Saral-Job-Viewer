@@ -73,9 +73,9 @@ jobs:
               - 'docker/Dockerfile.frontend'
             validation:
               - 'validation.py'
-              - 'aJobRight.py'
-              - 'bGlassDoor.py'
-              - 'cZipRecruiter.py'
+              - 'scraping/aJobRight.py'
+              - 'scraping/bGlassDoor.py'
+              - 'scraping/cZipRecruiter.py'
               - 'utils/**'
               - 'requirements.txt'
               - 'docker/Dockerfile.validation'

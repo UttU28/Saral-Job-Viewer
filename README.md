@@ -19,7 +19,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 
 | Layer | Role |
 |-------|------|
-| **Scrapers** | `aJobRight.py`, `bGlassDoor.py`, `cZipRecruiter.py` — Selenium/Chrome; persist via **`utils/dataManager.py`**. |
+| **Scrapers** | **`scraping/aJobRight.py`**, **`scraping/bGlassDoor.py`**, **`scraping/cZipRecruiter.py`** — Selenium/Chrome; persist via **`utils/dataManager.py`**. Run all in order from root: **`python midhScraping.py`**. |
 | **API** | **`app.py`** — FastAPI: job queries, filters, auth (JWT), admin (users, scraper keywords, cache bust, Cloud Run job trigger), Redis-backed caching (**`utils/redisCache.py`**). |
 | **Frontend** | **`frontend/`** — Vite + React + TypeScript + Tailwind/Radix (`npm run dev` / `npm run build`). Calls API using **`VITE_API_URL`**. |
 | **Validation** | **`validation.py`** — Midhtech validation/suggest flow against MongoDB (`-1` pending checks, `-2` push APPLY jobs). Same logic ships in **`docker/Dockerfile.validation`** as **`saral-dvalidate-job`** on a schedule. |
@@ -45,7 +45,8 @@ Dependencies for backend/scrapers: **`requirements.txt`**.
 ```
 ├── app.py                 # FastAPI application entry
 ├── validation.py          # CLI validation / Midhtech pipeline
-├── aJobRight.py / bGlassDoor.py / cZipRecruiter.py
+├── scraping/              # JobRight / Glassdoor / ZipRecruiter scrapers
+├── midhScraping.py        # Run scrapers sequentially (from repo root)
 ├── loadTest.py            # Optional load / Monitoring alert drill
 ├── klean.py               # Temp/cache cleanup
 ├── utils/                 # Shared Python modules
@@ -144,10 +145,13 @@ Ensure **`VITE_API_URL`** in root **`.env`** points at your API (Vite reads env 
 
 ## Run scrapers
 
+From the **repo root** (so `.env` and data paths resolve correctly):
+
 ```powershell
-python aJobRight.py
-python bGlassDoor.py
-python cZipRecruiter.py
+python midhScraping.py
+python scraping/aJobRight.py
+python scraping/bGlassDoor.py
+python scraping/cZipRecruiter.py
 ```
 
 ---
