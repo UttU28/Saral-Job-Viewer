@@ -11,6 +11,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 | **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** | GCP services, resource names, identity, workflow ↔ GCP matrix, architecture diagram (runtime view). |
 | **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** | Deploy/destroy/prereq workflows, secrets summary, global LB, IAM snippets for pipeline SA, architecture diagram. |
 | **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** | Monitoring scope; **`setupMonitoring.yml`** (dashboard + uptime + alerts); IAM; optional Windows **`gcloud`**; **`loadTest.py`** for alert drill. |
+| **[docs/DATABASE-SCHEMA.md](docs/DATABASE-SCHEMA.md)** | MongoDB schema reference: every collection, field, index, the **`applyStatus`** state machine, and end-to-end data lifecycle. |
 | **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** | What is implemented vs optional follow-ups. |
 
 ---
@@ -19,7 +20,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 
 | Layer | Role |
 |-------|------|
-| **Scrapers** | `aJobRight.py`, `bGlassDoor.py`, `cZipRecruiter.py` — Selenium/Chrome; persist via **`utils/dataManager.py`**. |
+| **Scrapers** | **`scraping/aJobRight.py`**, **`scraping/bGlassDoor.py`**, **`scraping/cZipRecruiter.py`** — Selenium/Chrome; persist via **`utils/dataManager.py`**. Run all in order from root: **`python midhScraping.py`**. |
 | **API** | **`app.py`** — FastAPI: job queries, filters, auth (JWT), admin (users, scraper keywords, cache bust, Cloud Run job trigger), Redis-backed caching (**`utils/redisCache.py`**). |
 | **Frontend** | **`frontend/`** — Vite + React + TypeScript + Tailwind/Radix (`npm run dev` / `npm run build`). Calls API using **`VITE_API_URL`**. |
 | **Validation** | **`validation.py`** — Midhtech validation/suggest flow against MongoDB (`-1` pending checks, `-2` push APPLY jobs). Same logic ships in **`docker/Dockerfile.validation`** as **`saral-dvalidate-job`** on a schedule. |
@@ -45,7 +46,8 @@ Dependencies for backend/scrapers: **`requirements.txt`**.
 ```
 ├── app.py                 # FastAPI application entry
 ├── validation.py          # CLI validation / Midhtech pipeline
-├── aJobRight.py / bGlassDoor.py / cZipRecruiter.py
+├── scraping/              # JobRight / Glassdoor / ZipRecruiter scrapers
+├── midhScraping.py        # Run scrapers sequentially (from repo root)
 ├── loadTest.py            # Optional load / Monitoring alert drill
 ├── klean.py               # Temp/cache cleanup
 ├── utils/                 # Shared Python modules
@@ -144,10 +146,13 @@ Ensure **`VITE_API_URL`** in root **`.env`** points at your API (Vite reads env 
 
 ## Run scrapers
 
+From the **repo root** (so `.env` and data paths resolve correctly):
+
 ```powershell
-python aJobRight.py
-python bGlassDoor.py
-python cZipRecruiter.py
+python midhScraping.py
+python scraping/aJobRight.py
+python scraping/bGlassDoor.py
+python scraping/cZipRecruiter.py
 ```
 
 ---

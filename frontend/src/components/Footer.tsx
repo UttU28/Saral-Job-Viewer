@@ -90,7 +90,7 @@ export function Footer() {
             <h2 className="text-[10px] font-semibold uppercase tracking-[0.22em] text-primary">Watch together</h2>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
               Sync movies with friends on{" "}
-              <span className="text-foreground/85 font-medium">Apeksha</span>—same room, different screens.
+              <span className="text-foreground/85 font-medium">Apeksha</span> same room, different screens.
             </p>
             <div className="pt-0.5">
               <FooterInlineLink
@@ -110,13 +110,26 @@ export function Footer() {
             </p>
             <p
               lang="sa"
-              className="order-1 md:order-2 text-center font-display text-sm sm:text-base font-semibold tracking-[0.06em] text-zinc-900 dark:text-white px-2 drop-shadow-sm dark:drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+              className="order-1 md:order-2 text-center md:text-center text-[11px] sm:text-xs text-muted-foreground leading-snug"
             >
-              🔱 Yatra Tatra Sarvata Shiva 🔱
+              <span className="font-bold text-foreground/90">🔱 YATRA TATRA SARVATA SHIVA 🔱</span>
             </p>
-            <p className="order-3 text-center md:text-right text-[11px] sm:text-xs text-muted-foreground shrink-0">
-              Thanks for using this tool
+            <p
+              className="order-3 text-center md:text-right text-[11px] sm:text-xs text-muted-foreground shrink-0 cursor-pointer hover:underline"
+              onClick={() => window.open("https://youtu.be/dQw4w9WgXcQ?si=KeQ_JS7_I8oroZff", "_blank", "noopener,noreferrer")}
+              title="Click for a surprise!"
+              role="button"
+              tabIndex={0}
+              onKeyPress={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  window.open("https://youtu.be/dQw4w9WgXcQ?si=KeQ_JS7_I8oroZff", "_blank", "noopener,noreferrer");
+                }
+              }}
+            >
+              Click me NOW!
             </p>
+       
+       
           </div>
         </div>
       </div>

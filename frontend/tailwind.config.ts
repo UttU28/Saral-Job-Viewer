@@ -96,10 +96,29 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        /** Gentle vertical motion for floating UI (e.g. scroll-to-top FAB) */
+        "fab-bob": {
+          "0%, 100%": { transform: "translateY(0)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
+        /** Soft shadow pulse paired with fab-bob */
+        "fab-glow": {
+          "0%, 100%": {
+            boxShadow:
+              "0 10px 28px -4px hsl(var(--primary) / 0.35), 0 4px 12px -2px hsl(var(--primary) / 0.2)",
+          },
+          "50%": {
+            boxShadow:
+              "0 14px 36px -4px hsl(var(--primary) / 0.45), 0 6px 16px -2px hsl(var(--primary) / 0.28)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fab-bob": "fab-bob 2.6s ease-in-out infinite",
+        "fab-glow": "fab-glow 2.6s ease-in-out infinite",
+        "fab-attention": "fab-bob 2.6s ease-in-out infinite, fab-glow 2.6s ease-in-out infinite",
       },
     },
   },

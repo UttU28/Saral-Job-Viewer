@@ -6,10 +6,15 @@ import binascii
 import gzip
 import json
 import os
+import sys
 import zlib
 import time
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urljoin, urlparse
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -35,7 +40,7 @@ from utils.startChrome import (
     promptBeforeClosingBrowserIfHeaded,
 )
 
-load_dotenv()
+load_dotenv(_REPO_ROOT / ".env")
 
 baseUrl = "https://www.ziprecruiter.com/jobs-search"
 
