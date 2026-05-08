@@ -216,6 +216,7 @@ export type AdminJobStatusSummaryResponse = {
 export type AdminJobAction =
   | "classify_all_pending_null_jobs"
   | "delete_unwanted_classified_jobs"
+  | "delete_unwanted_plus_null_jobs"
   | "flush_db"
   | "push_apply_jobs"
   | "push_apply_jobs_then_cleanup";

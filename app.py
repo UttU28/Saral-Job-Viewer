@@ -22,6 +22,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from utils.dataManager import (
     deleteJobsByApplyStatusNotIn,
+    deleteJobsKeepingOnlyApply,
     deletePastDataOlderThanHours,
     flushJobsAndPastData,
     loadScraperSearchKeywords,
@@ -493,6 +494,7 @@ def postAdminJobAction(
     allowedActions = {
         "classify_all_pending_null_jobs",
         "delete_unwanted_classified_jobs",
+        "delete_unwanted_plus_null_jobs",
         "flush_db",
         "push_apply_jobs",
         "push_apply_jobs_then_cleanup",
@@ -549,6 +551,44 @@ def postAdminJobAction(
             deletedCount,
             pastDeletedCount,
             ["NULL/blank", "APPLY"],
+            adminDetails,
+            before,
+            beforeMergedRejected,
+            after,
+            afterMergedRejected,
+        )
+        return {
+            "ok": True,
+            "action": action,
+            "admin": adminDetails,
+            "message": message,
+            "deletedCount": deletedCount,
+            "pastDeletedCount": pastDeletedCount,
+            "before": before,
+            "after": after,
+            "mergedRejectedBefore": beforeMergedRejected,
+            "mergedRejectedAfter": afterMergedRejected,
+        }
+    if action == "delete_unwanted_plus_null_jobs":
+        deletedCount = int(deleteJobsKeepingOnlyApply())
+        pastDeletedCount = int(deletePastDataOlderThanHours(hours=48))
+        invalidateJobCaches()
+        after = _adminStatusDebugSnapshot()
+        afterMergedRejected = (
+            int(after["rejected"]) + int(after["doNotApply"]) + int(after["existing"])
+        )
+        message = (
+            "Delete completed successfully. "
+            f"Removed {deletedCount} job(s). Kept APPLY jobs only (removed unwanted + NULL/empty pending). "
+            f"Also removed {pastDeletedCount} pastData row(s) older than 48 hours."
+        )
+        logger.info(
+            "[ADMIN_ACTION_DONE] action=%s deleted=%s pastDeletedOlder48h=%s keep=%s admin=%s before=%s "
+            "mergedRejectedBefore=%s after=%s mergedRejectedAfter=%s",
+            action,
+            deletedCount,
+            pastDeletedCount,
+            ["APPLY only"],
             adminDetails,
             before,
             beforeMergedRejected,

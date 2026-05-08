@@ -10,6 +10,7 @@ from utils.dataManager import (
     loadJobsWithEmptyApplyStatus,
     updateApplyStatusByJobId,
 )
+from utils.fileManagement import findRestrictionTagsForJob
 from utils.midhtechSuggestApi import (
     authenticateMidhtechSession,
     buildCheckPayload,
@@ -229,6 +230,7 @@ def pushApplyJobsAfterValidate() -> int:
 
     applied = 0
     redo = 0
+    rejected = 0
     total = len(applyJobs)
     for i, job in enumerate(applyJobs, start=1):
         jobId = str(job.get("jobId") or "").strip()
@@ -236,6 +238,15 @@ def pushApplyJobsAfterValidate() -> int:
         company = str(job.get("companyName") or "").strip()
         jid = _displayJobId(jobId)
         head = f"[{i}/{total}] submit {jid} :: {company} :: {title}"
+        restrictionTags = findRestrictionTagsForJob(job)
+        if restrictionTags:
+            updateApplyStatusByJobId(jobId, "REJECTED")
+            rejected += 1
+            log.warning(
+                f"{head} → {formatApplyStatusBadge('REJECTED')} local restriction match: "
+                f"{', '.join(restrictionTags)}"
+            )
+            continue
         try:
             success, info = submitJobSuggestion(
                 session=session,
@@ -263,7 +274,8 @@ def pushApplyJobsAfterValidate() -> int:
     log.info(
         f"  total: {total}  "
         f"{formatApplyStatusBadge(STATUS_APPLIED)}: {applied}  "
-        f"{formatApplyStatusBadge(STATUS_REDO)}: {redo}"
+        f"{formatApplyStatusBadge(STATUS_REDO)}: {redo}  "
+        f"{formatApplyStatusBadge('REJECTED')}: {rejected}"
     )
     return applied
 

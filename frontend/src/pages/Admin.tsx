@@ -238,7 +238,7 @@ export default function Admin() {
     setRunningAction(action);
     try {
       const result = await runAdminJobAction(action);
-      if (action === "delete_unwanted_classified_jobs") {
+      if (action === "delete_unwanted_classified_jobs" || action === "delete_unwanted_plus_null_jobs") {
         await queryClient.invalidateQueries({ queryKey: ["adminJobStatusSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
@@ -256,7 +256,7 @@ export default function Admin() {
         : "";
       toast({
         title:
-          action === "delete_unwanted_classified_jobs"
+          action === "delete_unwanted_classified_jobs" || action === "delete_unwanted_plus_null_jobs"
             ? "Delete completed successfully"
             : "Admin action triggered",
         description:
@@ -846,22 +846,49 @@ export default function Admin() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={Boolean(runningAction)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className={
-                adminActionDialog?.destructive
-                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : undefined
-              }
-              disabled={Boolean(runningAction)}
-              onClick={(event) => {
-                event.preventDefault();
-                if (!adminActionDialog) return;
-                void onRunAdminAction(adminActionDialog.action, adminActionDialog.runTitle);
-                setAdminActionDialog(null);
-              }}
-            >
-              {adminActionDialog?.confirmLabel || "Confirm"}
-            </AlertDialogAction>
+            {adminActionDialog?.action === "delete_unwanted_classified_jobs" ? (
+              <>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={Boolean(runningAction)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void onRunAdminAction("delete_unwanted_classified_jobs", "Delete unwanted classified jobs");
+                    setAdminActionDialog(null);
+                  }}
+                >
+                  UNWANTED JOBS
+                </AlertDialogAction>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={Boolean(runningAction)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void onRunAdminAction("delete_unwanted_plus_null_jobs", "Delete unwanted + null jobs");
+                    setAdminActionDialog(null);
+                  }}
+                >
+                  UNWANTED + NULL
+                </AlertDialogAction>
+              </>
+            ) : (
+              <AlertDialogAction
+                className={
+                  adminActionDialog?.destructive
+                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    : undefined
+                }
+                disabled={Boolean(runningAction)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (!adminActionDialog) return;
+                  void onRunAdminAction(adminActionDialog.action, adminActionDialog.runTitle);
+                  setAdminActionDialog(null);
+                }}
+              >
+                {adminActionDialog?.confirmLabel || "Confirm"}
+              </AlertDialogAction>
+            )}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

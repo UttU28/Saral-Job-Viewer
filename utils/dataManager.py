@@ -429,6 +429,17 @@ def deleteJobsByApplyStatusNotIn(allowedStatuses: list[str] | tuple[str, ...]) -
     return int(res.deleted_count or 0)
 
 
+def deleteJobsKeepingOnlyApply() -> int:
+    """
+    Delete every row in jobData except applyStatus == APPLY.
+    This includes NULL / empty / missing (pending) rows and all non-APPLY statuses.
+    """
+    createTables(recreate=False)
+    coll = _getMongoDb()[JOB_DATA_COLLECTION]
+    res = coll.delete_many({"applyStatus": {"$ne": "APPLY"}})
+    return int(res.deleted_count or 0)
+
+
 def _parseStoredTimestampToUtc(raw: object) -> datetime | None:
     if raw is None:
         return None

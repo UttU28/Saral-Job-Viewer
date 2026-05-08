@@ -46,6 +46,56 @@ OPTIONAL_JOB_FIELDS: tuple[str, ...] = (
 
 TARGET_PORTAL_DOMAINS = ("indeed.com", "linkedin.com", "jobright.ai")
 ORIGINAL_URL_SKIP_KEY = "skippedOriginalUrlIds"
+RESTRICTION_SCANNERS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bu\.?\s*s\.?\s*citizen\b", re.I), "US citizen"),
+    (re.compile(r"\bcitizenship\b", re.I), "Citizenship"),
+    (
+        re.compile(
+            r"\blawful\s+permanent\s+resident\b|\bpermanent\s+resident\b|\bgreen\s+card\b",
+            re.I,
+        ),
+        "Permanent resident / green card",
+    ),
+    (re.compile(r"\bauthorized\s+to\s+work\b", re.I), "Authorized to work"),
+    (re.compile(r"\bwork\s+authorization\b", re.I), "Work authorization"),
+    (re.compile(r"\bemployment\s+authorization\b", re.I), "Employment authorization"),
+    (
+        re.compile(
+            r"\beligible\s+to\s+work\s+(?:in\s+)?(?:the\s+)?u\.?s\.?\b",
+            re.I,
+        ),
+        "Eligible to work (US)",
+    ),
+    (re.compile(r"\bi-9\b|\be-?verify\b", re.I), "I-9 / E-Verify"),
+    (re.compile(r"\btop\s+secret\b|\bt\/s\b|\bts\/sci\b", re.I), "Top secret / TS"),
+    (re.compile(r"\bsecret\s+clearance\b", re.I), "Secret clearance"),
+    (re.compile(r"\bpublic\s+trust\b", re.I), "Public trust"),
+    (re.compile(r"\bclearance\b", re.I), "Clearance"),
+    (
+        re.compile(
+            r"\bwill\s+not\s+sponsor\b|\bdoes\s+not\s+sponsor\b|\bunable\s+to\s+sponsor\b|\bcannot\s+sponsor\b",
+            re.I,
+        ),
+        "Not sponsoring",
+    ),
+    (
+        re.compile(
+            r"\bno\s+visa\s+sponsorship\b|\bnot\s+offering\s+sponsorship\b|\bwithout\s+sponsorship\b",
+            re.I,
+        ),
+        "No visa sponsorship",
+    ),
+    (re.compile(r"\bh-?1b\b|\bh1-b\b", re.I), "H-1B mentioned"),
+    (re.compile(r"\bvisa\s+sponsorship\b", re.I), "Visa sponsorship"),
+    (
+        re.compile(r"\bsolely\s+authorized\b|\bonly\s+authorized\b", re.I),
+        "Authorization restriction",
+    ),
+    (
+        re.compile(r"\b(?:must|required\s+to)\s+be\s+eligible\b", re.I),
+        "Eligibility requirement",
+    ),
+)
 
 
 def domainFromUrl(url: object) -> str:
@@ -76,7 +126,38 @@ def shouldSkipJob(job: object) -> bool:
     if not isinstance(job, dict):
         return True
     host = domainFromUrl(job.get("originalJobPostUrl"))
-    return isBlockedDomain(host)
+    if isBlockedDomain(host):
+        return True
+    return bool(findRestrictionTagsForJob(job))
+
+
+def _restrictionScanText(job: dict) -> str:
+    parts = (
+        _strOrBlank(job.get("title")),
+        _strOrBlank(job.get("visaOrMatchNote")),
+        _strOrBlank(job.get("jobResponsibility")),
+        _strOrBlank(job.get("jobDescription")),
+    )
+    return "\n".join(part for part in parts if part)
+
+
+def findRestrictionTagsForJob(job: object) -> list[str]:
+    if not isinstance(job, dict):
+        return []
+    text = _restrictionScanText(job)
+    if not text:
+        return []
+    labels: set[str] = set()
+    for regex, label in RESTRICTION_SCANNERS:
+        if regex.search(text):
+            labels.add(label)
+    if labels and "Clearance" in labels and (
+        "Secret clearance" in labels
+        or "Top secret / TS" in labels
+        or "Public trust" in labels
+    ):
+        labels.discard("Clearance")
+    return sorted(labels)
 
 
 def addJobIdToSkipBucket(

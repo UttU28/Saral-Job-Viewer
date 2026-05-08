@@ -6,6 +6,7 @@ Naming in this module uses camelCase for functions and locals per project conven
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
@@ -17,6 +18,8 @@ from dotenv import load_dotenv
 from utils.urlCleaner import normalizeCompanyName
 
 repoRoot = Path(__file__).resolve().parent.parent
+logger = logging.getLogger("saral.midhtech")
+EMPTY_BODY_PREVIEW = "<empty>"
 
 
 def loadMidhtechEnvironment() -> None:
@@ -349,6 +352,71 @@ def responseLooksSuccessful(resp: requests.Response) -> bool:
     return "/login" not in (resp.url or "")
 
 
+def _submitFailureReasonFromBody(response: requests.Response) -> str | None:
+    """
+    Detect common "HTTP 200 but form failed" outcomes from suggest page HTML/text.
+    """
+    body = (response.text or "").strip()
+    if not body:
+        return None
+    low = body.lower()
+    markers: tuple[str, ...] = (
+        "errorlist",
+        "this field is required",
+        "already exists in maas",
+        "duplicate suggestion detected",
+        "job already exists for this company and title",
+        "this job url was already suggested",
+        "this job url already exists",
+        "please correct the errors below",
+        "invalid csrf token",
+        "csrf verification failed",
+    )
+    for marker in markers:
+        if marker in low:
+            return marker
+    return None
+
+
+def _responsePreview(body: str, limit: int = 300) -> str:
+    text = (body or "").strip()
+    if not text:
+        return EMPTY_BODY_PREVIEW
+    one_line = re.sub(r"\s+", " ", text)
+    return one_line[:limit]
+
+
+def _logSubmitResult(
+    *,
+    job: dict,
+    response: requests.Response,
+    ok: bool,
+    failureMarker: str | None,
+    body: str,
+) -> None:
+    jobId = str(job.get("jobId") or "").strip()
+    title = str(job.get("title") or "").strip()
+    companyName = str(job.get("companyName") or "").strip()
+    payloadUrl = str(job.get("originalJobPostUrl") or job.get("jobUrl") or "").strip()
+    preview = _responsePreview(body)
+
+    logPayload = {
+        "jobId": jobId,
+        "companyName": companyName,
+        "title": title,
+        "payloadUrl": payloadUrl,
+        "responseStatus": int(response.status_code),
+        "responseUrl": str(response.url or ""),
+        "submitOk": bool(ok),
+        "failureMarker": failureMarker or "",
+        "responsePreview": preview,
+    }
+    if ok:
+        logger.info("[MIDHTECH_SUBMIT] %s", json.dumps(logPayload, ensure_ascii=False))
+    else:
+        logger.warning("[MIDHTECH_SUBMIT] %s", json.dumps(logPayload, ensure_ascii=False))
+
+
 def submitJobSuggestion(
     session: requests.Session,
     suggestUrl: str,
@@ -371,8 +439,36 @@ def submitJobSuggestion(
     ok = responseLooksSuccessful(response)
     body = (response.text or "").strip()
     if not ok:
-        preview = body[:300] if body else "<empty>"
+        _logSubmitResult(
+            job=job,
+            response=response,
+            ok=False,
+            failureMarker="transport_or_auth",
+            body=body,
+        )
+        preview = _responsePreview(body)
         return False, f"HTTP {response.status_code} at {response.url} :: {preview}"
+    failureMarker = _submitFailureReasonFromBody(response)
+    if failureMarker:
+        _logSubmitResult(
+            job=job,
+            response=response,
+            ok=False,
+            failureMarker=failureMarker,
+            body=body,
+        )
+        preview = _responsePreview(body)
+        return (
+            False,
+            f"HTTP {response.status_code} at {response.url} :: submit validation/error marker={failureMarker!r} :: {preview}",
+        )
+    _logSubmitResult(
+        job=job,
+        response=response,
+        ok=True,
+        failureMarker=None,
+        body=body,
+    )
     return True, f"HTTP {response.status_code}"
 
 

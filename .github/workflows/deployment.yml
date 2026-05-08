@@ -84,8 +84,8 @@ jobs:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
     needs: detectChanges
-    # workflow_dispatch: always enter approval so manual runs can refresh LB or redeploy even when path filter is empty vs base.
-    if: needs.detectChanges.outputs.anyChanged == 'true' || github.event_name == 'workflow_dispatch'
+    # Ask for environment approval only on push runs.
+    if: github.event_name == 'push' && needs.detectChanges.outputs.anyChanged == 'true'
     # Configure this environment in GitHub settings with required reviewer = Utsav.
     environment:
       name: production-approval
@@ -96,7 +96,7 @@ jobs:
   deployApi:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.apiChanged == 'true'
+    if: needs.detectChanges.outputs.apiChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
     permissions:
       contents: read
       id-token: write
@@ -162,7 +162,7 @@ jobs:
   deployFrontend:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.frontendChanged == 'true'
+    if: needs.detectChanges.outputs.frontendChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
     permissions:
       contents: read
       id-token: write
@@ -228,7 +228,7 @@ jobs:
   deployValidation:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.validationChanged == 'true'
+    if: needs.detectChanges.outputs.validationChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
     permissions:
       contents: read
       id-token: write
@@ -317,7 +317,7 @@ jobs:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
     # Runs only after API/UI deploy jobs complete (parallel deploys both awaited). Skipped if either deploy job failed.
-    if: ${{ needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
+    if: ${{ (github.event_name != 'push' || needs.approvalGate.result == 'success') && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
