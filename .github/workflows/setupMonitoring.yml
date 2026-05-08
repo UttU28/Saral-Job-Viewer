@@ -201,7 +201,7 @@ jobs:
                         {
                           "timeSeriesQuery": {
                             "timeSeriesFilter": {
-                              "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" resource.labels.backend_service_name=\"sjv-api-bes\"",
+                              "filter": "metric.type=\"loadbalancing.googleapis.com/https/backend_request_count\" resource.type=\"https_lb_rule\" resource.labels.region=\"global\" resource.labels.backend_target_name=\"sjv-api-bes\" resource.labels.backend_target_type=\"BACKEND_SERVICE\" resource.labels.url_map_name=\"sjv-host-routing\"",
                               "aggregation": {
                                 "alignmentPeriod": "60s",
                                 "perSeriesAligner": "ALIGN_RATE",
@@ -231,7 +231,7 @@ jobs:
                         {
                           "timeSeriesQuery": {
                             "timeSeriesFilter": {
-                              "filter": "metric.type=\"loadbalancing.googleapis.com/https/request_count\" resource.type=\"https_lb_rule\" resource.labels.backend_service_name=\"sjv-ui-bes\"",
+                              "filter": "metric.type=\"loadbalancing.googleapis.com/https/backend_request_count\" resource.type=\"https_lb_rule\" resource.labels.region=\"global\" resource.labels.backend_target_name=\"sjv-ui-bes\" resource.labels.backend_target_type=\"BACKEND_SERVICE\" resource.labels.url_map_name=\"sjv-host-routing\"",
                               "aggregation": {
                                 "alignmentPeriod": "60s",
                                 "perSeriesAligner": "ALIGN_RATE",
@@ -288,6 +288,7 @@ jobs:
           dash_count="$(gcloud monitoring dashboards list --project="${PROJECT}" --format=json | jq --arg t "${DASH_TITLE}" '[.[]? | select(.displayName == $t)] | length')"
           if [[ "${dash_count}" -gt 0 ]]; then
             echo "Dashboard exists: ${DASH_TITLE}"
+            echo "::notice::Dashboard JSON is only applied on first create. To refresh charts (e.g. LB filters), delete '${DASH_TITLE}' in Console Monitoring → Dashboards, then re-run this workflow."
           else
             gcloud monitoring dashboards create --project="${PROJECT}" --config-from-file=/tmp/saralDashboardOverview.json --quiet
           fi
@@ -358,7 +359,7 @@ jobs:
           YAML_EOF
 
             cat <<'YAML_EOF' >"${POLICY_DIR}/api5xx.yaml"
-          displayName: "saral-api - elevated 5xx request rate"
+          displayName: "saral-api - 5xx rate (sensitive baseline v2)"
           combiner: OR
           conditions:
             - displayName: 5xx responses per second (aligned)
@@ -369,8 +370,50 @@ jobs:
                   resource.labels.service_name="saral-api"
                   metric.labels.response_code_class="5xx"
                 comparison: COMPARISON_GT
-                thresholdValue: 0.02
-                duration: 300s
+                thresholdValue: 0.005
+                duration: 120s
+                aggregations:
+                  - alignmentPeriod: 60s
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                trigger:
+                  count: 1
+          YAML_EOF
+
+            cat <<'YAML_EOF' >"${POLICY_DIR}/apiTrafficSpike.yaml"
+          displayName: "saral-api - request rate spike (low baseline v2)"
+          combiner: OR
+          conditions:
+            - displayName: Total request rate exceeds idle baseline
+              conditionThreshold:
+                filter: |
+                  metric.type="run.googleapis.com/request_count"
+                  resource.type="cloud_run_revision"
+                  resource.labels.service_name="saral-api"
+                comparison: COMPARISON_GT
+                thresholdValue: 1
+                duration: 120s
+                aggregations:
+                  - alignmentPeriod: 60s
+                    perSeriesAligner: ALIGN_RATE
+                    crossSeriesReducer: REDUCE_SUM
+                trigger:
+                  count: 1
+          YAML_EOF
+
+            cat <<'YAML_EOF' >"${POLICY_DIR}/uiTrafficSpike.yaml"
+          displayName: "saral-ui - request rate spike (low baseline v2)"
+          combiner: OR
+          conditions:
+            - displayName: Total request rate exceeds idle baseline
+              conditionThreshold:
+                filter: |
+                  metric.type="run.googleapis.com/request_count"
+                  resource.type="cloud_run_revision"
+                  resource.labels.service_name="saral-ui"
+                comparison: COMPARISON_GT
+                thresholdValue: 0.5
+                duration: 120s
                 aggregations:
                   - alignmentPeriod: 60s
                     perSeriesAligner: ALIGN_RATE
@@ -380,7 +423,7 @@ jobs:
           YAML_EOF
 
             cat <<'YAML_EOF' >"${POLICY_DIR}/redisMemory.yaml"
-          displayName: "Redis saral-memorystore-redis - high memory usage ratio"
+          displayName: "Redis memory ratio early warning (v2)"
           combiner: OR
           conditions:
             - displayName: usage_ratio above threshold
@@ -391,7 +434,7 @@ jobs:
                   resource.labels.instance_id="saral-memorystore-redis"
                   resource.labels.region="us-east1"
                 comparison: COMPARISON_GT
-                thresholdValue: 0.85
+                thresholdValue: 0.65
                 duration: 600s
                 aggregations:
                   - alignmentPeriod: 300s
@@ -424,8 +467,10 @@ jobs:
 
             ensure_policy "Saral UI - uptime URL failing" "${POLICY_DIR}/uptimeUi.yaml"
             ensure_policy "Saral API - uptime URL failing" "${POLICY_DIR}/uptimeApi.yaml"
-            ensure_policy "saral-api - elevated 5xx request rate" "${POLICY_DIR}/api5xx.yaml"
-            ensure_policy "Redis saral-memorystore-redis - high memory usage ratio" "${POLICY_DIR}/redisMemory.yaml"
+            ensure_policy "saral-api - 5xx rate (sensitive baseline v2)" "${POLICY_DIR}/api5xx.yaml"
+            ensure_policy "saral-api - request rate spike (low baseline v2)" "${POLICY_DIR}/apiTrafficSpike.yaml"
+            ensure_policy "saral-ui - request rate spike (low baseline v2)" "${POLICY_DIR}/uiTrafficSpike.yaml"
+            ensure_policy "Redis memory ratio early warning (v2)" "${POLICY_DIR}/redisMemory.yaml"
           fi
 
           echo "Done: https://console.cloud.google.com/monitoring/dashboards?project=${PROJECT}"

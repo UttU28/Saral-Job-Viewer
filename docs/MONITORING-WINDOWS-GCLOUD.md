@@ -192,7 +192,7 @@ Run **`setupMonitoring.yml`** from the **Actions** tab → **Run workflow**.
 | Issue | What to do |
 |-------|------------|
 | Dashboard tile empty for **Redis** | In Metrics Explorer, inspect labels on `redis.googleapis.com/stats/memory/usage_ratio` — `instance_id` may differ from short name; edit the dashboard JSON in **`setupMonitoring.yml`** (`DASHBOARD_EOF`) and re-run the workflow (delete old dashboard in Console first if needed). |
-| Dashboard tile empty for **HTTPS LB** | Confirm backend service names (`sjv-api-bes`, `sjv-ui-bes`) and that traffic flows through the LB. Verify metric filter in Metrics Explorer for `loadbalancing.googleapis.com/https/request_count`. |
+| Dashboard **HTTPS LB** charts show query error | Dashboard JSON uses **`loadbalancing.googleapis.com/https/backend_request_count`** + **`https_lb_rule`** labels **`region=global`**, **`backend_target_name`**, **`url_map_name`**. Old dashboards: delete and re-run **`setupMonitoring.yml`** (see workflow notice). |
 | Uptime alert never fires | Confirm uptime checks show green in **Monitoring → Uptime**; confirm alert filter `resource.labels.host` / `project_id` match §3. |
 | `gcloud beta monitoring channels` missing | Install/update SDK; beta commands ship with current Cloud SDK. |
 
