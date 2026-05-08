@@ -4,8 +4,9 @@ High-intensity local HTTP stress (stdlib only). Hits one URL with threads ± pro
 
 Interactive mode: run with **no arguments** to choose scenario 1 / 2 / 3 (each tuned for a Monitoring alert).
 
-CLI mode: pass flags as before. Progress uses **tqdm** when installed; otherwise a simple status line.
-ANSI colors are used when stdout is a TTY.
+CLI mode: pass flags as before. With **tqdm** installed, one determinate tqdm bar per OS process appears on its **own line**
+(``position=i``), filling over **durationSeconds**. Without tqdm, the same layout is approximated with multi-line ASCII bars on stderr.
+ANSI labels respect TTY + NO_COLOR.
 
 Alert mapping (see setupMonitoring.yml policy names):
   1 — saral-api request-rate spike (needs sustained >1 req/s ~120s on saral-api)
@@ -13,8 +14,8 @@ Alert mapping (see setupMonitoring.yml policy names):
   3 — saral-api 5xx rate (aim for LB/Run errors under extreme load; may still be mostly 200)
 
 Examples:
-  python scripts/http_load_test.py
-  python scripts/http_load_test.py --targetUrl https://saralapi.thatinsaneguy.com/api/health \\
+  python loadTest.py
+  python loadTest.py --targetUrl https://saralapi.thatinsaneguy.com/api/health \\
       --durationSeconds 240 --processCount 4 --workerThreads 80 --timeoutSeconds 25
 """
 
@@ -36,9 +37,14 @@ from dataclasses import dataclass
 from typing import Callable
 
 try:
-    from tqdm import tqdm
+    from tqdm.auto import tqdm as tqdmModule  # type: ignore[attr-defined, no-redef]
 except ImportError:
-    tqdm = None  # type: ignore[misc, assignment]
+    try:
+        from tqdm import tqdm as tqdmModule  # type: ignore[assignment, no-redef]
+    except ImportError:
+        tqdmModule = None  # type: ignore[misc, assignment]
+
+tqdm = tqdmModule
 
 
 defaultPublicApiHealthUrl = "https://saralapi.thatinsaneguy.com/api/health"
@@ -47,6 +53,48 @@ defaultPublicUiRootUrl = "https://saral.thatinsaneguy.com/"
 
 def _useColor() -> bool:
     return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+
+def _stderrRich() -> bool:
+    """stderr is a TTY and ANSI labels are allowed."""
+    return sys.stderr.isatty() and os.environ.get("NO_COLOR") is None
+
+
+def _stderrSupportsAnsiCursor() -> bool:
+    """Move cursor up for multi-line in-place updates (best-effort)."""
+    return _stderrRich()
+
+
+_procBarStyles: list[tuple[str, str]] = [
+    ("green", "\033[92m"),
+    ("cyan", "\033[96m"),
+    ("blue", "\033[94m"),
+    ("magenta", "\033[95m"),
+    ("yellow", "\033[93m"),
+    ("red", "\033[91m"),
+]
+
+
+def _procStyle(processIndex: int) -> tuple[str, str]:
+    return _procBarStyles[processIndex % len(_procBarStyles)]
+
+
+def _procBarDesc(processIndex: int) -> str:
+    _colourName, ansi = _procStyle(processIndex)
+    if not _stderrRich():
+        return f"P{processIndex}"
+    reset = "\033[0m"
+    bold = "\033[1m"
+    return f"{bold}{ansi}P{processIndex}{reset}"
+
+
+def _procStdoutLabel(processIndex: int) -> str:
+    _c, ansi = _procStyle(processIndex)
+    if not _useColor():
+        return f"P{processIndex}"
+    reset = "\033[0m"
+    bold = "\033[1m"
+    return f"{bold}{ansi}P{processIndex}{reset}"
 
 
 class C:
@@ -73,7 +121,36 @@ def _fmtStatus(code: int | str) -> str:
     return f"{C.MAGENTA}{code}{C.RESET}"
 
 
-Row = tuple[int, int | str, float]  # process_index, status_or_exc_name, latency_s
+def _metricsBucket(status: int | str) -> str:
+    """Bucket HTTP / transport outcomes for rates (API-oriented)."""
+    if isinstance(status, str):
+        return "transport"
+    if not isinstance(status, int):
+        return "transport"
+    if status == 200:
+        return "200"
+    if 200 < status < 300:
+        return "2xx_other"
+    if 300 <= status < 400:
+        return "3xx"
+    if 400 <= status < 500:
+        return "4xx"
+    if 500 <= status < 600:
+        return "5xx"
+    return "http_other"
+
+
+def _percentOf(part: int, whole: int) -> float:
+    return (100.0 * part / whole) if whole else 0.0
+
+
+def _asciiBar(percent: float, width: int = 28) -> str:
+    p = max(0.0, min(100.0, percent))
+    filled = min(width, int(round(width * p / 100.0)))
+    return "[" + "#" * filled + "-" * (width - filled) + "]"
+
+
+Row = tuple[int, int | str, float]  # processIndex, statusOrExcName, latencySeconds
 
 
 @dataclass
@@ -319,59 +396,200 @@ class ProgressSink:
         self.startMono = startMono
         self.total = 0
         self.byProc: defaultdict[int, int] = defaultdict(int)
-        self.errOrNon200 = 0
+        self.byProc2xx: defaultdict[int, int] = defaultdict(int)
+        self.http200 = 0
+        self.http2xxOther = 0
+        self.http3xx = 0
+        self.http4xx = 0
+        self.http5xx = 0
+        self.httpOther = 0
+        self.transport = 0
+        self.lastUiLineCount = 0
 
     def ingest(self, row: Row) -> None:
         procIdx, status, _lat = row
+        bucket = _metricsBucket(status)
         with self._lock:
             self.total += 1
             self.byProc[procIdx] += 1
-            if status != 200:
-                self.errOrNon200 += 1
+            if bucket == "200":
+                self.http200 += 1
+                self.byProc2xx[procIdx] += 1
+            elif bucket == "2xx_other":
+                self.http2xxOther += 1
+                self.byProc2xx[procIdx] += 1
+            elif bucket == "3xx":
+                self.http3xx += 1
+            elif bucket == "4xx":
+                self.http4xx += 1
+            elif bucket == "5xx":
+                self.http5xx += 1
+            elif bucket == "http_other":
+                self.httpOther += 1
+            else:
+                self.transport += 1
 
-    def snapshot(self) -> tuple[int, dict[int, int], int, float]:
+    def snapshot(self) -> tuple[int, dict[int, int], dict[int, int], int, int, int, int, int, int, int, float]:
         with self._lock:
             elapsed = max(0.0, time.monotonic() - self.startMono)
-            return self.total, dict(self.byProc), self.errOrNon200, elapsed
+            return (
+                self.total,
+                dict(self.byProc),
+                dict(self.byProc2xx),
+                self.http200,
+                self.http2xxOther,
+                self.http3xx,
+                self.http4xx,
+                self.http5xx,
+                self.httpOther,
+                self.transport,
+                elapsed,
+            )
 
 
-def _makeProgressBar(desc: str):
+def _fmtRateLine(label: str, count: int, total: int, *, good: bool | None = None) -> str:
+    p = _percentOf(count, total)
+    col = ""
+    reset = C.RESET
+    if good is True:
+        col = C.GREEN
+    elif good is False:
+        col = C.RED
+    elif good is None:
+        col = "" if count else C.DIM
+    return f"{C.BOLD}{label}:{C.RESET} {col}{count}{reset} ({p:.2f}%)"
+
+
+def _printHttpRateSummary(statuses: list[int | str]) -> None:
+    n = len(statuses)
+    if n == 0:
+        return
+    bc = Counter(_metricsBucket(s) for s in statuses)
+    b200 = bc["200"]
+    b2o = bc["2xx_other"]
+    b3 = bc["3xx"]
+    b4 = bc["4xx"]
+    b5 = bc["5xx"]
+    bo = bc["http_other"]
+    bt = bc["transport"]
+    ok2xx = b200 + b2o
+    failLike = n - ok2xx
+
+    print(f"{C.BOLD}API outcome rates{C.RESET} ({n} completed responses)")
+    print(f"  {_fmtRateLine('HTTP 2xx (success)', ok2xx, n, good=ok2xx == n)}")
+    print(f"  {_fmtRateLine('  including 200 OK', b200, n, good=None)}")
+    if b2o:
+        print(f"  {_fmtRateLine('  other 2xx', b2o, n, good=None)}")
+    print(f"  {_fmtRateLine('non-2xx + transport (error-oriented)', failLike, n, good=failLike == 0)}")
+    if b3:
+        print(f"  {_fmtRateLine('HTTP 3xx', b3, n, good=None)}")
+    print(f"  {_fmtRateLine('HTTP 4xx', b4, n, good=b4 == 0)}")
+    print(f"  {_fmtRateLine('HTTP 5xx', b5, n, good=b5 == 0)}")
+    if bo:
+        print(f"  {_fmtRateLine('other HTTP codes', bo, n, good=False)}")
+    print(f"  {_fmtRateLine('transport / exceptions', bt, n, good=bt == 0)}")
+
+
+def _makeProcessBars(processCount: int, durationSeconds: float) -> list | None:
+    """One determinate tqdm bar per OS process (parent UI thread drives wall-clock fill)."""
     if tqdm is None:
         return None
-    return tqdm(
-        total=None,
-        desc=desc,
-        unit="req",
-        dynamic_ncols=True,
-        leave=True,
-        file=sys.stderr,
-    )
+    bars = []
+    for i in range(processCount):
+        colourName, _ansi = _procStyle(i)
+        desc = _procBarDesc(i)
+        kwargs = dict(
+            total=float(durationSeconds),
+            desc=desc,
+            unit="s",
+            position=i,
+            leave=True,
+            file=sys.stderr,
+            dynamic_ncols=True,
+            mininterval=0.05,
+            ascii=True,
+            bar_format="{desc}: {percentage:3.0f}%|{bar}| {n:.1f}/{total:.1f}s {postfix}",
+        )
+        try:
+            bars.append(tqdm(**kwargs, colour=colourName))
+        except TypeError:
+            bars.append(tqdm(**kwargs))
+    return bars
 
 
-def _progressLoop(
-    sink: ProgressSink,
-    stopEvent: threading.Event,
-    bar: object | None,
-    refreshHz: float = 8.0,
-) -> None:
+def _progressLoopProcessBars(sink: ProgressSink, stopEvent: threading.Event, bars: list | None, refreshHz: float = 12.0) -> None:
     interval = 1.0 / refreshHz
-    lastTotal = 0
+    duration = sink.durationSeconds
     while not stopEvent.wait(interval):
-        total, byProc, errCt, elapsed = sink.snapshot()
-        procParts = " ".join(f"P{i}:{byProc.get(i, 0)}" for i in range(sink.processCount))
-        rps = total / elapsed if elapsed > 0 else 0.0
-        postfix = f"{procParts} | ~{rps:.0f}/s | non200+err={errCt}"
-        if bar is not None:
-            bar.update(total - lastTotal)
-            lastTotal = total
-            bar.set_postfix_str(postfix)
-        else:
-            msg = (
-                f"{C.DIM}[load]{C.RESET} {C.CYAN}{elapsed:.1f}s{C.RESET}/{sink.durationSeconds:.0f}s "
-                f"{C.BOLD}{total}{C.RESET} req {C.DIM}({postfix}){C.RESET}"
-            )
-            sys.stderr.write("\r" + msg + " " * 4 + "\r")
-            sys.stderr.flush()
+        (
+            total,
+            byProc,
+            byProc2xx,
+            _h200,
+            _h2o,
+            _h3,
+            _h4,
+            _h5,
+            _ho,
+            _ht,
+            elapsedWall,
+        ) = sink.snapshot()
+        wall = min(duration, elapsedWall)
+        wallPercent = (100.0 * wall / duration) if duration > 0 else 0.0
+
+        if bars is not None:
+            sum2xx = sum(byProc2xx.get(j, 0) for j in range(sink.processCount))
+            g2 = _percentOf(sum2xx, total) if total else 0.0
+            for i, bar in enumerate(bars):
+                bar.n = wall
+                reqs = byProc.get(i, 0)
+                ok2 = byProc2xx.get(i, 0)
+                if reqs:
+                    okPct = _percentOf(ok2, reqs)
+                    errPct = _percentOf(reqs - ok2, reqs)
+                    rateBits = f"2xx={okPct:.0f}% fail={errPct:.0f}%"
+                else:
+                    rateBits = "2xx=- fail=-"
+                rpsI = reqs / elapsedWall if elapsedWall > 0 else 0.0
+                bar.set_postfix_str(f"req={reqs} {rateBits} ~{rpsI:.0f}/s | all2xx={g2:.0f}%")
+                bar.refresh()
+            continue
+
+        sum2xx = sum(byProc2xx.get(j, 0) for j in range(sink.processCount))
+        g2 = _percentOf(sum2xx, total) if total else 0.0
+        globRps = total / elapsedWall if elapsedWall > 0 else 0.0
+        lines: list[str] = []
+        head = (
+            f"{C.DIM}[load]{C.RESET} {_asciiBar(wallPercent)} {wall:.1f}s/{duration:.0f}s "
+            f"| {C.BOLD}{total}{C.RESET} req | all2xx={g2:.0f}% | ~{globRps:.0f}/s"
+        )
+        lines.append(head)
+        for i in range(sink.processCount):
+            reqs = byProc.get(i, 0)
+            ok2 = byProc2xx.get(i, 0)
+            if reqs:
+                epct = _percentOf(reqs - ok2, reqs)
+                bits = f"2xx:{_percentOf(ok2, reqs):.0f}% fail:{epct:.0f}%"
+            else:
+                bits = "2xx:- fail:-"
+            _, ansi = _procStyle(i)
+            barAscii = _asciiBar(wallPercent)
+            if _stderrRich():
+                rpsPart = f" | ~{reqs/elapsedWall:.0f}/s" if elapsedWall > 0 else ""
+                line = (
+                    f"{ansi}{C.BOLD}P{i}{C.RESET} {barAscii} {wallPercent:.0f}% wall | "
+                    f"req={reqs} {C.DIM}{bits}{C.RESET}{rpsPart}"
+                )
+            else:
+                line = f"P{i} {barAscii} {wallPercent:.0f}% wall | req={reqs} ({bits})"
+            lines.append(line)
+
+        block = "\n".join(lines) + "\n"
+        if _stderrSupportsAnsiCursor() and sink.lastUiLineCount > 0:
+            sys.stderr.write(f"\033[{sink.lastUiLineCount}A")
+        sys.stderr.write(block)
+        sys.stderr.flush()
+        sink.lastUiLineCount = len(lines)
 
 
 def executeStressRun(cfg: StressRunConfig) -> None:
@@ -392,20 +610,31 @@ def executeStressRun(cfg: StressRunConfig) -> None:
         f"| insecureTls={cfg.insecureTls}",
         flush=True,
     )
-    print(
-        f"{C.GREEN}Starting{C.RESET} - streaming progress on stderr "
-        f"(each Pn is one OS process; each process runs {cfg.workerThreads} threads).\n",
-        flush=True,
-    )
+
+    processBars = _makeProcessBars(cfg.processCount, cfg.durationSeconds)
+    if processBars is not None:
+        print(
+            f"{C.GREEN}Starting{C.RESET} - {C.BOLD}{cfg.processCount} tqdm progress bar(s){C.RESET} on stderr "
+            f"(one row per process); each fills {C.MAGENTA}{cfg.durationSeconds:g}s{C.RESET} wall time; "
+            f"{C.CYAN}{cfg.workerThreads}{C.RESET} worker threads per process.\n",
+            flush=True,
+        )
+    else:
+        print(
+            f"{C.GREEN}Starting{C.RESET} - {C.BOLD}{cfg.processCount} ASCII progress row(s){C.RESET} on stderr "
+            f"(install tqdm for richer bars: {C.DIM}pip install tqdm{C.RESET}); "
+            f"wall window {C.MAGENTA}{cfg.durationSeconds:g}s{C.RESET}; "
+            f"{C.CYAN}{cfg.workerThreads}{C.RESET} worker threads per process.\n",
+            flush=True,
+        )
 
     mergedRows: list[Row] = []
     startMono = time.monotonic()
     sink = ProgressSink(cfg.processCount, cfg.workerThreads, cfg.durationSeconds, startMono)
     stopUi = threading.Event()
-    bar = _makeProgressBar("requests") if sys.stderr.isatty() else None
     uiThread = threading.Thread(
-        target=_progressLoop,
-        args=(sink, stopUi, bar),
+        target=_progressLoopProcessBars,
+        args=(sink, stopUi, processBars),
         daemon=True,
     )
     uiThread.start()
@@ -417,7 +646,7 @@ def executeStressRun(cfg: StressRunConfig) -> None:
                 sslContext.check_hostname = False
                 sslContext.verify_mode = ssl.CERT_NONE
 
-            def on_row(r: tuple[int | str, float]) -> None:
+            def onRow(r: tuple[int | str, float]) -> None:
                 sink.ingest((0, r[0], r[1]))
 
             for row in runStressBlock(
@@ -426,7 +655,7 @@ def executeStressRun(cfg: StressRunConfig) -> None:
                 cfg.workerThreads,
                 cfg.timeoutSeconds,
                 sslContext,
-                on_row,
+                onRow,
             ):
                 mergedRows.append((0, row[0], row[1]))
         else:
@@ -471,8 +700,12 @@ def executeStressRun(cfg: StressRunConfig) -> None:
     finally:
         stopUi.set()
         uiThread.join(timeout=2.0)
-        if bar is not None:
-            bar.close()
+        if processBars:
+            fin = float(cfg.durationSeconds)
+            for b in processBars:
+                b.n = fin
+                b.refresh()
+                b.close()
         elif sys.stderr.isatty():
             sys.stderr.write("\n")
 
@@ -486,26 +719,32 @@ def executeStressRun(cfg: StressRunConfig) -> None:
     counts = Counter(statuses)
     latSorted = sorted(latencies)
     byProcCounts: defaultdict[int, int] = defaultdict(int)
-    for pi, _, _ in mergedRows:
+    byProc2xxAgg: defaultdict[int, int] = defaultdict(int)
+    for pi, st, _ in mergedRows:
         byProcCounts[pi] += 1
+        if _metricsBucket(st) in ("200", "2xx_other"):
+            byProc2xxAgg[pi] += 1
 
     print()
     print(f"{C.BOLD}Completed requests:{C.RESET} {total}")
-    procLine = " ".join(f"{C.CYAN}P{i}{C.RESET}={byProcCounts[i]}" for i in range(cfg.processCount))
+    procLine = " ".join(f"{_procStdoutLabel(i)}={byProcCounts[i]}" for i in range(cfg.processCount))
     print(f"{C.BOLD}Per-process totals:{C.RESET} {procLine}")
+    proc2xxParts = []
+    for i in range(cfg.processCount):
+        totI = byProcCounts[i]
+        okI = byProc2xxAgg[i]
+        proc2xxParts.append(f"{_procStdoutLabel(i)} {_percentOf(okI, totI):.1f}% 2xx ({okI}/{totI})")
+    print(f"{C.BOLD}Per-process API success (2xx):{C.RESET} " + f"{C.DIM}|{C.RESET} ".join(proc2xxParts))
     statusParts = [f"{_fmtStatus(s)}: {c}" for s, c in sorted(counts.items(), key=lambda kv: str(kv[0]))]
     print(f"{C.BOLD}Status breakdown:{C.RESET} " + f"{C.DIM}|{C.RESET} ".join(statusParts))
+    _printHttpRateSummary(statuses)
     print(
         f"{C.BOLD}Latency (s):{C.RESET} min={min(latSorted):.4f} max={max(latSorted):.4f} "
         f"mean={statistics.mean(latSorted):.4f}"
     )
-    for pct in (50, 95, 99):
-        v = computePercentile(latSorted, float(pct))
-        print(f"  p{pct}: {v:.4f}" if v is not None else f"  p{pct}: n/a")
-
-    httpOkCount = sum(1 for s in statuses if s == 200)
-    ratioColor = C.GREEN if httpOkCount == total else C.YELLOW if httpOkCount > total // 2 else C.RED
-    print(f"{C.BOLD}HTTP 200 ratio:{C.RESET} {ratioColor}{httpOkCount / total:.2%}{C.RESET}")
+    for pctVal in (50, 95, 99):
+        v = computePercentile(latSorted, float(pctVal))
+        print(f"  p{pctVal}: {v:.4f}" if v is not None else f"  p{pctVal}: n/a")
 
 
 def main() -> None:

@@ -1,153 +1,253 @@
 ﻿# Saral Job Viewer
 
-Job scraping + validation pipeline for JobRight, Glassdoor, and ZipRecruiter, with MongoDB as the source of truth.
+End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter) write to **MongoDB**, a **FastAPI** backend serves cached reads with **Redis**, a **Vite/React** SPA is the primary UI (jobs, auth, admin), and **`validation.py`** checks and pushes listings to **Midhtech**. Production runs on **Google Cloud** (Cloud Run, Memorystore, global HTTPS LB, Artifact Registry, Secret Manager) with **GitHub Actions** (Workload Identity Federation — no long-lived keys in the repo).
 
-**Docs:** **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** (GCP architecture & KT); **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** (workflows, LB, secrets); **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** (monitoring plan); **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** (optional manual `gcloud`, IAM for **`setupMonitoring.yml`**); **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** (done vs optional).
+---
 
-## What This Repo Does
+## Documentation
 
-- Scrapes jobs from multiple platforms:
-  - `aJobRight.py`
-  - `bGlassDoor.py`
-  - `cZipRecruiter.py`
-- Normalizes and writes jobs to MongoDB via `utils/dataManager.py`.
-- Runs validation/push flow against Midhtech using **`validation.py`**.
-- Supports local Docker runs and Cloud Run Job + Scheduler CI/CD.
+| Doc | Purpose |
+|-----|---------|
+| **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** | GCP services, resource names, identity, workflow ↔ GCP matrix, architecture diagram (runtime view). |
+| **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** | Deploy/destroy/prereq workflows, secrets summary, global LB, IAM snippets for pipeline SA, architecture diagram. |
+| **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** | Monitoring scope; **`setupMonitoring.yml`** (dashboard + uptime + alerts); IAM; optional Windows **`gcloud`**; **`loadTest.py`** for alert drill. |
+| **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** | What is implemented vs optional follow-ups. |
 
-## Current Architecture
+---
 
-- **Scrapers**: browser-based collection and normalization
-- **Data layer**: `utils/dataManager.py` (MongoDB only)
-- **Validation pipeline**: **`validation.py`**
-- **Maintenance**: `klean.py` for temp/cache cleanup
-- **Deploy**:
-  - **`docker/Dockerfile.validation`** (container for `validation.py`)
-  - **`docker/Dockerfile.api`** (FastAPI `app.py`)
-  - **`docker/Dockerfile.frontend`** (Vite UI + nginx for Cloud Run)
-  - `docker-compose.yml` (default: validation job; `--profile dev`: API + Redis on :8000 / :6379)
-  - **`.github/workflows/deployment.yml`** — main path: build/deploy API, UI, validation job + Scheduler (approval gate on `main`)
-  - **`.github/workflows/ensurePrereq.yml`** — bootstrap: secrets/images, optional Redis/VPC, optional domain mappings (LB runs from **`deployment.yml`**)
-  - **`.github/workflows/destroyStack.yml`** — teardown (optional LB/Redis/VPC/mappings)
-  - **`.github/workflows/setupMonitoring.yml`** — manual Monitoring (**dashboard + alerts defined inside workflow**); secret **`MONITORING_ALERT_EMAIL`** unless **`skipNotificationChannelAndAlerts`**
-  - **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** for GCP services and flow
-  - **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** for what to monitor on GCP
-  - **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** for optional manual `gcloud` commands + **`setupMonitoring.yml`** IAM
-  - **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for full CI/CD detail
+## What’s in this repository
 
-## Environment Variables
+| Layer | Role |
+|-------|------|
+| **Scrapers** | `aJobRight.py`, `bGlassDoor.py`, `cZipRecruiter.py` — Selenium/Chrome; persist via **`utils/dataManager.py`**. |
+| **API** | **`app.py`** — FastAPI: job queries, filters, auth (JWT), admin (users, scraper keywords, cache bust, Cloud Run job trigger), Redis-backed caching (**`utils/redisCache.py`**). |
+| **Frontend** | **`frontend/`** — Vite + React + TypeScript + Tailwind/Radix (`npm run dev` / `npm run build`). Calls API using **`VITE_API_URL`**. |
+| **Validation** | **`validation.py`** — Midhtech validation/suggest flow against MongoDB (`-1` pending checks, `-2` push APPLY jobs). Same logic ships in **`docker/Dockerfile.validation`** as **`saral-dvalidate-job`** on a schedule. |
+| **Utilities** | **`utils/`** — data access, Midhtech client, JWT/auth helpers, job decisions, weekly stats, Redis, scraper helpers. |
+| **Ops / stress** | **`loadTest.py`** — optional HTTP load against public UI/API URLs; interactive scenarios **1 / 2 / 3** aligned with Monitoring alert policies (`pip install tqdm` recommended). |
 
-Copy `.env.example` to `.env` and set values.
+---
 
-### Scraping
+## Tech stack (high level)
 
-- `CHROME_APP_PATH`
-- `SCRAPING_CHROME_DIR`
-- `SCRAPING_PORT`
-- `DATA_DIR`
-- Scraper search keywords are configured in Admin UI and stored in MongoDB (`scraperSettings` collection)
-- `SCRAPING_STALE_RETRIES`
-- `SCRAPING_STALE_DELAY`
-- `SCRAPING_HEADLESS`
-- `CLOSE_ON_COMPLETE`
+- **Python 3.12+** (recommended), **Node.js 18+** for local frontend dev  
+- **MongoDB** (Atlas in production)  
+- **Redis** (optional locally via Docker; **Memorystore** + VPC connector in production API)  
+- **FastAPI**, **Uvicorn**, **Pydantic**  
+- **Docker** / **docker compose** for validation image and local API+Redis (`--profile dev`)  
 
-### Database + Midhtech
+Dependencies for backend/scrapers: **`requirements.txt`**.
 
-- `MONGODB_URI`
-- `MONGODB_DATABASE`
-- `MIDHTECH_EMAIL`
-- `MIDHTECH_PASSWORD`
+---
 
-## Local Setup
+## Repository layout (main paths)
 
-```bash
+```
+├── app.py                 # FastAPI application entry
+├── validation.py          # CLI validation / Midhtech pipeline
+├── aJobRight.py / bGlassDoor.py / cZipRecruiter.py
+├── loadTest.py            # Optional load / Monitoring alert drill
+├── klean.py               # Temp/cache cleanup
+├── utils/                 # Shared Python modules
+├── frontend/              # Vite SPA (package.json, src/)
+├── docker/
+│   ├── Dockerfile.api
+│   ├── Dockerfile.frontend
+│   └── Dockerfile.validation
+├── docker-compose.yml     # dvalidate default; api + redis with --profile dev
+├── .github/workflows/     # deployment, ensurePrereq, destroyStack, runValidationManual, setupMonitoring
+└── docs/                  # Architecture & CI/CD docs (see table above)
+```
+
+**Out of main flow:** **`linkedIn/`** — separate LinkedIn experiments; **`zata/`** — local scraper/output artifacts (keep out of Git where appropriate).
+
+---
+
+## Prerequisites
+
+- **Python** with `venv`  
+- **Google Chrome** (path configured in `.env` for scrapers)  
+- **MongoDB URI** and Midhtech credentials for validation/API  
+- **Node + npm** — only if you develop or build **`frontend/`** locally  
+- **Docker Desktop** (optional) — for **`docker compose`**  
+
+---
+
+## Configuration
+
+Copy **`.env.example`** → **`.env`** at the repo root and fill in values.
+
+### Scraping (`CHROME_*`, `SCRAPING_*`, `DATA_DIR`, …)
+
+Chrome binary path, dedicated profile directory, port, headless flags. Search keywords for scrapers are stored in MongoDB (**Admin UI** → scraper settings), not only in env.
+
+### Database & auth
+
+- **`MONGODB_URI`**, **`MONGODB_DATABASE`**  
+- **`JWT_SECRET`** — required for API user sessions  
+- **`MIDHTECH_EMAIL`**, **`MIDHTECH_PASSWORD`** — validation / suggest API  
+
+### API & frontend URL
+
+- **`API_HOST`**, **`API_PORT`** — local API bind  
+- **`VITE_API_URL`** — browser-facing API base URL (local dev: `http://127.0.0.1:8000`; production SPA build: public HTTPS API URL, typically set via **Secret Manager** in **`deployment.yml`**)
+
+### Redis (API cache)
+
+- **`REDIS_ENABLED`**, **`REDIS_URL`**, **`REDIS_PREFIX`**, TTL/timeouts — local compose uses **`redis://sjv-redis:6379/0`** on the **`dev`** profile  
+
+### Cloud Run job trigger (API only)
+
+When the UI/admin triggers the validation job from GCP:
+
+- **`GOOGLE_APPLICATION_CREDENTIALS`** — path to SA JSON when running locally (compose snippet in **`docker-compose.yml`** comments)  
+- **`GCP_PROJECT_ID`**, **`GCP_REGION`**, **`RUN_JOB_NAME`** — default **`saral-dvalidate-job`**  
+
+Production uses **Workload Identity** / runtime SA on Cloud Run — no key baked into images.
+
+---
+
+## Local setup (Python)
+
+```powershell
 python -m venv venv
-venv\Scripts\activate
+.\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Run Scrapers
+On macOS/Linux use `source venv/bin/activate`.
 
-```bash
+---
+
+## Run the API locally
+
+```powershell
+# From repo root with .env present
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Health-style routes include **`/api/health`** (used by uptime checks behind the load balancer).
+
+---
+
+## Run the frontend locally
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Ensure **`VITE_API_URL`** in root **`.env`** points at your API (Vite reads env at dev/build time).
+
+---
+
+## Run scrapers
+
+```powershell
 python aJobRight.py
 python bGlassDoor.py
 python cZipRecruiter.py
 ```
 
-## Run Validation (`validation.py`)
+---
 
-Interactive mode:
+## Run validation (`validation.py`)
 
-```bash
+Interactive menus:
+
+```powershell
 python validation.py
 ```
 
-CLI mode:
+Non-interactive:
 
-```bash
-python validation.py -1
-python validation.py -2
+```powershell
+python validation.py -1    # validate pending (FIFO)
+python validation.py -2    # push APPLY rows to suggest API
 ```
 
-Where:
+---
 
-- `-1`: validate all pending (NULL applyStatus → check API, FIFO)
-- `-2`: push all APPLY jobs to the suggest API
+## Optional HTTP load test (`loadTest.py`)
 
-## Docker (Local)
+Stress public URLs (respect production — alerts and quotas may fire):
 
-**Validation job image** (`docker/Dockerfile.validation`):
-
-```bash
-docker build -f docker/Dockerfile.validation -t saral-dvalidate .
+```powershell
+python loadTest.py                    # interactive scenarios 1 / 2 / 3
+python loadTest.py --help             # CLI: --targetUrl, --durationSeconds, ...
 ```
 
-Run once:
+Install **`tqdm`** for per-process progress bars (`requirements.txt` includes it).
 
-```bash
-docker run --rm \
-  -e MONGODB_URI="..." \
-  -e MONGODB_DATABASE="saralJobViewer" \
-  -e MIDHTECH_EMAIL="..." \
-  -e MIDHTECH_PASSWORD="..." \
-  -e GOOGLE_APPLICATION_CREDENTIALS="/app/secrets/gcp-sa.json" \
-  -v "$(pwd)/gcp-sa.json:/app/secrets/gcp-sa.json:ro" \
-  saral-dvalidate
+---
+
+## Docker
+
+### Validation image (default compose service)
+
+```powershell
+docker compose up --build
 ```
 
-For API deploys via `deploy.sh`, put your key at `./gcp-sa.json` (or set `SARAL_GCP_SA_PATH=/absolute/path/to/key.json` before running deploy). The script mounts it read-only to `/app/secrets/gcp-sa.json`.
+Runs **`dvalidate`** with **`command: ["-1"]`** — adjust in **`docker-compose.yml`** if needed.
 
-Compose one-shot:
+### API + Redis (dev profile)
 
-```bash
-docker compose up
+```powershell
+docker compose --profile dev up --build
 ```
 
-## CI/CD + Cloud Run Job
+- API: **http://localhost:8000**  
+- Redis: **localhost:6379**  
 
-See **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** for GCP architecture and workflows-at-a-glance; **[docs/MONITORING-OBSERVABILITY.md](docs/MONITORING-OBSERVABILITY.md)** and **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** for observability; **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** for CI/CD and secrets; **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** for status.
+Mount **`gcp-sa.json`** only when testing Cloud Run Jobs API from local API (see commented **`volumes`** in **`docker-compose.yml`**).
 
-**Typical Actions flow:**
+### Build images individually
 
-- Push to **`main`** (or manual **deployment** workflow): path-filtered builds → **`saral-api`**, **`saral-ui`**, validation **job** + daily Scheduler (`00:00 UTC`), plus LB backend sync when API/UI change.
-- **Ensure Prerequisites** when standing up or fixing infra (Redis/VPC/LB/mappings).
-- **Run Validation Manual** for one-off job runs.
+```powershell
+docker build -f docker/Dockerfile.api -t saral-api:local .
+docker build -f docker/Dockerfile.frontend -t saral-ui:local .
+docker build -f docker/Dockerfile.validation -t saral-dvalidate:local .
+```
 
-Redeploy via GitHub Actions after changing `validation.py` or job/container settings so Cloud Run matches the repo.
+---
 
-## Security Notes
+## CI/CD (GitHub Actions → GCP)
 
-- Never commit real credentials in `.env`.
-- Docker images avoid baking `.env` into layers; use Secret Manager on Cloud Run.
-- Use Secret Manager for Cloud Run runtime secrets.
+Production deploy identity uses **OIDC → GCP service account** (secrets **`GCP_WORKLOAD_IDENTITY_PROVIDER`**, **`GCP_SERVICE_ACCOUNT`**); runtime uses **`GCP_API_RUN_SERVICE_ACCOUNT`**.
+
+| Workflow | Purpose |
+|----------|---------|
+| **`deployment.yml`** | Path-filtered builds; **`production-approval`** on `main`; deploy **`saral-api`**, **`saral-ui`**, **`saral-dvalidate-job`** + Cloud Scheduler; **`ensureGlobalLoadBalancer`** after API/UI jobs when applicable. |
+| **`ensurePrereq.yml`** | Bootstrap: APIs, secret/image checks; optional Memorystore + VPC connector; optional Cloud Run domain mappings (**not** the global LB). |
+| **`destroyStack.yml`** | Confirmed teardown; optional LB delete; parallel Run service deletes; job + Scheduler; Redis/VPC ordering as scripted. |
+| **`runValidationManual.yml`** | One-off job execution + optional wait. |
+| **`setupMonitoring.yml`** | Manual: Monitoring dashboard + uptime checks + alert policies (definitions embedded in workflow); repo secret **`MONITORING_ALERT_EMAIL`** unless **`skipNotificationChannelAndAlerts`**. |
+
+Detailed secrets, LB object names, and IAM for the pipeline SA: **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**.
+
+**Typical flow:** push to **`main`** or dispatch **`deployment.yml`** → approval → deploy changed paths → LB sync when UI/API change → optionally run **`setupMonitoring.yml`** after DNS/LB are stable.
+
+---
+
+## Security
+
+- Do not commit **`.env`** or service-account JSON.  
+- Production paths use **Secret Manager** and **WIF** — avoid **`gcp-sa.json`** in Cloud Run images for normal operation.  
+- Rotate **`JWT_SECRET`** and Midhtech credentials per your policy.
+
+---
 
 ## Cleanup
 
-```bash
+```powershell
 python klean.py --dry-run
 python klean.py
 ```
 
-## Notes
+---
 
-- `linkedIn/` contains separate/legacy LinkedIn-specific experiments and is not part of the main root scraper flow.
-- `zata/` is ignored for runtime artifacts and logs.
+## Resource naming
+
+Internal project name **Saral Job Viewer**; GCP resources and workflows use prefixes such as **`sjv-`** / **`saral-`** as listed in **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)**.

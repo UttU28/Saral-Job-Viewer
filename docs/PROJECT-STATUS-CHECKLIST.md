@@ -1,6 +1,6 @@
 # Project status — what you have vs what’s left
 
-**Current state:** Core production stack is **complete**: Cloud Run **`saral-api`** + **`saral-ui`**, validation **job** + Scheduler, **Memorystore Redis** + VPC connector, **WIF** GitHub Actions, **Secret Manager**, **custom hostnames** (`saral.thatinsaneguy.com` / `saralapi.thatinsaneguy.com`), and **global HTTPS external load balancer** (EXTERNAL_MANAGED, serverless NEGs → UI/API) when enabled via prereq or built manually — DNS **A** records point at the LB IP where configured.
+**Current state:** Core production stack is **complete**: Cloud Run **`saral-api`** + **`saral-ui`**, validation **job** + Scheduler, **Memorystore Redis** + VPC connector, **WIF** GitHub Actions, **Secret Manager**, **custom hostnames** (`saral.thatinsaneguy.com` / `saralapi.thatinsaneguy.com`), **global HTTPS external load balancer** when enabled, and **Monitoring** (dashboard + uptime + alert policies) definable from **`setupMonitoring.yml`**. DNS **A** records point at the LB IP where configured.
 
 Use **`[x]` = done**, **`[ ]` = optional / not started**.
 
@@ -56,6 +56,7 @@ Images are built and pushed by **`deployment.yml`** when paths change (plus `:la
 | **`ensurePrereq.yml`** — APIs, secret checks, image checks, optional Redis/VPC, optional domain mappings (LB is **not** here) | [x] |
 | **`destroyStack.yml`** — typed phrase + **`production-approval`**; optional LB; parallel **`saral-api`** / **`saral-ui`** deletes; job + Scheduler; optional mappings; Redis then VPC; summary | [x] |
 | **`runValidationManual.yml`** — manual Cloud Run job execution | [x] |
+| **`setupMonitoring.yml`** — Monitoring stack (dashboard, uptime, alerts); see **`MONITORING-WINDOWS-GCLOUD.md`** | [x] |
 
 Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** and **`provisionMemorystoreRedis.yml`** were removed; use **`deployment.yml`** + **`ensurePrereq.yml`** instead.
 
@@ -98,19 +99,22 @@ Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** a
 
 1. **`ensurePrereq.yml`** — bootstrap (Redis, secrets/images checks; optional domain mappings — **not** LB).
 2. **`deployment.yml`** — build/deploy on `main` after approval; **LB** runs **after** **`saral-api`** / **`saral-ui`** deploy jobs when API/UI changed (or manual **`ensureGlobalLoadBalancer`**).
-3. **`destroyStack.yml`** — full teardown only when needed; enable LB delete if removing LB IP and GCP objects.
+3. **`setupMonitoring.yml`** — run after LB/DNS stable if you want uptime checks against public URLs (optional **`skipNotificationChannelAndAlerts`** for dashboard-only).
+4. **`destroyStack.yml`** — full teardown only when needed; enable LB delete if removing LB IP and GCP objects.
 
 ---
 
-## 8) Monitoring & observability (planned)
+## 8) Monitoring & observability
 
 | Item | Status |
 |------|--------|
-| **`docs/MONITORING-OBSERVABILITY.md`** — GCP services (Monitoring, Logging, Trace), dashboard sections, alerts | [x] doc |
-| Cloud Monitoring **dashboard** (LB + Run services + job + Scheduler + Redis) | [ ] |
-| **Uptime checks** + alerts (UI `/`, API `/api/health` via public hosts) | [ ] |
-| **Alert policies** (error rate, latency, job failures, Scheduler, Redis memory) | [ ] |
-| Optional **Cloud Trace** / **Error Reporting** on API | [ ] |
-| **`.github/workflows/setupMonitoring.yml`** + repo secret **`MONITORING_ALERT_EMAIL`** (optional **`skipNotificationChannelAndAlerts`**) | [x] |
+| **`MONITORING-WINDOWS-GCLOUD.md`** — concepts, IAM, optional **`gcloud`**, troubleshooting | [x] |
+| Cloud Monitoring dashboard **“Saral Job Viewer - Overview”** (embedded in **`setupMonitoring.yml`**) | [x] after workflow run |
+| **Uptime checks** (UI `/`, API `/api/health`) + failing alerts | [x] after workflow run |
+| **Alert policies** (API/UI traffic spikes v2, API 5xx v2, Redis memory v2, uptime) — embedded YAML | [x] after workflow run (unless **`skipNotificationChannelAndAlerts`**) |
+| Optional **Cloud Trace** / **Error Reporting** instrumentation on API | [ ] |
+| Repo secret **`MONITORING_ALERT_EMAIL`** + workflow input **`skipNotificationChannelAndAlerts`** | [x] documented |
 
-**Documentation:** **`docs/GCP-PLATFORM-KT.md`** (GCP services, naming, flows, KT); **`docs/CICD-FULL-STACK.md`** (workflows, LB, secrets); **`docs/MONITORING-OBSERVABILITY.md`** (observability goals); **`docs/MONITORING-WINDOWS-GCLOUD.md`** (optional manual **`gcloud`**, **`setupMonitoring.yml`** IAM); **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update the architecture docs when `.github/workflows/` or production topology changes; edit **`setupMonitoring.yml`** when dashboard or alert definitions change, then sync **`MONITORING-OBSERVABILITY.md`** / **`MONITORING-WINDOWS-GCLOUD.md`** if behavior or IAM wording shifts.
+**Optional:** **`loadTest.py`** (repo root) for sustained traffic against scenarios **1 / 2 / 3** to validate rate and error alerts.
+
+**Documentation:** **`docs/GCP-PLATFORM-KT.md`**, **`docs/CICD-FULL-STACK.md`**, **`docs/MONITORING-WINDOWS-GCLOUD.md`**, **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update **`setupMonitoring.yml`** first when dashboard or alert definitions change, then sync docs.

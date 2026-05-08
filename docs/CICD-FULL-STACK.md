@@ -1,6 +1,6 @@
 # Full-stack CI/CD — Saral Job Viewer
 
-**Status:** Implemented end-to-end — **FastAPI** + **Vite** on **Cloud Run**, **Memorystore Redis**, **validation job** + **Scheduler**, **WIF** from GitHub Actions, **Secret Manager**, **custom domains** (`saral.*` + `saralapi.*` on `thatinsaneguy.com`), **global HTTPS external load balancer** (optional bootstrap via prereq; DNS **A** to LB IP where used). No `gcp-sa.json` in images for production paths.
+**Status:** Implemented end-to-end — **FastAPI** + **Vite** on **Cloud Run**, **Memorystore Redis**, **validation job** + **Scheduler**, **WIF** from GitHub Actions, **Secret Manager**, **custom domains** (`saral.*` + `saralapi.*` on `thatinsaneguy.com`), **global HTTPS external load balancer** (optional bootstrap via prereq; DNS **A** to LB IP where used). **Cloud Monitoring** dashboard + uptime checks + alert policies are applied via **`setupMonitoring.yml`** (embedded JSON/YAML). No `gcp-sa.json` in images for production paths.
 
 ---
 
@@ -13,6 +13,7 @@
 | **Prereq / infra** | **`ensurePrereq.yml`** — enable APIs, verify secrets + Artifact Registry `:latest` images; optional Memorystore + VPC connector; optional Cloud Run **domain mappings**. Does **not** configure the global LB (that runs from **`deployment.yml`** after services exist). |
 | **Destroy** | **`destroyStack.yml`** — validate **`DESTROY_SARAL_STACK`** → **`production-approval`** environment → optional LB teardown → parallel Cloud Run **API** / **UI** jobs → validation job + Scheduler → optional domain mappings → Redis then VPC (single ordered job); optional **`deleteGlobalLoadBalancer`**. |
 | **Validation** | `docker/Dockerfile.validation` → AR **`dvalidate`**; image/job updates live in **`deployment.yml`**; **`runValidationManual.yml`** for one-off job runs with mode + wait. |
+| **Observability** | **`setupMonitoring.yml`** — idempotent Monitoring APIs, uptime list-configs, dashboard **“Saral Job Viewer - Overview”**, notification channel + alert policies (email secret **`MONITORING_ALERT_EMAIL`**); input **`skipNotificationChannelAndAlerts`**. Source of truth is **only** this workflow (no `infra/`). Details: **`MONITORING-WINDOWS-GCLOUD.md`**. |
 | **API** | **`deployment.yml`** + `docker/Dockerfile.api` → **`saral-api`**; secrets: Mongo, JWT, Midhtech, `REDIS_URL`; env: `GCP_*`, `RUN_JOB_NAME`, Redis tuning; optional **`GCP_VPC_CONNECTOR_NAME`** (repo variable). |
 | **Frontend** | **`deployment.yml`** + `docker/Dockerfile.frontend`, `nginx.frontend.conf` → **`saral-ui`**; **`VITE_API_URL`** from Secret Manager at build. |
 | **Redis** | Created/maintained via **`ensurePrereq.yml`** (`ensureRedisInfra`); **`REDIS_URL`** in Secret Manager. Standalone `provisionMemorystoreRedis.yml` removed. |
@@ -28,7 +29,7 @@
 | **`ensurePrereq.yml`** | Bootstrap: APIs, secrets/images checks; optional Redis/VPC; optional domain mappings (no LB here). |
 | **`destroyStack.yml`** | Teardown: confirm phrase → **`production-approval`** → optional LB → **parallel** API/UI deletes → job + Scheduler → optional mappings → Redis then VPC (ordered); summary job. |
 | **`runValidationManual.yml`** | Manual execution of `saral-dvalidate-job` (mode + optional wait). |
-| **`setupMonitoring.yml`** | Manual: idempotent Monitoring (APIs, uptime, dashboard + alerts **embedded in workflow**); secret **`MONITORING_ALERT_EMAIL`**; input **`skipNotificationChannelAndAlerts`**. |
+| **`setupMonitoring.yml`** | Manual: Monitoring APIs, uptime checks, dashboard + alert policies (**embedded**); secret **`MONITORING_ALERT_EMAIL`**; input **`skipNotificationChannelAndAlerts`**. |
 
 ---
 
@@ -42,6 +43,7 @@
 | Validation | Cloud Run **job** `saral-dvalidate-job` | Scheduler + manual |
 | TLS | Managed certs | At **LB** (SAN cert) and/or **Cloud Run domain mappings** |
 | Edge | **Global HTTPS LB** (optional but implemented) | Host routing → serverless NEGs → Run |
+| Observability | **Cloud Monitoring** + **Logging** | Dashboard/uptime/alerts from **`setupMonitoring.yml`**; workloads emit logs automatically |
 
 ---
 
@@ -93,7 +95,7 @@ Wait for IAM to propagate, then rerun **`deployment.yml`**.
 ## Secrets (summary)
 
 - **Secret Manager:** `MONGODB_URI`, `MIDHTECH_*`, `JWT_SECRET`, `REDIS_URL`, `VITE_API_URL`; Mongo DB name also set as env on services in deploy scripts.
-- **GitHub:** WIF secrets above; **Variable** `GCP_VPC_CONNECTOR_NAME` when API uses Memorystore via VPC.
+- **GitHub:** WIF secrets above; **Variable** `GCP_VPC_CONNECTOR_NAME` when API uses Memorystore via VPC; **`MONITORING_ALERT_EMAIL`** when using alerting in **`setupMonitoring.yml`**.
 
 ---
 
@@ -101,7 +103,7 @@ Wait for IAM to propagate, then rerun **`deployment.yml`**.
 
 **GCP**
 
-- [x] APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute, Certificate Manager (as needed for LB).
+- [x] APIs: Run, Artifact Registry, Secret Manager, Scheduler, IAM Credentials (WIF), Redis, VPC Access, Compute, Certificate Manager (as needed for LB), Monitoring/Logging (via **`setupMonitoring.yml`** or Console).
 - [x] Artifact Registry `saral-job-viewer-cr`.
 - [x] Service accounts + IAM (deploy, runtime, `actAs`, Secret Manager, Run job).
 - [x] Secrets + Cloud Run bindings.
@@ -112,7 +114,7 @@ Wait for IAM to propagate, then rerun **`deployment.yml`**.
 **GitHub**
 
 - [x] OIDC + repository secrets/variables.
-- [x] **`deployment.yml`**, **`ensurePrereq.yml`**, **`destroyStack.yml`**, **`runValidationManual.yml`**.
+- [x] **`deployment.yml`**, **`ensurePrereq.yml`**, **`destroyStack.yml`**, **`runValidationManual.yml`**, **`setupMonitoring.yml`**.
 - [x] Approval gate via **`production-approval`** on **`deployment.yml`** when filtered paths change.
 - [ ] Optional: staging env, stricter path triggers, Cloud Armor/CDN automation.
 
@@ -133,28 +135,43 @@ flowchart TB
   subgraph DNS
     D[DNS A records]
   end
-  subgraph GCP["GCP"]
+  subgraph GCP["GCP saraljobviewer · us-east1"]
     LB[Global HTTPS LB]
-    FE[Cloud Run UI]
-    API[Cloud Run API]
-    JOB[Cloud Run Job]
-    R[(Redis)]
+    FE[Cloud Run saral-ui]
+    API[Cloud Run saral-api]
+    JOB[Cloud Run Job saral-dvalidate-job]
+    SCH[Cloud Scheduler saral-dvalidate-midnight-utc]
+    VPC[Serverless VPC connector]
+    R[(Memorystore Redis)]
     SM[Secret Manager]
-    AR[Artifact Registry]
-    SCH[Cloud Scheduler]
+    AR[(Artifact Registry)]
+    CM[Cloud Monitoring]
+    LOG[Cloud Logging]
   end
-  subgraph Data
-    M[(MongoDB)]
+  subgraph External
+    M[(MongoDB Atlas)]
   end
   U --> D
   D --> LB
   LB --> FE
   LB --> API
-  FE -->|HTTPS| API
-  API --> R
+  FE -->|HTTPS VITE_API_URL| API
+  API --> VPC
+  VPC -.->|private| R
   API --> M
-  SCH --> JOB
+  SCH -->|run job| JOB
   JOB --> M
+  CM -.->|uptime probes| LB
+  FE --> LOG
+  API --> LOG
+  JOB --> LOG
+  SCH --> LOG
+  LB --> LOG
+  FE -.->|metrics| CM
+  API -.->|metrics| CM
+  JOB -.->|metrics| CM
+  SCH -.->|metrics| CM
+  LB -.->|metrics| CM
   API -.-> SM
   JOB -.-> SM
   AR -.-> FE
@@ -166,13 +183,12 @@ flowchart TB
 
 ## References
 
-- **`GCP-PLATFORM-KT.md`** — onboarding / architecture: **what each GCP service is**, **why we use it**, **names**, **traffic and credential flows**, and **which workflow touches what**.
-- **`MONITORING-OBSERVABILITY.md`** — observability goals; **Cloud Monitoring**, **Logging**, optional **Trace** / **Error Reporting**; dashboards and alerts outline.
-- **`MONITORING-WINDOWS-GCLOUD.md`** — Optional manual **`gcloud`** steps; IAM for **`setupMonitoring.yml`** (dashboard/policies live in that workflow).
-- **`PROJECT-STATUS-CHECKLIST.md`** — line-item status + optional polish (same folder); **keep in sync** with workflow changes.
+- **`GCP-PLATFORM-KT.md`** — onboarding / architecture: services, names, traffic and credential flows, which workflow touches what.
+- **`MONITORING-WINDOWS-GCLOUD.md`** — monitoring concepts, **`setupMonitoring.yml`** IAM, optional Windows **`gcloud`**, LB/dashboard troubleshooting, **`loadTest.py`**.
+- **`PROJECT-STATUS-CHECKLIST.md`** — line-item status + optional polish; keep in sync with workflow changes.
 - **Workflows:** `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`, `setupMonitoring.yml`.
-- **Local:** `docker-compose.yml`, `docker/Dockerfile.*`.
+- **Local:** `docker-compose.yml`, `docker/Dockerfile.*`, **`loadTest.py`** (optional HTTP stress / alert validation).
 
 ---
 
-*Last updated: 2026-05 — update **`GCP-PLATFORM-KT.md`**, **`PROJECT-STATUS-CHECKLIST.md`**, **`MONITORING-OBSERVABILITY.md`**, **`MONITORING-WINDOWS-GCLOUD.md`** (if observability CLI scope changes), and this file when CI/CD or infra topology changes.*
+*Last updated: 2026-05 — monitoring consolidated into **`MONITORING-WINDOWS-GCLOUD.md`**; **`MONITORING-OBSERVABILITY.md`** removed as superseded.*

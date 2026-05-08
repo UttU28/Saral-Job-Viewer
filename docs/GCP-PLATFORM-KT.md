@@ -4,9 +4,8 @@ This document is for **learning, onboarding, and architecture reviews**. It expl
 
 Companion docs:
 
-- **`CICD-FULL-STACK.md`** — workflow cheat sheet, secrets, LB IAM commands.
-- **`MONITORING-OBSERVABILITY.md`** — Cloud Monitoring / Logging / Trace plan.
-- **`MONITORING-WINDOWS-GCLOUD.md`** — Optional manual **`gcloud`** steps + IAM for **`setupMonitoring.yml`** (dashboard/alerts defined inside that workflow).
+- **`CICD-FULL-STACK.md`** — workflow cheat sheet, secrets, LB IAM commands, architecture diagram.
+- **`MONITORING-WINDOWS-GCLOUD.md`** — monitoring scope (dashboard/uptime/alerts from **`setupMonitoring.yml`**), optional Windows **`gcloud`**, IAM, troubleshooting.
 - **`PROJECT-STATUS-CHECKLIST.md`** — what is done vs optional.
 
 ---
@@ -28,42 +27,50 @@ flowchart TB
   subgraph Internet
     User[Browser / clients]
   end
-  subgraph DNS_registrar["DNS (registrar / DNS host)"]
-    Arec[A records saral / saralapi to LB IP]
+  subgraph DNS_registrar["DNS registrar"]
+    Arec[A records saral / saralapi → LB IP]
   end
-  subgraph GCP_project["GCP project: saraljobviewer · region: us-east1"]
+  subgraph GCP_project["GCP saraljobviewer · us-east1"]
     LB[Global HTTPS LB]
-    UI[Cloud Run: saral-ui]
-    API[Cloud Run: saral-api]
-    JOB[Cloud Run Job: saral-dvalidate-job]
-    SCH[Cloud Scheduler]
+    UI[Cloud Run saral-ui]
+    API[Cloud Run saral-api]
+    JOB[Cloud Run Job saral-dvalidate-job]
+    SCH[Cloud Scheduler saral-dvalidate-midnight-utc]
     AR[(Artifact Registry)]
     SM[Secret Manager]
     REDIS[(Memorystore Redis)]
-    VPC[VPC connector]
+    VPC[Serverless VPC connector]
+    CM[Cloud Monitoring]
+    LOG[Cloud Logging]
   end
   subgraph External
     MONGO[(MongoDB Atlas)]
   end
-  GH[GitHub Actions WIF]
   User --> Arec --> LB
   LB --> UI
   LB --> API
-  UI -->|VITE_API_URL| API
-  API --> REDIS
+  UI -->|HTTPS VITE_API_URL| API
   API --> VPC
-  REDIS -. private network .- VPC
+  VPC -.->|private| REDIS
   API --> MONGO
   JOB --> MONGO
   SCH -->|HTTP POST run job| JOB
+  CM -.->|uptime probes| LB
+  UI --> LOG
+  API --> LOG
+  JOB --> LOG
+  SCH --> LOG
+  LB --> LOG
+  UI -.->|metrics| CM
+  API -.->|metrics| CM
+  JOB -.->|metrics| CM
+  SCH -.->|metrics| CM
+  LB -.->|metrics| CM
   API -. reads .-> SM
   JOB -. reads .-> SM
-  GH -->|push images deploy Run/LB| AR
-  GH --> UI
-  GH --> API
-  GH --> JOB
-  GH --> SCH
-  GH --> LB
+  AR -.-> UI
+  AR -.-> API
+  AR -.-> JOB
 ```
 
 ---
@@ -250,6 +257,7 @@ At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to th
 | **`ensurePrereq.yml`** | Enable core APIs, verify secrets + `:latest` images, optional Redis/VPC create, optional Cloud Run **domain mappings** (no LB here). |
 | **`destroyStack.yml`** | Optional LB delete → delete Run services → delete job + Scheduler → optional mappings → optional Redis then VPC. |
 | **`runValidationManual.yml`** | Execute **`saral-dvalidate-job`** with chosen mode; optional wait for completion. |
+| **`setupMonitoring.yml`** | Manual **workflow_dispatch**: Monitoring APIs, uptime checks, dashboard JSON + alert YAML (**embedded**); optional notification channel ( **`MONITORING_ALERT_EMAIL`** ) unless **`skipNotificationChannelAndAlerts`**. See **`MONITORING-WINDOWS-GCLOUD.md`**. |
 
 ---
 
@@ -279,10 +287,10 @@ At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to th
 When you change **service names**, **regions**, **LB resource IDs**, or **workflow responsibilities**, update:
 
 1. This file (`GCP-PLATFORM-KT.md`)
-2. **`CICD-FULL-STACK.md`** (operational detail)
+2. **`CICD-FULL-STACK.md`** (operational detail + diagram)
 3. **`PROJECT-STATUS-CHECKLIST.md`** (checklist truth)
-4. **`MONITORING-OBSERVABILITY.md`** and **`MONITORING-WINDOWS-GCLOUD.md`** when dashboards or alerts change (definitions live in **`setupMonitoring.yml`**)
+4. **`MONITORING-WINDOWS-GCLOUD.md`** when dashboards or alerts change (definitions live in **`setupMonitoring.yml`**)
 
 ---
 
-*Last updated: 2026-05 — aligned with `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`.*
+*Last updated: 2026-05 — aligned with `.github/workflows/deployment.yml`, `ensurePrereq.yml`, `destroyStack.yml`, `runValidationManual.yml`, `setupMonitoring.yml`.*
