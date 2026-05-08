@@ -11,6 +11,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 | **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)** | GCP services, resource names, identity, workflow ↔ GCP matrix, architecture diagram (runtime view). |
 | **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)** | Deploy/destroy/prereq workflows, secrets summary, global LB, IAM snippets for pipeline SA, architecture diagram. |
 | **[docs/MONITORING-WINDOWS-GCLOUD.md](docs/MONITORING-WINDOWS-GCLOUD.md)** | Monitoring scope; **`setupMonitoring.yml`** (dashboard + uptime + alerts); IAM; optional Windows **`gcloud`**; **`loadTest.py`** for alert drill. |
+| **[docs/DATABASE-SCHEMA.md](docs/DATABASE-SCHEMA.md)** | MongoDB schema reference: every collection, field, index, the **`applyStatus`** state machine, and end-to-end data lifecycle. |
 | **[docs/PROJECT-STATUS-CHECKLIST.md](docs/PROJECT-STATUS-CHECKLIST.md)** | What is implemented vs optional follow-ups. |
 
 ---

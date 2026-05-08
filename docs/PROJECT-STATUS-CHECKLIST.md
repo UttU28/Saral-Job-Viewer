@@ -117,4 +117,4 @@ Standalone **`deployApi.yml` / `deployFrontend.yml` / `deployValidation.yml`** a
 
 **Optional:** **`loadTest.py`** (repo root) for sustained traffic against scenarios **1 / 2 / 3** to validate rate and error alerts.
 
-**Documentation:** **`docs/GCP-PLATFORM-KT.md`**, **`docs/CICD-FULL-STACK.md`**, **`docs/MONITORING-WINDOWS-GCLOUD.md`**, **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update **`setupMonitoring.yml`** first when dashboard or alert definitions change, then sync docs.
+**Documentation:** **`docs/GCP-PLATFORM-KT.md`**, **`docs/CICD-FULL-STACK.md`**, **`docs/MONITORING-WINDOWS-GCLOUD.md`**, **`docs/DATABASE-SCHEMA.md`**, **`docs/PROJECT-STATUS-CHECKLIST.md`** (this file). Update **`setupMonitoring.yml`** first when dashboard or alert definitions change, then sync docs.

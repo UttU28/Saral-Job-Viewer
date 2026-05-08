@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import {
+  ArrowUp,
   AlertTriangle,
   Building2,
   CheckCircle2,
@@ -23,8 +24,8 @@ import {
 } from "@/lib/api";
 import {
   buildDescriptionHighlightSegments,
-  findJobDescriptionRestrictionTags,
-} from "@/lib/jobDescriptionRestrictions";
+  findJobDescriptionExperienceTags,
+} from "@/lib/jobDescriptionExperience";
 import { useAuth } from "@/auth/AuthProvider";
 import {
   AlertDialog,
@@ -50,6 +51,90 @@ import { cn } from "@/lib/utils";
 import { pastelMetaLineClasses } from "./constants";
 import { formatApiDecisionError, isRejectedStatus, jobMetaHighlights, showAcceptForStatus, showRejectForStatus } from "./utils";
 
+/** Smooth deceleration — slides in comfortably with no overshoot or wobble at the end. */
+function easeOutCubic(t: number): number {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  return 1 - Math.pow(1 - t, 3);
+}
+
+type RafRef = { current: number | null };
+
+function runSmoothScrollTo(
+  el: HTMLElement,
+  targetTop: number,
+  rafRef: RafRef,
+  durationMs: number = 720,
+): void {
+  if (rafRef.current !== null) {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
+
+  const start = el.scrollTop;
+  const clampedTarget = Math.max(0, targetTop);
+  if (Math.abs(start - clampedTarget) < 0.5) {
+    el.scrollTop = clampedTarget;
+    el.dispatchEvent(new Event("scroll"));
+    return;
+  }
+
+  const delta = clampedTarget - start;
+  const t0 = performance.now();
+
+  const tick = (now: number) => {
+    const t = Math.min(1, (now - t0) / durationMs);
+    const eased = easeOutCubic(t);
+    el.scrollTop = Math.max(0, start + delta * eased);
+    if (t < 1) {
+      rafRef.current = requestAnimationFrame(tick);
+    } else {
+      el.scrollTop = clampedTarget;
+      rafRef.current = null;
+      el.dispatchEvent(new Event("scroll"));
+    }
+  };
+  rafRef.current = requestAnimationFrame(tick);
+}
+
+function findScrollableParent(node: HTMLElement | null): HTMLElement | null {
+  if (!node) return null;
+  let cur: HTMLElement | null = node.parentElement;
+  while (cur) {
+    const style = globalThis.getComputedStyle(cur);
+    const canScrollY = /(auto|scroll)/.test(style.overflowY);
+    if (canScrollY && cur.scrollHeight > cur.clientHeight) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+/** Same ease-out scroll as Top button: center `anchor` inside its scroll container (or viewport). */
+function smoothScrollElementIntoCenter(anchor: HTMLElement, rafRef: RafRef, durationMs: number = 720): void {
+  const scroller = findScrollableParent(anchor);
+  if (scroller) {
+    const sRect = scroller.getBoundingClientRect();
+    const aRect = anchor.getBoundingClientRect();
+    const anchorTopInScroller = aRect.top - sRect.top + scroller.scrollTop;
+    const targetScroll = anchorTopInScroller - scroller.clientHeight / 2 + aRect.height / 2;
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScroll, targetScroll));
+    runSmoothScrollTo(scroller, targetTop, rafRef, durationMs);
+    return;
+  }
+  const root = document.scrollingElement;
+  if (root instanceof HTMLElement) {
+    const aRect = anchor.getBoundingClientRect();
+    const vh = root.clientHeight;
+    const targetScroll = root.scrollTop + aRect.top - vh / 2 + aRect.height / 2;
+    const maxScroll = Math.max(0, root.scrollHeight - root.clientHeight);
+    const targetTop = Math.max(0, Math.min(maxScroll, targetScroll));
+    runSmoothScrollTo(root, targetTop, rafRef, durationMs);
+    return;
+  }
+  anchor.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 export function JobDetailPane({
   jobId,
   decisionBusyJobId,
@@ -68,34 +153,168 @@ export function JobDetailPane({
     err: unknown,
   ) => void;
 }>) {
+  const paneTopRef = useRef<HTMLDivElement | null>(null);
+  const descriptionContainerRef = useRef<HTMLDivElement | null>(null);
+  const topScrollRafRef = useRef<number | null>(null);
   const detailQuery = useJobDetailQuery(jobId, Boolean(jobId));
   const { sessionProfile } = useAuth();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
   const [profileRequiredOpen, setProfileRequiredOpen] = useState(false);
-  const [acceptKeywordsConfirmOpen, setAcceptKeywordsConfirmOpen] = useState(false);
   const [moveToApplyPending, setMoveToApplyPending] = useState(false);
   const [acceptProgressOpen, setAcceptProgressOpen] = useState(false);
   const [acceptProgressLoading, setAcceptProgressLoading] = useState(false);
   const [acceptProgressResult, setAcceptProgressResult] = useState<JobDecisionResponse | null>(null);
   const [acceptProgressNetworkError, setAcceptProgressNetworkError] = useState<string | null>(null);
+  const [scrollToTopFabVisible, setScrollToTopFabVisible] = useState(false);
 
   useEffect(() => {
-    setAcceptKeywordsConfirmOpen(false);
     setAcceptProgressOpen(false);
     setAcceptProgressLoading(false);
     setAcceptProgressResult(null);
     setAcceptProgressNetworkError(null);
   }, [jobId]);
 
-  const restrictionTags = useMemo(
-    () => findJobDescriptionRestrictionTags(detailQuery.data?.jobDescription),
+  useEffect(() => {
+    return () => {
+      if (topScrollRafRef.current !== null) {
+        cancelAnimationFrame(topScrollRafRef.current);
+        topScrollRafRef.current = null;
+      }
+    };
+  }, [jobId]);
+
+  /** Hide the FAB when the detail pane is already near the top; show only when there is real scroll room. */
+  useEffect(() => {
+    if (!jobId || detailQuery.isLoading || !detailQuery.isSuccess || !detailQuery.data) {
+      setScrollToTopFabVisible(false);
+      return;
+    }
+
+    const pane = paneTopRef.current;
+    if (!pane) return;
+
+    const thresholdPx = 80;
+    let alive = true;
+    let removeListener: (() => void) | null = null;
+
+    const bind = () => {
+      removeListener?.();
+      removeListener = null;
+
+      const sc = findScrollableParent(pane);
+      const sync = () => {
+        if (!alive) return;
+        if (sc) {
+          const maxScroll = sc.scrollHeight - sc.clientHeight;
+          setScrollToTopFabVisible(maxScroll > thresholdPx && sc.scrollTop > thresholdPx);
+          return;
+        }
+        const root = document.scrollingElement;
+        if (root instanceof HTMLElement) {
+          const maxScroll = root.scrollHeight - root.clientHeight;
+          setScrollToTopFabVisible(maxScroll > thresholdPx && root.scrollTop > thresholdPx);
+          return;
+        }
+        setScrollToTopFabVisible(false);
+      };
+
+      if (sc) {
+        sc.addEventListener("scroll", sync, { passive: true });
+        removeListener = () => sc.removeEventListener("scroll", sync);
+      } else {
+        globalThis.addEventListener("scroll", sync, { passive: true });
+        removeListener = () => globalThis.removeEventListener("scroll", sync);
+      }
+      sync();
+    };
+
+    bind();
+
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(bind);
+    });
+    ro.observe(pane);
+
+    requestAnimationFrame(bind);
+
+    return () => {
+      alive = false;
+      removeListener?.();
+      ro.disconnect();
+    };
+  }, [jobId, detailQuery.isLoading, detailQuery.isSuccess, detailQuery.data]);
+
+  const experienceTags = useMemo(
+    () => findJobDescriptionExperienceTags(detailQuery.data?.jobDescription),
     [detailQuery.data?.jobDescription],
   );
   const descriptionHighlightSegments = useMemo(
     () => buildDescriptionHighlightSegments(detailQuery.data?.jobDescription ?? ""),
     [detailQuery.data?.jobDescription],
   );
+
+  const normalizeExperienceTag = (v: string): string => v.replaceAll(/\s+/g, " ").trim().toLowerCase();
+
+  const firstHighlightAnchorByTag = useMemo(() => {
+    const byTag = new Map<string, string>();
+    const normalizedTags = experienceTags.map((t) => ({ raw: t, normalized: normalizeExperienceTag(t) }));
+    let highlightOrdinal = 0;
+    for (const seg of descriptionHighlightSegments) {
+      if (!seg.highlight) continue;
+      const anchorId = `jd-exp-${highlightOrdinal}`;
+      const normalizedSeg = normalizeExperienceTag(seg.text);
+      for (const t of normalizedTags) {
+        if (byTag.has(t.raw)) continue;
+        if (normalizedSeg.includes(t.normalized)) {
+          byTag.set(t.raw, anchorId);
+        }
+      }
+      highlightOrdinal += 1;
+    }
+    return byTag;
+  }, [descriptionHighlightSegments, experienceTags]);
+
+  const getExperienceChipClassName = (tag: string): string => {
+    const nums = Array.from(tag.matchAll(/\d+/g))
+      .map((m) => Number(m[0]))
+      .filter((n) => Number.isFinite(n));
+    const highest = nums.length > 0 ? Math.max(...nums) : null;
+    if (highest !== null && highest >= 6) {
+      return "border-red-500/55 bg-red-500/[0.12] text-red-950 hover:bg-red-500/[0.18] dark:border-red-400/50 dark:bg-red-950/45 dark:text-red-50/95";
+    }
+    if (highest !== null && highest <= 2) {
+      return "border-emerald-500/55 bg-emerald-500/[0.13] text-emerald-950 hover:bg-emerald-500/[0.2] dark:border-emerald-400/50 dark:bg-emerald-950/45 dark:text-emerald-50/95";
+    }
+    return "border-amber-500/50 bg-amber-500/[0.14] text-amber-950 hover:bg-amber-500/[0.2] dark:border-amber-400/45 dark:bg-amber-950/40 dark:text-amber-50/95";
+  };
+
+  const scrollToExperienceTag = (tag: string) => {
+    const anchorId = firstHighlightAnchorByTag.get(tag);
+    if (!anchorId) return;
+    const el = document.getElementById(anchorId);
+    if (!el) return;
+    smoothScrollElementIntoCenter(el, topScrollRafRef);
+  };
+
+  const scrollPaneToTop = () => {
+    const topEl = paneTopRef.current;
+    if (!topEl) return;
+    const scroller = findScrollableParent(topEl);
+    if (scroller) {
+      runSmoothScrollTo(scroller, 0, topScrollRafRef);
+      return;
+    }
+    const root = document.scrollingElement;
+    if (root instanceof HTMLElement) {
+      const rect = topEl.getBoundingClientRect();
+      const pad = 12;
+      const targetTop = Math.max(0, root.scrollTop + rect.top - pad);
+      runSmoothScrollTo(root, targetTop, topScrollRafRef);
+      return;
+    }
+    topEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   if (!jobId) {
     return (
@@ -174,10 +393,6 @@ export function JobDetailPane({
       const password = (sessionProfile?.password ?? "").trim();
       if (!email || !password) {
         setProfileRequiredOpen(true);
-        return;
-      }
-      if (restrictionTags.length > 0) {
-        setAcceptKeywordsConfirmOpen(true);
         return;
       }
       await executeAcceptSubmit();
@@ -298,50 +513,6 @@ export function JobDetailPane({
             >
               <KeyRound className="h-4 w-4" aria-hidden />
               Open Password
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={acceptKeywordsConfirmOpen} onOpenChange={setAcceptKeywordsConfirmOpen}>
-        <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-lg shadow-xl max-h-[90vh] flex flex-col">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="font-display text-xl flex items-center gap-2 text-left">
-              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden />
-              Confirm accept — flagged description
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="text-left space-y-3 text-sm text-muted-foreground pt-1">
-                <p>
-                  This posting matches eligibility or sponsorship-related phrases. Submitting still sends it to Midhtech
-                  and marks the job as applied if the request succeeds. Cancel if you want to skip.
-                </p>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground/80 mb-2">Detected tags</p>
-                  <div className="flex flex-wrap gap-2">
-                    {restrictionTags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex max-w-full items-center rounded-lg border border-rose-500/45 bg-rose-500/[0.11] px-2.5 py-1 text-xs font-medium text-rose-950 dark:border-rose-400/40 dark:bg-rose-950/50 dark:text-rose-100/95"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
-            <AlertDialogCancel className="rounded-xl border-border mt-0">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-600/90"
-              onClick={() => {
-                setAcceptKeywordsConfirmOpen(false);
-                void executeAcceptSubmit();
-              }}
-            >
-              Continue and submit
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -485,21 +656,29 @@ export function JobDetailPane({
         </DialogContent>
       </Dialog>
 
-      <div className="w-full max-w-none p-4 sm:p-5 md:p-6 lg:px-8 lg:py-6 xl:px-10 xl:py-8 space-y-6 sm:space-y-8">
+      <div ref={paneTopRef} className="w-full max-w-none p-4 sm:p-5 md:p-6 lg:px-8 lg:py-6 xl:px-10 xl:py-8 space-y-6 sm:space-y-8">
         <div className="space-y-3 sm:space-y-4">
-          {restrictionTags.length > 0 ? (
-            <div
-              className="flex flex-wrap gap-2"
-              aria-label="Phrases detected in the job description"
-            >
-              {restrictionTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex max-w-full items-center rounded-lg border border-rose-500/45 bg-rose-500/[0.11] px-3 py-1.5 text-sm font-medium text-rose-950 dark:border-rose-400/40 dark:bg-rose-950/50 dark:text-rose-100/95 leading-snug shadow-sm"
-                >
-                  {tag}
-                </span>
-              ))}
+          {experienceTags.length > 0 ? (
+            <div className="space-y-2">
+              <div
+                className="flex flex-wrap gap-2"
+                aria-label="Experience-related phrases detected in the job description"
+              >
+                {experienceTags.map((tag) => (
+                  <button
+                    type="button"
+                    key={tag}
+                    onClick={() => scrollToExperienceTag(tag)}
+                    className={cn(
+                      "inline-flex max-w-full items-center rounded-lg border px-3 py-1.5 text-sm font-medium leading-snug shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70",
+                      getExperienceChipClassName(tag),
+                    )}
+                    title="Jump to this text in full description"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold font-display leading-tight tracking-tight text-foreground">
@@ -596,22 +775,37 @@ export function JobDetailPane({
         <div className="pb-4">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-primary dark:text-violet-300 mb-3">
             Full description
+            {experienceTags.length > 0 ? (
+              <span className="block mt-1.5 normal-case font-sans font-normal text-[11px] sm:text-xs text-muted-foreground tracking-normal">
+                {
+                  'Highlighted spans match experience-style requirements (ranges, "+ years", yr(s), etc.).'
+                }
+              </span>
+            ) : null}
           </h3>
-          <div className="rounded-2xl border border-border/80 bg-background/65 p-4 sm:p-6 w-full shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]">
+          <div
+            ref={descriptionContainerRef}
+            className="rounded-2xl border border-border/80 bg-background/65 p-4 sm:p-6 w-full shadow-[inset_0_1px_0_0_rgba(255,255,255,0.03)]"
+          >
             <pre className="whitespace-pre-wrap break-words font-sans text-sm text-foreground/90 dark:text-zinc-200 leading-relaxed m-0 w-full [tab-size:2]">
               {(job.jobDescription ?? "").trim() ? (
-                descriptionHighlightSegments.map((seg, i) =>
-                  seg.highlight ? (
-                    <mark
-                      key={`jd-${i}`}
-                      className="rounded-sm bg-amber-200/95 px-0.5 text-foreground shadow-[inset_0_-1px_0_0_rgba(180,83,9,0.35)] dark:bg-amber-500/30 dark:text-amber-50 dark:shadow-none"
-                    >
-                      {seg.text}
-                    </mark>
-                  ) : (
-                    <span key={`jd-${i}`}>{seg.text}</span>
-                  ),
-                )
+                (() => {
+                  let highlightOrdinal = 0;
+                  return descriptionHighlightSegments.map((seg, i) => {
+                    if (!seg.highlight) return <span key={`jd-${i}`}>{seg.text}</span>;
+                    const anchorId = `jd-exp-${highlightOrdinal}`;
+                    highlightOrdinal += 1;
+                    return (
+                      <mark
+                        id={anchorId}
+                        key={`jd-${i}`}
+                        className="rounded-sm bg-amber-200/95 px-0.5 text-foreground shadow-[inset_0_-1px_0_0_rgba(180,83,9,0.35)] dark:bg-amber-500/30 dark:text-amber-50 dark:shadow-none"
+                      >
+                        {seg.text}
+                      </mark>
+                    );
+                  });
+                })()
               ) : (
                 "No description stored for this job."
               )}
@@ -619,6 +813,28 @@ export function JobDetailPane({
           </div>
         </div>
       </div>
+      {scrollToTopFabVisible ? (
+        <button
+          type="button"
+          onClick={scrollPaneToTop}
+          className={cn(
+            "fixed z-30 inline-flex items-center gap-2 rounded-2xl border border-border/90 bg-card/95 px-3.5 py-2.5 text-sm font-semibold text-foreground shadow-lg backdrop-blur-md",
+            "ring-1 ring-black/[0.06] dark:ring-white/[0.08]",
+            "transition-[transform,box-shadow,background-color] duration-200 ease-out",
+            "hover:bg-card hover:shadow-xl active:scale-[0.98]",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            "bottom-8 left-8 md:bottom-10 md:left-8",
+            "lg:left-[calc(1.25rem+340px+1rem)] xl:left-[calc(1.25rem+380px+1rem)]",
+          )}
+          title="Scroll job details to top"
+          aria-label="Scroll job details to top"
+        >
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary dark:bg-primary/20 dark:text-primary">
+            <ArrowUp className="h-4 w-4" aria-hidden />
+          </span>
+          <span className="pr-0.5">Top</span>
+        </button>
+      ) : null}
     </>
   );
 }
