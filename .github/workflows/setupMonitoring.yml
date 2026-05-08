@@ -328,9 +328,9 @@ jobs:
                 thresholdValue: 1
                 duration: 300s
                 aggregations:
-                  - alignmentPeriod: 60s
-                    perSeriesAligner: ALIGN_MEAN
-                    crossSeriesReducer: REDUCE_MEAN
+                  - alignmentPeriod: 300s
+                    perSeriesAligner: ALIGN_NEXT_OLDER
+                    crossSeriesReducer: REDUCE_FRACTION_TRUE
                 trigger:
                   count: 1
           YAML_EOF
@@ -350,9 +350,9 @@ jobs:
                 thresholdValue: 1
                 duration: 300s
                 aggregations:
-                  - alignmentPeriod: 60s
-                    perSeriesAligner: ALIGN_MEAN
-                    crossSeriesReducer: REDUCE_MEAN
+                  - alignmentPeriod: 300s
+                    perSeriesAligner: ALIGN_NEXT_OLDER
+                    crossSeriesReducer: REDUCE_FRACTION_TRUE
                 trigger:
                   count: 1
           YAML_EOF
