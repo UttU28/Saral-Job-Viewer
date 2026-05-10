@@ -70,8 +70,8 @@ jobs:
 
   detectChanges:
     needs: [ci, codeql]
-    # Run after checks pass, or after both check jobs were skipped (manual deploy with runChecks=false).
-    if: ${{ always() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
+    # After CI+CodeQL both succeed, or both skipped (manual "skip checks"). If either failed, this job is skipped — fix CI before deploy.
+    if: ${{ always() && !cancelled() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
     runs-on: ubuntu-latest
     outputs:
       apiChanged: ${{ steps.pick.outputs.api }}
@@ -111,11 +111,11 @@ jobs:
           FA: ${{ steps.filter.outputs.api }}
           FF: ${{ steps.filter.outputs.frontend }}
           FV: ${{ steps.filter.outputs.validation }}
-          # Boolean workflow inputs — compare in YAML (reliable); avoid relying on string "true" in bash alone.
-          FORCE_DEPLOY_ALL: ${{ github.event_name == 'workflow_dispatch' && inputs.deployAllApps == true }}
         run: |
           set -euo pipefail
-          if [[ "${FORCE_DEPLOY_ALL}" == "true" ]]; then
+          # Inline expression avoids faulty env stringification; compare to literal true below.
+          manual_deploy_all='${{ github.event_name == 'workflow_dispatch' && github.event.inputs.deployAllApps == 'true' }}'
+          if [[ "${manual_deploy_all}" == "true" ]]; then
             echo "api=true" >> "$GITHUB_OUTPUT"
             echo "frontend=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
@@ -136,7 +136,6 @@ jobs:
     name: Comment — CI Summary link (optional helper)
     runs-on: ubuntu-latest
     needs: detectChanges
-    if: ${{ needs.detectChanges.result == 'success' }}
     continue-on-error: true
     permissions:
       contents: write
@@ -174,11 +173,8 @@ jobs:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
     needs: detectChanges
-    # Always wait for environment approval after path detection (push to main or manual workflow_dispatch).
-    if: ${{ needs.detectChanges.result == 'success' }}
-    # Configure: Settings → Environments → production-approval → Required reviewers.
-    # If this job shows Skipped (not Waiting) on manual runs, check Environment → Deployment branches:
-    # the run ref (e.g. refs/heads/main) must be allowed, or the environment job is skipped by GitHub.
+    # No job-level if: runs whenever detectChanges succeeds (push or manual). Skipped only if detectChanges failed/skipped.
+    # Settings → Environments → production-approval: required reviewers + allow branch `main` (or deployment branches "All").
     environment:
       name: production-approval
     steps:
