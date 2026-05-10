@@ -16,11 +16,6 @@ on:
         required: true
         default: true
         type: boolean
-      ensureGlobalLoadBalancer:
-        description: After API/UI deploy steps, create/update global HTTPS LB (host routing + managed cert). Uncheck if LB not used.
-        required: true
-        default: true
-        type: boolean
 
 
 env:
@@ -401,7 +396,7 @@ jobs:
   ensureGlobalLoadBalancer:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
-    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.ensureGlobalLoadBalancer == 'true')) }}
+    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
