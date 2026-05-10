@@ -1,0 +1,178 @@
+# Tests, dependency audits, Docker image builds + Trivy CVE scans. Reused by Main Deploy via workflow_call.
+# Reports: job summaries below + Security tab (Trivy SARIF). CodeQL runs in codeql.yml (SAST).
+name: CI
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  backendFrontend:
+    name: Tests & audits
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Pip dependency audit (requirements.txt)
+        run: pip-audit -r requirements.txt
+
+      - name: Pytest
+        run: pytest -q --tb=short
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: npm audit (high severity or higher)
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: npm run check
+
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test
+
+      - name: Frontend production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Job summary — tests & audits
+        if: always()
+        run: |
+          echo "## Tests & dependency audits" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Step | Purpose |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| pip-audit | Known CVEs in \`requirements.txt\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| pytest | Python unit / API smoke tests |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| npm audit | npm dependency CVEs (high+) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| tsc / vitest / vite build | Frontend quality gate |" >> "$GITHUB_STEP_SUMMARY"
+
+  scanContainers:
+    name: Trivy (${{ matrix.name }} image)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: docker/Dockerfile.api
+            tag: saral-api:ci
+          - name: frontend
+            dockerfile: docker/Dockerfile.frontend
+            tag: saral-ui:ci
+          - name: validation
+            dockerfile: docker/Dockerfile.validation
+            tag: saral-dvalidate:ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.name }}" == "frontend" ]]; then
+            docker build -f "${{ matrix.dockerfile }}" --build-arg VITE_API_URL=https://example.com -t "${{ matrix.tag }}" .
+          else
+            docker build -f "${{ matrix.dockerfile }}" -t "${{ matrix.tag }}" .
+          fi
+
+      - name: Trivy — SARIF (GitHub Security tab)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.tag }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+          exit-code: "0"
+
+      - name: Upload Trivy SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          category: trivy-container-${{ matrix.name }}
+
+      - name: Trivy — gate & table report (fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.tag }}
+          format: table
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+          exit-code: "1"
+
+      - name: Job summary — container scan
+        if: always()
+        run: |
+          echo "### Trivy container scan (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: \`${{ matrix.tag }}\` from \`${{ matrix.dockerfile }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SARIF uploaded to **Security → Code scanning** (category \`trivy-container-${{ matrix.name }}\`)." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Build fails if **HIGH** or **CRITICAL** CVEs are detected (fix base image / rebuild)." >> "$GITHUB_STEP_SUMMARY"
+
+  ciSummary:
+    name: CI report
+    runs-on: ubuntu-latest
+    needs: [backendFrontend, scanContainers]
+    if: always()
+    steps:
+      - name: Pipeline summary
+        env:
+          TESTS: ${{ needs.backendFrontend.result }}
+          IMAGES: ${{ needs.scanContainers.result }}
+        run: |
+          echo "## Full CI report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result | What ran |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Tests & audits** | ${TESTS} | pytest, pip-audit, npm audit, tsc, vitest, vite build |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Trivy (3× Dockerfiles)** | ${IMAGES} | CVE scan on API / UI / validation images |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Where to read security results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Kind | Location |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **SAST (source code)** | Repository **Security** tab → *Code scanning* → CodeQL workflows |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Container CVEs** | Same tab → alerts from **Trivy** (\`trivy-container-*\`) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Dependency CVEs** | This run log (pip-audit, npm audit) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${TESTS}" != "success" ]] || [[ "${IMAGES}" != "success" ]]; then
+            echo "### Status" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more stages failed — fix before deploying." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "### Status" >> "$GITHUB_STEP_SUMMARY"
+          echo "All CI stages passed." >> "$GITHUB_STEP_SUMMARY"

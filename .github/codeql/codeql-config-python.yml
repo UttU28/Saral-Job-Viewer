@@ -1,0 +1,7 @@
+name: CodeQL Python (API & libs)
+paths:
+  - app.py
+  - utils
+paths-ignore:
+  - "**/__pycache__/**"
+  - "**/.venv/**"

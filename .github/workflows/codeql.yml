@@ -1,0 +1,70 @@
+# Static analysis (SAST) — source code, not container layers. Results: Security → Code scanning alerts.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 7 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyzePython:
+    name: CodeQL — Python
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          config-file: ./.github/codeql/codeql-config-python.yml
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: Analysis summary
+        run: |
+          echo "## CodeQL (Python)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Analyzed \`app.py\` and \`utils/\`. View alerts under **Security → Code scanning**." >> "$GITHUB_STEP_SUMMARY"
+
+  analyzeJs:
+    name: CodeQL — JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          config-file: ./.github/codeql/codeql-config-js.yml
+
+      - name: Install and build frontend (required for JS/TS extraction)
+        working-directory: frontend
+        run: npm ci && npm run build
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+
+      - name: Analysis summary
+        run: |
+          echo "## CodeQL (JavaScript/TypeScript)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Analyzed \`frontend/src\`. View alerts under **Security → Code scanning**." >> "$GITHUB_STEP_SUMMARY"
