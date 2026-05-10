@@ -6,16 +6,13 @@ on:
       - main
   workflow_dispatch:
     inputs:
-      ensureGlobalLoadBalancer:
-        description: After API/UI deploy steps, create/update global HTTPS LB (host routing + managed cert). Uncheck if LB not used.
+      runChecks:
+        description: Run CI (tests, audits, Trivy) and CodeQL before deploy. Uncheck to skip those checks only — manual runs still deploy API, UI, and validation.
         required: true
         default: true
         type: boolean
 
-# Execution order (happy path):
-#   ci (tests + audits + Trivy informational scans + summary) → detectChanges → approvalGate → [deployApi, deployFrontend, deployValidation] in parallel (each gated by path outputs)
-#   → ensureGlobalLoadBalancer after deployApi AND deployFrontend finish (success or skipped — not failed)
-# LB intentionally does not wait on deployValidation (no resource dependency).
+
 env:
   GCP_PROJECT_ID: saraljobviewer
   GCP_REGION: us-east1
@@ -46,24 +43,39 @@ env:
   LB_UI_BACKEND_NAME: sjv-ui-bes
   LB_API_BACKEND_NAME: sjv-api-bes
 
+
 jobs:
   ci:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.runChecks == 'true'
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
       security-events: write
 
+  codeql:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.runChecks == 'true'
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      contents: read
+      security-events: write
+
   detectChanges:
-    needs: ci
+    needs: [ci, codeql]
+    if: ${{ always() && needs.ci.result == needs.codeql.result && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
-      apiChanged: ${{ steps.filter.outputs.api }}
-      frontendChanged: ${{ steps.filter.outputs.frontend }}
-      validationChanged: ${{ steps.filter.outputs.validation }}
-      anyChanged: ${{ steps.filter.outputs.api == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.validation == 'true' }}
+      apiChanged: ${{ steps.resolved.outputs.api }}
+      frontendChanged: ${{ steps.resolved.outputs.frontend }}
+      validationChanged: ${{ steps.resolved.outputs.validation }}
+      lbNeedsEnsure: ${{ steps.lbEnsureFlag.outputs.needs }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '2' }}
 
       - name: Detect changed app areas
         id: filter
@@ -87,23 +99,136 @@ jobs:
               - 'requirements.txt'
               - 'docker/Dockerfile.validation'
 
+      - name: Resolve deploy targets (push = path filter; manual = all apps)
+        id: resolved
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="${{ steps.filter.outputs.api }}"
+          fe="${{ steps.filter.outputs.frontend }}"
+          val="${{ steps.filter.outputs.validation }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            api=true
+            fe=true
+            val=true
+          fi
+          echo "api=${api}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${fe}" >> "$GITHUB_OUTPUT"
+          echo "validation=${val}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (LB probe)
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud (LB probe)
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Probe existing global HTTPS LB (read-only)
+        id: lbProbe
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+          exp() { gcloud "$@" --project "$PROJECT" >/dev/null; }
+
+          exp compute addresses describe "${{ env.LB_IP_NAME }}" --global
+          exp compute ssl-certificates describe "${{ env.LB_CERT_NAME }}" --global
+          exp compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global
+          exp compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}"
+          exp compute target-http-proxies describe "${{ env.LB_HTTP_PROXY_NAME }}"
+          exp compute forwarding-rules describe "${{ env.LB_HTTPS_FWD_RULE_NAME }}" --global
+          exp compute forwarding-rules describe "${{ env.LB_HTTP_FWD_RULE_NAME }}" --global
+          exp compute network-endpoint-groups describe "${{ env.LB_UI_NEG_NAME }}" --region "$REGION"
+          exp compute network-endpoint-groups describe "${{ env.LB_API_NEG_NAME }}" --region "$REGION"
+          exp compute backend-services describe "${{ env.LB_UI_BACKEND_NAME }}" --global
+          exp compute backend-services describe "${{ env.LB_API_BACKEND_NAME }}" --global
+          gcloud run services describe "${{ env.UI_SERVICE_NAME }}" --project "$PROJECT" --region "$REGION" >/dev/null
+          gcloud run services describe "${{ env.API_SERVICE_NAME }}" --project "$PROJECT" --region "$REGION" >/dev/null
+
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set LB ensure flag
+        id: lbEnsureFlag
+        if: always() && steps.resolved.conclusion == 'success'
+        shell: bash
+        run: |
+          api="${{ steps.resolved.outputs.api }}"
+          fe="${{ steps.resolved.outputs.frontend }}"
+          if [[ "$api" != "true" && "$fe" != "true" ]]; then
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "${{ steps.lbProbe.outcome }}" == "success" && "${{ steps.lbProbe.outputs.ok }}" == "true" ]]; then
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            echo "Global HTTPS LB already present — skipping ensureGlobalLoadBalancer job."
+          else
+            echo "needs=true" >> "$GITHUB_OUTPUT"
+            echo "LB missing or probe failed — ensureGlobalLoadBalancer will run after API/UI deploy."
+          fi
+
+  notifyDeploymentPending:
+    name: Comment — deploy approval helper
+    runs-on: ubuntu-latest
+    needs: detectChanges
+    if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Post commit comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const checksSkipped = context.payload.inputs?.runChecks === "false";
+            const hint = checksSkipped
+              ? "**Checks skipped** (no CI / CodeQL). This manual run deploys **API, UI, and validation**. Logs:"
+              : "**CI + CodeQL + Trivy:** open this run → **Summary** (not in the approval popup):";
+            const body = [
+              "### Deploy approval",
+              "",
+              "Environment **production-approval** is waiting for a reviewer.",
+              "",
+              hint,
+              "",
+              runUrl,
+              "",
+              "<!-- saral-deploy-notify -->",
+            ].join("\n");
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body,
+            });
+
   approvalGate:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
     needs: detectChanges
-    # Ask for environment approval only on push runs.
-    if: github.event_name == 'push' && needs.detectChanges.outputs.anyChanged == 'true'
-    # Configure this environment in GitHub settings with required reviewer = Utsav.
+    if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
     environment:
       name: production-approval
     steps:
+      - name: Manual run notices
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          [ "${{ github.event.inputs.runChecks }}" != "false" ] || echo "::notice title=Checks::CI and CodeQL skipped."
+          echo "::notice title=Deploy scope::Manual run — API, UI, and validation after approval."
       - name: Await approval
-        run: echo "Deployment approved. Continuing with changed apps only."
+        run: echo "Approved. Continuing to deploy jobs."
 
   deployApi:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.apiChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.apiChanged == 'true' && needs.approvalGate.result == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -169,7 +294,7 @@ jobs:
   deployFrontend:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.frontendChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.frontendChanged == 'true' && needs.approvalGate.result == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -235,7 +360,7 @@ jobs:
   deployValidation:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.validationChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.validationChanged == 'true' && needs.approvalGate.result == 'success' }}
     permissions:
       contents: read
       id-token: write
@@ -323,13 +448,15 @@ jobs:
   ensureGlobalLoadBalancer:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
-    # Runs only after API/UI deploy jobs complete (parallel deploys both awaited). Skipped if either deploy job failed.
-    if: ${{ (github.event_name != 'push' || needs.approvalGate.result == 'success') && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
+    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') && needs.detectChanges.outputs.lbNeedsEnsure == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -431,21 +558,37 @@ jobs:
               --project "$PROJECT"
           fi
 
-          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
-            --global \
-            --project "$PROJECT" \
-            --path-matcher-name sjv-hosts \
-            --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
-            --new-hosts "${UI_DOMAIN}" \
-            --quiet || true
+          # add-path-matcher fails if host/path matcher already exists — only create when missing.
+          url_map_has_path_matcher() {
+            local want="$1"
+            local raw
+            raw="$(gcloud compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global --project "$PROJECT" --format='value(pathMatchers[].name)' 2>/dev/null || true)"
+            printf '%s' "$raw" | sed 's/[;[:space:]]\+/\n/g' | grep -qx "$want"
+          }
 
-          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
-            --global \
-            --project "$PROJECT" \
-            --path-matcher-name sjv-api-host \
-            --default-service "${{ env.LB_API_BACKEND_NAME }}" \
-            --new-hosts "${API_DOMAIN}" \
-            --quiet || true
+          if ! url_map_has_path_matcher "sjv-hosts"; then
+            gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --project "$PROJECT" \
+              --path-matcher-name sjv-hosts \
+              --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
+              --new-hosts "${UI_DOMAIN}" \
+              --quiet
+          else
+            echo "URL map already has path matcher sjv-hosts for ${UI_DOMAIN} — skipping add-path-matcher."
+          fi
+
+          if ! url_map_has_path_matcher "sjv-api-host"; then
+            gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --project "$PROJECT" \
+              --path-matcher-name sjv-api-host \
+              --default-service "${{ env.LB_API_BACKEND_NAME }}" \
+              --new-hosts "${API_DOMAIN}" \
+              --quiet
+          else
+            echo "URL map already has path matcher sjv-api-host for ${API_DOMAIN} — skipping add-path-matcher."
+          fi
 
           if ! gcloud compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
             gcloud compute target-https-proxies create "${{ env.LB_HTTPS_PROXY_NAME }}" \
