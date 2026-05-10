@@ -7,7 +7,12 @@ on:
   workflow_dispatch:
     inputs:
       runChecks:
-        description: Run CI (tests, audits, Trivy) and CodeQL before path detection and deploy. Uncheck to skip checks and go to approval → deploy only.
+        description: Run CI (tests, audits, Trivy) and CodeQL before path detection and deploy. Uncheck to skip only those checks; deploy still runs per **Deploy all apps** / path filter below.
+        required: true
+        default: true
+        type: boolean
+      deployAllApps:
+        description: Deploy API, UI, and validation regardless of path-filter results (recommended for manual runs, especially when **Run CI** is off). Uncheck to deploy only apps whose paths changed.
         required: true
         default: true
         type: boolean
@@ -69,13 +74,16 @@ jobs:
     if: ${{ always() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
     runs-on: ubuntu-latest
     outputs:
-      apiChanged: ${{ steps.filter.outputs.api }}
-      frontendChanged: ${{ steps.filter.outputs.frontend }}
-      validationChanged: ${{ steps.filter.outputs.validation }}
-      anyChanged: ${{ steps.filter.outputs.api == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.validation == 'true' }}
+      apiChanged: ${{ steps.resolved.outputs.api }}
+      frontendChanged: ${{ steps.resolved.outputs.frontend }}
+      validationChanged: ${{ steps.resolved.outputs.validation }}
+      anyChanged: ${{ steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true' || steps.resolved.outputs.validation == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # workflow_dispatch needs full history for paths-filter merge-base; push keeps parent commit for same-branch diffs.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '2' }}
 
       - name: Detect changed app areas
         id: filter
@@ -99,6 +107,23 @@ jobs:
               - 'requirements.txt'
               - 'docker/Dockerfile.validation'
 
+      - name: Resolve deploy targets (path filter vs manual deploy-all)
+        id: resolved
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="${{ steps.filter.outputs.api }}"
+          fe="${{ steps.filter.outputs.frontend }}"
+          val="${{ steps.filter.outputs.validation }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ github.event.inputs.deployAllApps }}" = "true" ]; then
+            api=true
+            fe=true
+            val=true
+          fi
+          echo "api=${api}" >> "$GITHUB_OUTPUT"
+          echo "frontend=${fe}" >> "$GITHUB_OUTPUT"
+          echo "validation=${val}" >> "$GITHUB_OUTPUT"
+
   # Optional commit comment with workflow Summary URL — not an approval (only **approvalGate** is).
   notifyDeploymentPending:
     name: Comment — CI Summary link (optional helper)
@@ -115,13 +140,14 @@ jobs:
           script: |
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const checksSkipped = context.payload.inputs?.runChecks === "false";
+            const deployAll = context.payload.inputs?.deployAllApps !== "false";
             const body = [
               "### Deploy approval",
               "",
               "Environment **production-approval** is waiting for a reviewer.",
               "",
               checksSkipped
-                ? "**Checks skipped** for this manual run (no CI / CodeQL). Open this workflow run if you need logs:"
+                ? "**Checks skipped** for this manual run (no CI / CodeQL). **Deploy all apps:** " + (deployAll ? "yes (API + UI + validation)." : "no — only path-filter matches.") + " Open this workflow run if you need logs:"
                 : "**CI + CodeQL + Trivy:** open this workflow run, then the **Summary** tab (reports are not shown inside the approval popup):",
               "",
               runUrl,
@@ -145,10 +171,17 @@ jobs:
     environment:
       name: production-approval
     steps:
-      - name: Note when checks were skipped (manual only)
-        if: github.event_name == 'workflow_dispatch' && github.event.inputs.runChecks == 'false'
+      - name: Note manual deploy mode
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          echo "::notice title=Deploy mode::CI and CodeQL were skipped — deploying based on path rules after approval."
+          if [ "${{ github.event.inputs.runChecks }}" = "false" ]; then
+            echo "::notice title=Checks::CI and CodeQL were skipped for this run."
+          fi
+          if [ "${{ github.event.inputs.deployAllApps }}" = "true" ]; then
+            echo "::notice title=Deploy scope::All apps (API, UI, validation) will deploy after approval (Deploy all apps = true)."
+          else
+            echo "::notice title=Deploy scope::Only apps with path-filter matches will deploy (Deploy all apps = false)."
+          fi
       - name: Await approval
         run: echo "Deployment approved. Continuing with changed apps only."
 
