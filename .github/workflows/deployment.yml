@@ -63,10 +63,14 @@ jobs:
     needs: [ci, codeql]
     if: ${{ always() && needs.ci.result == needs.codeql.result && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
       apiChanged: ${{ steps.resolved.outputs.api }}
       frontendChanged: ${{ steps.resolved.outputs.frontend }}
       validationChanged: ${{ steps.resolved.outputs.validation }}
+      lbNeedsEnsure: ${{ steps.lbEnsureFlag.outputs.needs }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,6 +115,63 @@ jobs:
           echo "api=${api}" >> "$GITHUB_OUTPUT"
           echo "frontend=${fe}" >> "$GITHUB_OUTPUT"
           echo "validation=${val}" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (LB probe)
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud (LB probe)
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Probe existing global HTTPS LB (read-only)
+        id: lbProbe
+        if: steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT="${{ env.GCP_PROJECT_ID }}"
+          REGION="${{ env.GCP_REGION }}"
+          exp() { gcloud "$@" --project "$PROJECT" >/dev/null; }
+
+          exp compute addresses describe "${{ env.LB_IP_NAME }}" --global
+          exp compute ssl-certificates describe "${{ env.LB_CERT_NAME }}" --global
+          exp compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global
+          exp compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}"
+          exp compute target-http-proxies describe "${{ env.LB_HTTP_PROXY_NAME }}"
+          exp compute forwarding-rules describe "${{ env.LB_HTTPS_FWD_RULE_NAME }}" --global
+          exp compute forwarding-rules describe "${{ env.LB_HTTP_FWD_RULE_NAME }}" --global
+          exp compute network-endpoint-groups describe "${{ env.LB_UI_NEG_NAME }}" --region "$REGION"
+          exp compute network-endpoint-groups describe "${{ env.LB_API_NEG_NAME }}" --region "$REGION"
+          exp compute backend-services describe "${{ env.LB_UI_BACKEND_NAME }}" --global
+          exp compute backend-services describe "${{ env.LB_API_BACKEND_NAME }}" --global
+          gcloud run services describe "${{ env.UI_SERVICE_NAME }}" --project "$PROJECT" --region "$REGION" >/dev/null
+          gcloud run services describe "${{ env.API_SERVICE_NAME }}" --project "$PROJECT" --region "$REGION" >/dev/null
+
+          echo "ok=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set LB ensure flag
+        id: lbEnsureFlag
+        if: always() && steps.resolved.conclusion == 'success'
+        shell: bash
+        run: |
+          api="${{ steps.resolved.outputs.api }}"
+          fe="${{ steps.resolved.outputs.frontend }}"
+          if [[ "$api" != "true" && "$fe" != "true" ]]; then
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "${{ steps.lbProbe.outcome }}" == "success" && "${{ steps.lbProbe.outputs.ok }}" == "true" ]]; then
+            echo "needs=false" >> "$GITHUB_OUTPUT"
+            echo "Global HTTPS LB already present — skipping ensureGlobalLoadBalancer job."
+          else
+            echo "needs=true" >> "$GITHUB_OUTPUT"
+            echo "LB missing or probe failed — ensureGlobalLoadBalancer will run after API/UI deploy."
+          fi
 
   notifyDeploymentPending:
     name: Comment — deploy approval helper
@@ -387,7 +448,7 @@ jobs:
   ensureGlobalLoadBalancer:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
-    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') }}
+    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') && needs.detectChanges.outputs.lbNeedsEnsure == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
