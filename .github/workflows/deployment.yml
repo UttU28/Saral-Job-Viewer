@@ -29,6 +29,8 @@ env:
 
   VALIDATION_IMAGE_NAME: dvalidate
   SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
+  # IANA tz for cron — 0 0 * * * = local midnight. Match your machine (US Central).
+  SCHEDULER_TIME_ZONE: America/Chicago
   UI_DOMAIN: saral.thatinsaneguy.com
   API_DOMAIN: saralapi.thatinsaneguy.com
   LB_IP_NAME: sjv-global-lb-ip
@@ -421,27 +423,32 @@ jobs:
               --set-secrets "MONGODB_URI=MONGODB_URI:latest,MIDHTECH_EMAIL=MIDHTECH_EMAIL:latest,MIDHTECH_PASSWORD=MIDHTECH_PASSWORD:latest"
           fi
 
-      - name: Ensure Scheduler (00:00 UTC daily)
+      - name: Ensure Scheduler (local midnight, validation -2 / push APPLY)
         shell: bash
         run: |
           set -euo pipefail
           JOB_URI="https://${{ env.GCP_REGION }}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${{ env.GCP_PROJECT_ID }}/jobs/${{ env.RUN_JOB_NAME }}:run"
           SA_EMAIL="${{ secrets.GCP_SERVICE_ACCOUNT }}"
+          POST_BODY='{"overrides":{"containerOverrides":[{"args":["validation.py","-2"]}]}}'
           if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB_NAME }}" --location "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
             gcloud scheduler jobs update http "${{ env.SCHEDULER_JOB_NAME }}" \
               --location "${{ env.GCP_REGION }}" \
               --schedule "0 0 * * *" \
-              --time-zone "Etc/UTC" \
+              --time-zone "${{ env.SCHEDULER_TIME_ZONE }}" \
               --uri "${JOB_URI}" \
               --http-method POST \
+              --message-body="${POST_BODY}" \
+              --update-headers=Content-Type=application/json \
               --oauth-service-account-email "${SA_EMAIL}"
           else
             gcloud scheduler jobs create http "${{ env.SCHEDULER_JOB_NAME }}" \
               --location "${{ env.GCP_REGION }}" \
               --schedule "0 0 * * *" \
-              --time-zone "Etc/UTC" \
+              --time-zone "${{ env.SCHEDULER_TIME_ZONE }}" \
               --uri "${JOB_URI}" \
               --http-method POST \
+              --message-body="${POST_BODY}" \
+              --headers=Content-Type=application/json \
               --oauth-service-account-email "${SA_EMAIL}"
           fi
 
