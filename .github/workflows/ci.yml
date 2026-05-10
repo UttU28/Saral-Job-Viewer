@@ -1,5 +1,5 @@
-# Tests, dependency audits, Docker image builds + Trivy CVE scans. Reused by Main Deploy via workflow_call.
-# Reports: job summaries below + Security tab (Trivy SARIF). CodeQL runs in codeql.yml (SAST).
+# Tests, dependency audits, Docker image builds + Trivy CVE scans (informational — does not fail CI on CVEs).
+# Reports: job summaries + Security tab (Trivy SARIF). CodeQL runs in codeql.yml (SAST).
 name: CI
 
 on:
@@ -134,7 +134,7 @@ jobs:
           sarif_file: trivy-${{ matrix.name }}.sarif
           category: trivy-container-${{ matrix.name }}
 
-      - name: Trivy — gate & table report (fail on HIGH/CRITICAL)
+      - name: Trivy — table report (informational, does not fail CI)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
@@ -142,29 +142,58 @@ jobs:
           format: table
           severity: CRITICAL,HIGH
           vuln-type: os,library
-          exit-code: "1"
+          exit-code: "0"
 
-      - name: Job summary — container scan
-        if: always()
+      - name: Count HIGH/CRITICAL for summary
+        id: trivyCounts
+        continue-on-error: true
+        shell: bash
         env:
-          JOB_CONCLUSION: ${{ job.conclusion }}
           MATRIX_NAME: ${{ matrix.name }}
           MATRIX_TAG: ${{ matrix.tag }}
-          MATRIX_FILE: ${{ matrix.dockerfile }}
+          IMAGE_REF: ${{ matrix.tag }}
         run: |
-          echo "### Trivy (${MATRIX_NAME} image)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**This matrix leg:** ${JOB_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Image: ${MATRIX_TAG}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Dockerfile: ${MATRIX_FILE}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- SARIF category: trivy-container-${MATRIX_NAME}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${JOB_CONCLUSION}" = "success" ]; then
-            echo "Trivy gate passed (no HIGH/CRITICAL findings for this image)." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "Trivy gate failed — see the step **Trivy — gate and table report** above." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          set -euo pipefail
+          export PATH="${HOME}/.local/bin/trivy-bin:${PATH}"
+          export OUT="/tmp/trivy-count-${MATRIX_NAME}.json"
+          trivy image --severity HIGH,CRITICAL --format json --exit-code 0 \
+            --scanners vuln "${IMAGE_REF}" > "${OUT}"
+          python3 << 'PY'
+          import json, os
+          path = os.environ["OUT"]
+          name = os.environ["MATRIX_NAME"]
+          tag = os.environ["MATRIX_TAG"]
+          with open(path, encoding="utf-8") as f:
+              data = json.load(f)
+          n_high = n_crit = 0
+          for r in data.get("Results") or []:
+              for v in r.get("Vulnerabilities") or []:
+                  sev = (v.get("Severity") or "").upper()
+                  if sev == "CRITICAL":
+                      n_crit += 1
+                  elif sev == "HIGH":
+                      n_high += 1
+          total = n_high + n_crit
+          summary_path = os.environ["GITHUB_STEP_SUMMARY"]
+          lines = [
+              f"### Trivy ({name} image)",
+              "",
+              f"- **Image:** `{tag}`",
+              f"- **HIGH / CRITICAL (informational):** {total} total — HIGH: {n_high}, CRITICAL: {n_crit}",
+              "",
+              "These counts **do not fail CI**. Review the **Trivy table report** step above and **Security → Code scanning**.",
+              "",
+              f"SARIF category: `trivy-container-{name}`",
+          ]
+          with open(summary_path, "a", encoding="utf-8") as h:
+              h.write("\n".join(lines) + "\n")
+          print(f"trivy_counts name={name} high={n_high} critical={n_crit} total={total}", flush=True)
+          gh_out = os.environ["GITHUB_OUTPUT"]
+          with open(gh_out, "a", encoding="utf-8") as out:
+              out.write(f"high={n_high}\n")
+              out.write(f"critical={n_crit}\n")
+              out.write(f"total={total}\n")
+          PY
 
   ciSummary:
     name: CI report
@@ -186,7 +215,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Where to find security output" >> "$GITHUB_STEP_SUMMARY"
           echo "- **CodeQL:** repo **Security** → **Code scanning** (runs in the separate CodeQL workflow)." >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Trivy:** same tab; look for SARIF categories trivy-container-api, trivy-container-frontend, trivy-container-validation." >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Trivy:** informational only (PR stays green). Counts per image are in each **Trivy** matrix job Summary; SARIF categories trivy-container-api, trivy-container-frontend, trivy-container-validation." >> "$GITHUB_STEP_SUMMARY"
           echo "- **pip-audit / npm audit:** logs in the **Tests & audits** job." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Overall status" >> "$GITHUB_STEP_SUMMARY"

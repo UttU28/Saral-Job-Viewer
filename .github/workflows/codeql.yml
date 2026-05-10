@@ -40,20 +40,42 @@ jobs:
 
       - name: Analysis summary (Python)
         if: always()
+        shell: bash
         env:
           ANALYZE_CONCLUSION: ${{ steps.codeqlAnalyzePython.conclusion }}
         run: |
-          echo "## CodeQL (Python)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Analyze step:** ${ANALYZE_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${ANALYZE_CONCLUSION}" = "success" ]; then
-            echo "Analysis finished successfully." >> "$GITHUB_STEP_SUMMARY"
-            echo "Open **Security** → **Code scanning** to review alerts (if any)." >> "$GITHUB_STEP_SUMMARY"
-            echo "Scope is controlled by \`.github/codeql/codeql-config-python.yml\`." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "The step **Perform CodeQL analysis** did not succeed — expand it for error logs." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python3 << 'PY'
+          import os
+
+          path = os.environ["GITHUB_STEP_SUMMARY"]
+          conclusion = (os.environ.get("ANALYZE_CONCLUSION") or "").strip() or "unknown"
+
+          lines = [
+              "## CodeQL (Python)",
+              "",
+              f"**Analyze step:** `{conclusion}`",
+              "",
+          ]
+          if conclusion == "success":
+              lines += [
+                  "Analysis finished successfully.",
+                  "",
+                  "Next: open the repository **Security** tab, then **Code scanning**, to see CodeQL alerts (if any).",
+                  "",
+                  "Scope is set in `.github/codeql/codeql-config-python.yml`.",
+              ]
+          else:
+              lines += [
+                  "The step **Perform CodeQL analysis** did not succeed.",
+                  "",
+                  "Expand that step in this job for full logs.",
+              ]
+
+          with open(path, "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+
+          print(f"Wrote CodeQL Python summary (conclusion={conclusion!r}).", flush=True)
+          PY
 
   analyzeJs:
     name: CodeQL — JavaScript/TypeScript
@@ -85,17 +107,39 @@ jobs:
 
       - name: Analysis summary (JavaScript/TypeScript)
         if: always()
+        shell: bash
         env:
           ANALYZE_CONCLUSION: ${{ steps.codeqlAnalyzeJs.conclusion }}
         run: |
-          echo "## CodeQL (JavaScript / TypeScript)" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Analyze step:** ${ANALYZE_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [ "${ANALYZE_CONCLUSION}" = "success" ]; then
-            echo "Analysis finished successfully." >> "$GITHUB_STEP_SUMMARY"
-            echo "Open **Security** → **Code scanning** to review alerts (if any)." >> "$GITHUB_STEP_SUMMARY"
-            echo "Scanned \`frontend/src\` after \`npm ci\` and \`npm run build\`." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "The step **Perform CodeQL analysis** did not succeed — expand it for error logs." >> "$GITHUB_STEP_SUMMARY"
-          fi
+          python3 << 'PY'
+          import os
+
+          path = os.environ["GITHUB_STEP_SUMMARY"]
+          conclusion = (os.environ.get("ANALYZE_CONCLUSION") or "").strip() or "unknown"
+
+          lines = [
+              "## CodeQL (JavaScript / TypeScript)",
+              "",
+              f"**Analyze step:** `{conclusion}`",
+              "",
+          ]
+          if conclusion == "success":
+              lines += [
+                  "Analysis finished successfully.",
+                  "",
+                  "Next: **Security** tab, **Code scanning**, for alerts.",
+                  "",
+                  "Sources: `frontend/src` (after `npm ci` and `npm run build`).",
+              ]
+          else:
+              lines += [
+                  "The step **Perform CodeQL analysis** did not succeed.",
+                  "",
+                  "Expand that step in this job for full logs.",
+              ]
+
+          with open(path, "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+
+          print(f"Wrote CodeQL JS/TS summary (conclusion={conclusion!r}).", flush=True)
+          PY

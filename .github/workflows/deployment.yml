@@ -13,7 +13,7 @@ on:
         type: boolean
 
 # Execution order (happy path):
-#   ci (tests + audits + Trivy on Dockerfiles + summary) → detectChanges → approvalGate → [deployApi, deployFrontend, deployValidation] in parallel (each gated by path outputs)
+#   ci (tests + audits + Trivy informational scans + summary) → detectChanges → approvalGate → [deployApi, deployFrontend, deployValidation] in parallel (each gated by path outputs)
 #   → ensureGlobalLoadBalancer after deployApi AND deployFrontend finish (success or skipped — not failed)
 # LB intentionally does not wait on deployValidation (no resource dependency).
 env:
