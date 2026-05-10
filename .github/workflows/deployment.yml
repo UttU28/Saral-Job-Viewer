@@ -12,9 +12,6 @@ on:
         default: true
         type: boolean
 
-# Single deploy approval: job **approvalGate** (environment **production-approval**).
-# Runs after **detectChanges** on every push to main and on workflow_dispatch (manual deploy).
-# **notifyDeploymentPending** only posts a commit comment with the Summary link — it is not an approval step.
 
 env:
   GCP_PROJECT_ID: saraljobviewer
@@ -53,8 +50,14 @@ jobs:
       contents: read
       security-events: write
 
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      contents: read
+      security-events: write
+
   detectChanges:
-    needs: ci
+    needs: [ci, codeql]
     runs-on: ubuntu-latest
     outputs:
       apiChanged: ${{ steps.filter.outputs.api }}
