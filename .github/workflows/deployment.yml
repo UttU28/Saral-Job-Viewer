@@ -12,10 +12,10 @@ on:
         default: true
         type: boolean
 
-# Execution order (happy path):
-#   ci (tests + audits + Trivy informational scans + summary) → detectChanges → approvalGate → [deployApi, deployFrontend, deployValidation] in parallel (each gated by path outputs)
-#   → ensureGlobalLoadBalancer after deployApi AND deployFrontend finish (success or skipped — not failed)
-# LB intentionally does not wait on deployValidation (no resource dependency).
+# Single deploy approval: job **approvalGate** (environment **production-approval**).
+# Runs after **detectChanges** on every push to main and on workflow_dispatch (manual deploy).
+# **notifyDeploymentPending** only posts a commit comment with the Summary link — it is not an approval step.
+
 env:
   GCP_PROJECT_ID: saraljobviewer
   GCP_REGION: us-east1
@@ -87,13 +87,46 @@ jobs:
               - 'requirements.txt'
               - 'docker/Dockerfile.validation'
 
+  # Optional commit comment with workflow Summary URL — not an approval (only **approvalGate** is).
+  notifyDeploymentPending:
+    name: Comment — CI Summary link (optional helper)
+    runs-on: ubuntu-latest
+    needs: detectChanges
+    if: needs.detectChanges.result == 'success'
+    continue-on-error: true
+    permissions:
+      contents: write
+    steps:
+      - name: Commit comment with workflow run / Summary URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const body = [
+              "### Deploy approval",
+              "",
+              "Environment **production-approval** is waiting for a reviewer.",
+              "",
+              "**CI + Trivy:** open this workflow run, then the **Summary** tab (reports are not shown inside the approval popup):",
+              "",
+              runUrl,
+              "",
+              "<!-- saral-deploy-notify -->",
+            ].join("\n");
+            await github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body,
+            });
+
   approvalGate:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
     needs: detectChanges
-    # Ask for environment approval only on push runs.
-    if: github.event_name == 'push' && needs.detectChanges.outputs.anyChanged == 'true'
-    # Configure this environment in GitHub settings with required reviewer = Utsav.
+    # Always wait for environment approval after path detection (push to main or manual workflow_dispatch).
+    if: needs.detectChanges.result == 'success'
+    # Configure: Settings → Environments → production-approval → Required reviewers.
     environment:
       name: production-approval
     steps:
@@ -103,7 +136,7 @@ jobs:
   deployApi:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.apiChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: needs.detectChanges.outputs.apiChanged == 'true' && needs.approvalGate.result == 'success'
     permissions:
       contents: read
       id-token: write
@@ -169,7 +202,7 @@ jobs:
   deployFrontend:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.frontendChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: needs.detectChanges.outputs.frontendChanged == 'true' && needs.approvalGate.result == 'success'
     permissions:
       contents: read
       id-token: write
@@ -235,7 +268,7 @@ jobs:
   deployValidation:
     runs-on: ubuntu-latest
     needs: [detectChanges, approvalGate]
-    if: needs.detectChanges.outputs.validationChanged == 'true' && (github.event_name != 'push' || needs.approvalGate.result == 'success')
+    if: needs.detectChanges.outputs.validationChanged == 'true' && needs.approvalGate.result == 'success'
     permissions:
       contents: read
       id-token: write
@@ -324,7 +357,7 @@ jobs:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
     # Runs only after API/UI deploy jobs complete (parallel deploys both awaited). Skipped if either deploy job failed.
-    if: ${{ (github.event_name != 'push' || needs.approvalGate.result == 'success') && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
+    if: ${{ needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
