@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-rootPath = Path(__file__).resolve().parent
+rootPath = Path(__file__).resolve().parents[1]
 
 tempDirNames = { "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".cache", }
 tempFileNames = { ".DS_Store", "Thumbs.db", ".coverage", }

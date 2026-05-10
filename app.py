@@ -897,3 +897,5 @@ if __name__ == "__main__":
     host = (os.getenv("API_HOST") or "0.0.0.0").strip()
     port = int((os.getenv("API_PORT") or "8000").strip())
     uvicorn.run("app:app", host=host, port=port, reload=True)
+
+# deployTouch: 2026-05-10T02:17:37Z
