@@ -1,9 +1,7 @@
-# Static analysis (SAST) — source code, not container layers. Results: Security → Code scanning alerts.
 name: CodeQL
 
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
   schedule:
     - cron: "23 7 * * 1"

@@ -1,5 +1,3 @@
-# Tests, dependency audits, Docker image builds + Trivy CVE scans (informational — does not fail CI on CVEs).
-# Reports: job summaries + Security tab (Trivy SARIF). CodeQL runs in codeql.yml (SAST).
 name: CI
 
 on:
@@ -211,7 +209,7 @@ jobs:
           echo "| Trivy (3 Dockerfiles) | ${IMAGES} |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "### Where to find security output" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **CodeQL:** repo **Security** → **Code scanning** (runs in the separate CodeQL workflow)." >> "$GITHUB_STEP_SUMMARY"
+          echo "- **CodeQL:** repo **Security** → **Code scanning** (same **Main Deploy** run as this CI; weekly-only scans still use **Actions → CodeQL**)." >> "$GITHUB_STEP_SUMMARY"
           echo "- **Trivy:** informational only (PR stays green). Counts per image are in each **Trivy** matrix job Summary; SARIF categories trivy-container-api, trivy-container-frontend, trivy-container-validation." >> "$GITHUB_STEP_SUMMARY"
           echo "- **pip-audit / npm audit:** logs in the **Tests & audits** job." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
