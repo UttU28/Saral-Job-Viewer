@@ -1,7 +1,13 @@
+# Use directory roots only — listing a single file like app.yaml causes
+# NotADirectoryError during extraction (CodeQL walks paths as directories).
 name: CodeQL Python (API & libs)
 paths:
-  - app.py
-  - utils
+  - .
 paths-ignore:
+  - frontend/**
+  - linkedIn/**
+  - scraping/**
+  - tests/**
   - "**/__pycache__/**"
   - "**/.venv/**"
+  - "**/node_modules/**"

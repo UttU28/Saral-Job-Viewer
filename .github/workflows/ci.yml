@@ -65,15 +65,25 @@ jobs:
 
       - name: Job summary — tests & audits
         if: always()
+        env:
+          JOB_CONCLUSION: ${{ job.conclusion }}
         run: |
-          echo "## Tests & dependency audits" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Tests and dependency audits" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Step | Purpose |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| pip-audit | Known CVEs in \`requirements.txt\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| pytest | Python unit / API smoke tests |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| npm audit | npm dependency CVEs (high+) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| tsc / vitest / vite build | Frontend quality gate |" >> "$GITHUB_STEP_SUMMARY"
+          echo "**This job:** ${JOB_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${JOB_CONCLUSION}" = "success" ]; then
+            echo "| Step | Purpose |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|---------|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| pip-audit | CVEs in requirements.txt |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| pytest | Python unit tests + API smoke tests |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| npm audit | npm dependencies (high+) |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| tsc / vitest / vite build | Frontend checks |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "All steps above completed without error." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "One or more steps failed — scroll up to the first failing step." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   scanContainers:
     name: Trivy (${{ matrix.name }} image)
@@ -108,7 +118,7 @@ jobs:
           fi
 
       - name: Trivy — SARIF (GitHub Security tab)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ matrix.tag }}
@@ -125,7 +135,7 @@ jobs:
           category: trivy-container-${{ matrix.name }}
 
       - name: Trivy — gate & table report (fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: ${{ matrix.tag }}
@@ -136,12 +146,25 @@ jobs:
 
       - name: Job summary — container scan
         if: always()
+        env:
+          JOB_CONCLUSION: ${{ job.conclusion }}
+          MATRIX_NAME: ${{ matrix.name }}
+          MATRIX_TAG: ${{ matrix.tag }}
+          MATRIX_FILE: ${{ matrix.dockerfile }}
         run: |
-          echo "### Trivy container scan (${{ matrix.name }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Trivy (${MATRIX_NAME} image)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Image: \`${{ matrix.tag }}\` from \`${{ matrix.dockerfile }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- SARIF uploaded to **Security → Code scanning** (category \`trivy-container-${{ matrix.name }}\`)." >> "$GITHUB_STEP_SUMMARY"
-          echo "- Build fails if **HIGH** or **CRITICAL** CVEs are detected (fix base image / rebuild)." >> "$GITHUB_STEP_SUMMARY"
+          echo "**This matrix leg:** ${JOB_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: ${MATRIX_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Dockerfile: ${MATRIX_FILE}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- SARIF category: trivy-container-${MATRIX_NAME}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${JOB_CONCLUSION}" = "success" ]; then
+            echo "Trivy gate passed (no HIGH/CRITICAL findings for this image)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Trivy gate failed — see the step **Trivy — gate and table report** above." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   ciSummary:
     name: CI report
@@ -156,23 +179,20 @@ jobs:
         run: |
           echo "## Full CI report" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Stage | Result | What ran |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|----------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Tests & audits** | ${TESTS} | pytest, pip-audit, npm audit, tsc, vitest, vite build |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Trivy (3× Dockerfiles)** | ${IMAGES} | CVE scan on API / UI / validation images |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stage | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Tests & audits | ${TESTS} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Trivy (3 Dockerfiles) | ${IMAGES} |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Where to read security results" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Where to find security output" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **CodeQL:** repo **Security** → **Code scanning** (runs in the separate CodeQL workflow)." >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Trivy:** same tab; look for SARIF categories trivy-container-api, trivy-container-frontend, trivy-container-validation." >> "$GITHUB_STEP_SUMMARY"
+          echo "- **pip-audit / npm audit:** logs in the **Tests & audits** job." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Kind | Location |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|------|----------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **SAST (source code)** | Repository **Security** tab → *Code scanning* → CodeQL workflows |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Container CVEs** | Same tab → alerts from **Trivy** (\`trivy-container-*\`) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Dependency CVEs** | This run log (pip-audit, npm audit) |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "${TESTS}" != "success" ]] || [[ "${IMAGES}" != "success" ]]; then
-            echo "### Status" >> "$GITHUB_STEP_SUMMARY"
-            echo "One or more stages failed — fix before deploying." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
+          echo "### Overall status" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${TESTS}" = "success" ] && [ "${IMAGES}" = "success" ]; then
+            echo "**All CI stages passed.**" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
           fi
-          echo "### Status" >> "$GITHUB_STEP_SUMMARY"
-          echo "All CI stages passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "**One or more stages failed.** Fix the failing jobs above before merging or deploying." >> "$GITHUB_STEP_SUMMARY"
+          exit 1

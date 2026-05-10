@@ -22,6 +22,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
@@ -30,12 +35,25 @@ jobs:
           build-mode: none
 
       - name: Perform CodeQL analysis
+        id: codeqlAnalyzePython
         uses: github/codeql-action/analyze@v3
 
-      - name: Analysis summary
+      - name: Analysis summary (Python)
+        if: always()
+        env:
+          ANALYZE_CONCLUSION: ${{ steps.codeqlAnalyzePython.conclusion }}
         run: |
           echo "## CodeQL (Python)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Analyzed \`app.py\` and \`utils/\`. View alerts under **Security → Code scanning**." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Analyze step:** ${ANALYZE_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${ANALYZE_CONCLUSION}" = "success" ]; then
+            echo "Analysis finished successfully." >> "$GITHUB_STEP_SUMMARY"
+            echo "Open **Security** → **Code scanning** to review alerts (if any)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Scope is controlled by \`.github/codeql/codeql-config-python.yml\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The step **Perform CodeQL analysis** did not succeed — expand it for error logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   analyzeJs:
     name: CodeQL — JavaScript/TypeScript
@@ -62,9 +80,22 @@ jobs:
         run: npm ci && npm run build
 
       - name: Perform CodeQL analysis
+        id: codeqlAnalyzeJs
         uses: github/codeql-action/analyze@v3
 
-      - name: Analysis summary
+      - name: Analysis summary (JavaScript/TypeScript)
+        if: always()
+        env:
+          ANALYZE_CONCLUSION: ${{ steps.codeqlAnalyzeJs.conclusion }}
         run: |
-          echo "## CodeQL (JavaScript/TypeScript)" >> "$GITHUB_STEP_SUMMARY"
-          echo "Analyzed \`frontend/src\`. View alerts under **Security → Code scanning**." >> "$GITHUB_STEP_SUMMARY"
+          echo "## CodeQL (JavaScript / TypeScript)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Analyze step:** ${ANALYZE_CONCLUSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [ "${ANALYZE_CONCLUSION}" = "success" ]; then
+            echo "Analysis finished successfully." >> "$GITHUB_STEP_SUMMARY"
+            echo "Open **Security** → **Code scanning** to review alerts (if any)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Scanned \`frontend/src\` after \`npm ci\` and \`npm run build\`." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "The step **Perform CodeQL analysis** did not succeed — expand it for error logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
