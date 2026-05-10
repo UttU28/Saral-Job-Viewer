@@ -71,7 +71,8 @@ jobs:
   detectChanges:
     needs: [ci, codeql]
     # After CI+CodeQL both succeed, or both skipped (manual "skip checks"). If either failed, this job is skipped — fix CI before deploy.
-    if: ${{ always() && !cancelled() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
+    # Do not use job-level `always()` here — it can confuse dependent scheduling; cancelled workflows naturally skip this job.
+    if: ${{ !cancelled() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
     runs-on: ubuntu-latest
     outputs:
       apiChanged: ${{ steps.pick.outputs.api }}
@@ -131,11 +132,25 @@ jobs:
             fi
           fi
 
+  # Runs without `environment:` — if this succeeds but **Approval Required** is Skipped, fix Environment deployment branches (Settings → Environments).
+  pipelineReady:
+    name: Checkpoint — ready for approval
+    runs-on: ubuntu-latest
+    needs: detectChanges
+    steps:
+      - name: Confirm path detection finished
+        run: |
+          echo "GITHUB_REF=${GITHUB_REF}"
+          echo "apiChanged=${{ needs.detectChanges.outputs.apiChanged }}"
+          echo "frontendChanged=${{ needs.detectChanges.outputs.frontendChanged }}"
+          echo "validationChanged=${{ needs.detectChanges.outputs.validationChanged }}"
+          echo "::notice title=Deploy pipeline::If Approval Required is Skipped (not Waiting), open Settings - Environments - production-approval - Deployment branches and allow refs/heads/main or All branches."
+
   # Optional commit comment with workflow Summary URL — not an approval (only **approvalGate** is).
   notifyDeploymentPending:
     name: Comment — CI Summary link (optional helper)
     runs-on: ubuntu-latest
-    needs: detectChanges
+    needs: pipelineReady
     continue-on-error: true
     permissions:
       contents: write
@@ -172,9 +187,8 @@ jobs:
   approvalGate:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
-    needs: detectChanges
-    # No job-level if: runs whenever detectChanges succeeds (push or manual). Skipped only if detectChanges failed/skipped.
-    # Settings → Environments → production-approval: required reviewers + allow branch `main` (or deployment branches "All").
+    needs: pipelineReady
+    # Waits on GitHub Environment reviewers. If this job is Skipped (0s, slash icon) after **Checkpoint** succeeds, the Environment deployment-branch rule blocked this ref — not YAML.
     environment:
       name: production-approval
     steps:
