@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any
+
+import requests
+from dotenv import load_dotenv
 
 from utils.scraperTerminalLog import PLATFORM_MIDHTECH, ScraperRunLog
 
 
 REPO_ROOT = Path(__file__).resolve().parent
+load_dotenv(REPO_ROOT / ".env", override=False)
 
 # Order matters: scrapers run top-to-bottom.
 SCRAPER_SCRIPTS: list[tuple[str, str]] = [
@@ -85,6 +92,14 @@ def parseArgs() -> argparse.Namespace:
         action="store_true",
         help="Abort the run if any scraper exits with a non-zero status.",
     )
+    parser.add_argument(
+        "--skip-admin-actions",
+        action="store_true",
+        help=(
+            "Do not call Saral admin APIs after a successful scrape "
+            "(delete_unwanted_classified_jobs, classify_all_pending_null_jobs)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -110,6 +125,146 @@ def resolveSelectedScrapers(
             continue
         selected.append((key, script))
     return selected
+
+
+def _saralApiBaseUrl() -> str:
+    raw = (os.getenv("SARAL_API_BASE_URL") or os.getenv("VITE_API_URL") or "").strip()
+    if raw:
+        return raw.rstrip("/")
+    return "http://127.0.0.1:8000"
+
+
+def _loginSaralAdminAndGetToken(
+    *,
+    baseUrl: str,
+    email: str,
+    password: str,
+    log: ScraperRunLog,
+) -> str | None:
+    """Log in via /api/auth/login; require admin. Uses MIDHTECH_* credentials from .env."""
+    url = f"{baseUrl}/api/auth/login"
+    try:
+        resp = requests.post(
+            url,
+            json={"email": email.strip(), "password": password},
+            timeout=60,
+        )
+    except requests.RequestException as exc:
+        log.error(f"Saral API login request failed: {exc!r}")
+        return None
+    if resp.status_code != 200:
+        log.error(
+            f"Saral API login HTTP {resp.status_code}: "
+            f"{(resp.text or '')[:500]}"
+        )
+        return None
+    try:
+        data: dict[str, Any] = resp.json()
+    except json.JSONDecodeError:
+        log.error("Saral API login: response was not JSON.")
+        return None
+    token = str(data.get("token") or "").strip()
+    if not token:
+        log.error("Saral API login: missing token in response.")
+        return None
+    meUrl = f"{baseUrl}/api/auth/me"
+    try:
+        meResp = requests.get(
+            meUrl,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        log.error(f"Saral API /auth/me failed: {exc!r}")
+        return None
+    if meResp.status_code != 200:
+        log.error(
+            f"Saral API /auth/me HTTP {meResp.status_code}: "
+            f"{(meResp.text or '')[:500]}"
+        )
+        return None
+    try:
+        meData: dict[str, Any] = meResp.json()
+    except json.JSONDecodeError:
+        log.error("Saral API /auth/me: response was not JSON.")
+        return None
+    user = meData.get("user") if isinstance(meData.get("user"), dict) else {}
+    if not bool(user.get("isAdmin")):
+        log.error(
+            "Saral API user is not an admin; cannot run admin job actions."
+        )
+        return None
+    return token
+
+
+def _postSaralAdminJobAction(
+    *,
+    baseUrl: str,
+    token: str,
+    action: str,
+    log: ScraperRunLog,
+) -> bool:
+    url = f"{baseUrl}/api/admin/jobs/actions"
+    try:
+        resp = requests.post(
+            url,
+            json={"action": action},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=600,
+        )
+    except requests.RequestException as exc:
+        log.error(f"admin action {action!r} request failed: {exc!r}")
+        return False
+    bodyPreview = (resp.text or "")[:800]
+    if resp.status_code != 200:
+        log.error(
+            f"admin action {action!r} HTTP {resp.status_code}: {bodyPreview}"
+        )
+        return False
+    log.info(f"admin action {action!r} OK — {bodyPreview}")
+    return True
+
+
+def runPostScrapeAdminPipeline(*, log: ScraperRunLog, skip: bool) -> bool:
+    """
+    After all scrapers succeed: delete unwanted classified jobs, then classify NULL pending.
+    Returns True if completed or skipped successfully; False on login/API failure.
+    """
+    if skip:
+        log.info("skipping post-scrape admin actions (--skip-admin-actions).")
+        return True
+
+    email = (os.getenv("MIDHTECH_EMAIL") or "").strip()
+    password = os.getenv("MIDHTECH_PASSWORD") or ""
+    if not email or not password:
+        log.error(
+            "post-scrape admin actions require MIDHTECH_EMAIL and MIDHTECH_PASSWORD in .env."
+        )
+        return False
+
+    baseUrl = _saralApiBaseUrl()
+    log.bindPhase("admin-api")
+    log.info(f"Saral API base URL: {baseUrl}")
+
+    token = _loginSaralAdminAndGetToken(
+        baseUrl=baseUrl, email=email, password=password, log=log
+    )
+    if not token:
+        return False
+
+    steps = (
+        "delete_unwanted_classified_jobs",
+        "classify_all_pending_null_jobs",
+    )
+    for action in steps:
+        log.info(f"admin pipeline → {action}")
+        if not _postSaralAdminJobAction(
+            baseUrl=baseUrl, token=token, action=action, log=log
+        ):
+            return False
+
+    log.info("post-scrape admin pipeline finished.")
+    return True
 
 
 def main() -> int:
@@ -174,6 +329,16 @@ def main() -> int:
 
     if aborted and failCount == 0:
         return 130
+
+    scrapersOk = failCount == 0 and not aborted
+    if scrapersOk:
+        log.bindPhase("orchestrator")
+        adminOk = runPostScrapeAdminPipeline(
+            log=log, skip=bool(args.skip_admin_actions)
+        )
+        if not adminOk:
+            return 1
+
     return 0 if failCount == 0 else 1
 
 
