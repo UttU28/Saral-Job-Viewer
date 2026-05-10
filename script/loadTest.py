@@ -13,9 +13,9 @@ Alert mapping (see setupMonitoring.yml policy names):
   2 — saral-ui request-rate spike (needs sustained >0.5 req/s ~120s on saral-ui)
   3 — saral-api 5xx rate (aim for LB/Run errors under extreme load; may still be mostly 200)
 
-Examples:
-  python loadTest.py
-  python loadTest.py --targetUrl https://saralapi.thatinsaneguy.com/api/health \\
+Examples (from repo root):
+  python script/loadTest.py
+  python script/loadTest.py --targetUrl https://saralapi.thatinsaneguy.com/api/health \\
       --durationSeconds 240 --processCount 4 --workerThreads 80 --timeoutSeconds 25
 """
 
