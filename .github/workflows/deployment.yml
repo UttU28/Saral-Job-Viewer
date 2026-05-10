@@ -53,6 +53,7 @@ env:
   LB_UI_BACKEND_NAME: sjv-ui-bes
   LB_API_BACKEND_NAME: sjv-api-bes
 
+
 jobs:
   ci:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.runChecks == 'true'
@@ -70,19 +71,16 @@ jobs:
 
   detectChanges:
     needs: [ci, codeql]
-    # Run after checks pass, or after both check jobs were skipped (manual deploy with runChecks=false).
-    if: ${{ always() && ((needs.ci.result == 'success' && needs.codeql.result == 'success') || (needs.ci.result == 'skipped' && needs.codeql.result == 'skipped')) }}
+    if: ${{ always() && needs.ci.result == needs.codeql.result && (needs.ci.result == 'success' || needs.ci.result == 'skipped') }}
     runs-on: ubuntu-latest
     outputs:
       apiChanged: ${{ steps.resolved.outputs.api }}
       frontendChanged: ${{ steps.resolved.outputs.frontend }}
       validationChanged: ${{ steps.resolved.outputs.validation }}
-      anyChanged: ${{ steps.resolved.outputs.api == 'true' || steps.resolved.outputs.frontend == 'true' || steps.resolved.outputs.validation == 'true' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # workflow_dispatch needs full history for paths-filter merge-base; push keeps parent commit for same-branch diffs.
           fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '2' }}
 
       - name: Detect changed app areas
@@ -124,32 +122,30 @@ jobs:
           echo "frontend=${fe}" >> "$GITHUB_OUTPUT"
           echo "validation=${val}" >> "$GITHUB_OUTPUT"
 
-  # Optional commit comment with workflow Summary URL — not an approval (only **approvalGate** is).
   notifyDeploymentPending:
-    name: Comment — CI Summary link (optional helper)
+    name: Comment — deploy approval helper
     runs-on: ubuntu-latest
     needs: detectChanges
-    # always(): required so this runs when ci/codeql were skipped but detectChanges succeeded (GitHub skips dependents otherwise).
     if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
     continue-on-error: true
     permissions:
       contents: write
     steps:
-      - name: Commit comment with workflow run / Summary URL
+      - name: Post commit comment
         uses: actions/github-script@v7
         with:
           script: |
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             const checksSkipped = context.payload.inputs?.runChecks === "false";
-            const deployAll = context.payload.inputs?.deployAllApps !== "false";
+            const hint = checksSkipped
+              ? "**Checks skipped.** Deploy-all: " + (context.payload.inputs?.deployAllApps !== "false" ? "on." : "off (path filter only).") + " Logs:"
+              : "**CI + CodeQL + Trivy:** open this run → **Summary** (not in the approval popup):";
             const body = [
               "### Deploy approval",
               "",
               "Environment **production-approval** is waiting for a reviewer.",
               "",
-              checksSkipped
-                ? "**Checks skipped** for this manual run (no CI / CodeQL). **Deploy all apps:** " + (deployAll ? "yes (API + UI + validation)." : "no — only path-filter matches.") + " Open this workflow run if you need logs:"
-                : "**CI + CodeQL + Trivy:** open this workflow run, then the **Summary** tab (reports are not shown inside the approval popup):",
+              hint,
               "",
               runUrl,
               "",
@@ -166,26 +162,21 @@ jobs:
     name: Approval Required (Utsav)
     runs-on: ubuntu-latest
     needs: detectChanges
-    # Always wait for environment approval after path detection (push to main or manual workflow_dispatch).
-    # always(): same as notify — skipped ci/codeql must not strand this job (actions/runner#2205).
     if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
-    # Configure: Settings → Environments → production-approval → Required reviewers.
     environment:
       name: production-approval
     steps:
-      - name: Note manual deploy mode
+      - name: Manual run notices
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [ "${{ github.event.inputs.runChecks }}" = "false" ]; then
-            echo "::notice title=Checks::CI and CodeQL were skipped for this run."
-          fi
+          [ "${{ github.event.inputs.runChecks }}" != "false" ] || echo "::notice title=Checks::CI and CodeQL skipped."
           if [ "${{ github.event.inputs.deployAllApps }}" = "true" ]; then
-            echo "::notice title=Deploy scope::All apps (API, UI, validation) will deploy after approval (Deploy all apps = true)."
+            echo "::notice title=Deploy scope::All apps after approval (deploy-all on)."
           else
-            echo "::notice title=Deploy scope::Only apps with path-filter matches will deploy (Deploy all apps = false)."
+            echo "::notice title=Deploy scope::Path-filter matches only (deploy-all off)."
           fi
       - name: Await approval
-        run: echo "Deployment approved. Continuing with changed apps only."
+        run: echo "Approved. Continuing to deploy jobs."
 
   deployApi:
     runs-on: ubuntu-latest
@@ -410,13 +401,15 @@ jobs:
   ensureGlobalLoadBalancer:
     name: Ensure global HTTPS load balancer
     needs: [detectChanges, approvalGate, deployApi, deployFrontend]
-    # Runs only after API/UI deploy jobs complete (parallel deploys both awaited). Skipped if either deploy job failed.
-    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && inputs.ensureGlobalLoadBalancer)) }}
+    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true' || (github.event_name == 'workflow_dispatch' && github.event.inputs.ensureGlobalLoadBalancer == 'true')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
@@ -518,21 +511,37 @@ jobs:
               --project "$PROJECT"
           fi
 
-          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
-            --global \
-            --project "$PROJECT" \
-            --path-matcher-name sjv-hosts \
-            --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
-            --new-hosts "${UI_DOMAIN}" \
-            --quiet || true
+          # add-path-matcher fails if host/path matcher already exists — only create when missing.
+          url_map_has_path_matcher() {
+            local want="$1"
+            local raw
+            raw="$(gcloud compute url-maps describe "${{ env.LB_URL_MAP_NAME }}" --global --project "$PROJECT" --format='value(pathMatchers[].name)' 2>/dev/null || true)"
+            printf '%s' "$raw" | sed 's/[;[:space:]]\+/\n/g' | grep -qx "$want"
+          }
 
-          gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
-            --global \
-            --project "$PROJECT" \
-            --path-matcher-name sjv-api-host \
-            --default-service "${{ env.LB_API_BACKEND_NAME }}" \
-            --new-hosts "${API_DOMAIN}" \
-            --quiet || true
+          if ! url_map_has_path_matcher "sjv-hosts"; then
+            gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --project "$PROJECT" \
+              --path-matcher-name sjv-hosts \
+              --default-service "${{ env.LB_UI_BACKEND_NAME }}" \
+              --new-hosts "${UI_DOMAIN}" \
+              --quiet
+          else
+            echo "URL map already has path matcher sjv-hosts for ${UI_DOMAIN} — skipping add-path-matcher."
+          fi
+
+          if ! url_map_has_path_matcher "sjv-api-host"; then
+            gcloud compute url-maps add-path-matcher "${{ env.LB_URL_MAP_NAME }}" \
+              --global \
+              --project "$PROJECT" \
+              --path-matcher-name sjv-api-host \
+              --default-service "${{ env.LB_API_BACKEND_NAME }}" \
+              --new-hosts "${API_DOMAIN}" \
+              --quiet
+          else
+            echo "URL map already has path matcher sjv-api-host for ${API_DOMAIN} — skipping add-path-matcher."
+          fi
 
           if ! gcloud compute target-https-proxies describe "${{ env.LB_HTTPS_PROXY_NAME }}" --project "$PROJECT" >/dev/null 2>&1; then
             gcloud compute target-https-proxies create "${{ env.LB_HTTPS_PROXY_NAME }}" \
