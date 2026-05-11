@@ -49,8 +49,14 @@ def _useColor(file) -> bool:
         return False
 
 
-def _utcTime() -> str:
-    return datetime.now(timezone.utc).strftime("%H:%M:%S")
+def _logTimestamp(*, file) -> str:
+    """
+    TTY: short UTC clock (unchanged for interactive use).
+    File/pipe/cron: local calendar date + time so one log line identifies the day.
+    """
+    if _useColor(file):
+        return datetime.now(timezone.utc).strftime("%H:%M:%S")
+    return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _levelStyle(level: str) -> str:
@@ -70,8 +76,9 @@ def _formatStyledLine(
     level: str,
     message: str,
     color: bool,
+    file,
 ) -> str:
-    ts = _utcTime()
+    ts = _logTimestamp(file=file)
     plain = f"{ts} [{platform}] {phasePart} {level:5} {message}"
     if not color:
         return plain
@@ -137,7 +144,8 @@ def formatApplyStatusBadge(status: str) -> str:
 
 class ScraperRunLog:
     """
-    Terminal log lines: ``HH:MM:SS [Platform] [phase] LEVEL message``.
+    Terminal log lines: ``[time] [Platform] [phase] LEVEL message``.
+    On a color TTY: short UTC ``HH:MM:SS``. On file/cron: local ``YYYY-MM-DD HH:MM:SS``.
     On a color TTY: dim time, green platform tag, level-colored badge, plain message.
     Set NO_COLOR=1 to disable. WARN/ERROR optionally mirror to scrape-*.log (plain text).
     """
@@ -177,6 +185,7 @@ class ScraperRunLog:
             level=level,
             message=message,
             color=useColor,
+            file=file,
         )
         print(styled, file=file, flush=True)
         if (
@@ -269,7 +278,7 @@ class ScraperRunLog:
         """
         file = sys.stderr
         useColor = _useColor(file)
-        ts = _utcTime()
+        ts = _logTimestamp(file=file)
         phasePart = self._phasePart()
         level = "PROGRESS"
         if useColor:
