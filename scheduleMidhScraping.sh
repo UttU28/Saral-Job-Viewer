@@ -10,8 +10,8 @@
 # Remember to give this script execute permissions if you haven't already:
 #   chmod +x /home/midhtechadmin/Desktop/Saral-Job-Viewer/scheduleMidhScraping.sh
 #
-# Example cron job for scheduling this script at 6:00 AM daily:
-#   0 6 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scheduleMidhScraping.sh >> /home/midhtechadmin/Desktop/Saral-Job-Viewer/zata/scrapingCron.log 2>&1
+# Example cron (logs go to zata/cron/scrapingCron-YYYY-MM-DD.log inside this script):
+#   0 6 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scheduleMidhScraping.sh
 # ------------------------------------------------------------
 # Run midhScraping.py with the repo venv. Intended for cron/systemd (no interactive shell).
 set -euo pipefail
@@ -26,5 +26,9 @@ if [[ ! -x "${venvPython}" ]]; then
   exit 1
 fi
 
+mkdir -p "${repoRoot}/zata/cron"
+logFile="${repoRoot}/zata/cron/scrapingCron-$(date +%Y-%m-%d).log"
+echo "======== $(date -Is) scheduleMidhScraping start pid=$$ repo=${repoRoot} ========" >>"${logFile}"
+exec >>"${logFile}" 2>&1
 exec "${venvPython}" "${repoRoot}/midhScraping.py" "$@"
 

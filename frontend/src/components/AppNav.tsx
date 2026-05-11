@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Briefcase, Flame, Home, LogOut, Menu, Moon, Shield, Sun, UserRound } from "lucide-react";
+import { Briefcase, Flame, Home, LogOut, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -190,6 +190,9 @@ export function AppNav() {
               <NavLink href="/profile" icon={UserRound}>
                 Profile
               </NavLink>
+              <NavLink href="/interview" icon={MessageCircleQuestion}>
+                Interview
+              </NavLink>
               {user?.isAdmin ? (
                 <NavLink href="/admin" icon={Shield}>
                   Admin
@@ -250,6 +253,12 @@ export function AppNav() {
                 <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 scrollbar-themed">
                   <MobileNavRow href="/" icon={Home} label="Browse jobs" onNavigate={closeMobile} />
                   <MobileNavRow href="/profile" icon={UserRound} label="Profile & report" onNavigate={closeMobile} />
+                  <MobileNavRow
+                    href="/interview"
+                    icon={MessageCircleQuestion}
+                    label="Interview prep"
+                    onNavigate={closeMobile}
+                  />
                   {user?.isAdmin ? (
                     <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
                   ) : null}

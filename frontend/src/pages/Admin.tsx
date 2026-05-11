@@ -186,8 +186,8 @@ export default function Admin() {
     return (
       <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
-          <div className="min-h-full flex flex-col">
-            <div className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 min-w-0">
+          <div className="flex flex-col">
+            <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 min-w-0">
               <Alert variant="destructive" className="rounded-2xl">
                 <AlertTitle>Admin access required</AlertTitle>
                 <AlertDescription>
@@ -323,8 +323,8 @@ export default function Admin() {
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
-        <div className="min-h-full flex flex-col">
-          <div className="flex-1 w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 sm:space-y-6 min-w-0">
+        <div className="flex flex-col">
+          <div className="w-full max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 sm:space-y-6 min-w-0">
             <div className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card/50 to-emerald-500/[0.06] p-6 sm:p-7 shadow-sm shadow-primary/5">
               <div className="flex items-start gap-4 sm:gap-6">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/15 border border-primary/25">
