@@ -8,6 +8,7 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import AuthHome from "@/pages/AuthHome";
 import Admin from "@/pages/Admin";
+import Interview from "@/pages/Interview";
 import Profile from "@/pages/Profile";
 
 function Router() {
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/profile" component={Profile} />
       <Route path="/admin" component={Admin} />
+      <Route path="/interview" component={Interview} />
       <Route path="/change-password" component={Profile} />
       <Route path="/login" component={Home} />
       <Route path="/register" component={Home} />

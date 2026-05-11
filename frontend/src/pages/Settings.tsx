@@ -85,8 +85,8 @@ export default function Settings() {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
-        <div className="min-h-full flex flex-col">
-        <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 pb-8">
+        <div className="flex flex-col">
+        <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 sm:pt-10 pb-8">
         <Button variant="ghost" size="sm" className="mb-6 -ml-2 gap-2 text-muted-foreground" asChild>
           <Link href="/">
             <ArrowLeft className="h-4 w-4" />
