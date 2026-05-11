@@ -1,5 +1,16 @@
 import { useEffect, useReducer, useState } from "react";
-import { CircleX, Flame, Loader2, RefreshCw, Shield, ShieldCheck, ShieldX, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleX,
+  Flame,
+  Loader2,
+  RefreshCw,
+  Shield,
+  ShieldCheck,
+  ShieldX,
+  X,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { Footer } from "@/components/Footer";
@@ -41,8 +52,8 @@ function parseExecutionInstant(raw: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatExecutionStartDate(d: Date): string {
-  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+function formatExecutionStartDateTime(d: Date): string {
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 /** Human-readable duration from milliseconds (non-negative). */
@@ -66,7 +77,7 @@ function cloudRunExecutionTiming(row: CloudRunExecutionRow, nowMs: number): {
   if (!start) {
     return { startLabel: "—", durationLabel: "", title: "" };
   }
-  const startLabel = formatExecutionStartDate(start);
+  const startLabel = formatExecutionStartDateTime(start);
   if (row.state === "RUNNING") {
     const elapsed = formatDurationMs(nowMs - start.getTime());
     return {
@@ -140,6 +151,7 @@ export default function Admin() {
   );
   const adminScraperKeywordsQuery = useAdminScraperKeywordsQuery(Boolean(user?.isAdmin));
   const [cloudRunExecutionsExpanded, setCloudRunExecutionsExpanded] = useState(false);
+  const [userListExpanded, setUserListExpanded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<AdminJobAction | null>(null);
   const [keywordDrafts, setKeywordDrafts] = useState<string[]>([]);
@@ -336,27 +348,6 @@ export default function Admin() {
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     View all users, review counts, and manage admin access from one place.
                   </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-card/50 p-4 sm:p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-xl border border-primary/25 bg-primary/[0.08] p-3">
-                  <p className="text-xs uppercase tracking-wider text-primary text-center">Total users</p>
-                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.totalUsers ?? 0}</p>
-                </div>
-                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3">
-                  <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300 text-center">
-                    Admin users
-                  </p>
-                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.adminUsers ?? 0}</p>
-                </div>
-                <div className="rounded-xl border border-zinc-500/30 bg-zinc-500/[0.08] p-3">
-                  <p className="text-xs uppercase tracking-wider text-zinc-700 dark:text-zinc-300 text-center">
-                    Non-admin users
-                  </p>
-                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.nonAdminUsers ?? 0}</p>
                 </div>
               </div>
             </div>
@@ -725,14 +716,57 @@ export default function Admin() {
             </div>
 
             <div className="rounded-2xl border border-border bg-card/45 p-4 sm:p-5">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <h2 className="text-sm sm:text-base font-semibold text-foreground">User management</h2>
-                <p className="text-xs text-muted-foreground">Manage admin access</p>
+              <div className="mb-4 flex flex-row items-start justify-between gap-3">
+                <div className="space-y-1 min-w-0 flex-1">
+                  <h2 className="text-sm sm:text-base font-semibold text-foreground">User management</h2>
+                  <p className="text-xs text-muted-foreground">Manage admin access and view account totals.</p>
+                </div>
+                {!adminUsersQuery.isLoading && !adminUsersQuery.isError ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => setUserListExpanded((v) => !v)}
+                    aria-expanded={userListExpanded}
+                  >
+                    {userListExpanded ? (
+                      <>
+                        <ChevronUp className="h-4 w-4 mr-2 shrink-0" aria-hidden />
+                        Hide users
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4 mr-2 shrink-0" aria-hidden />
+                        Show users
+                        <span className="ml-1.5 tabular-nums text-muted-foreground">({users.length})</span>
+                      </>
+                    )}
+                  </Button>
+                ) : null}
+              </div>
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-primary/25 bg-primary/[0.08] p-3">
+                  <p className="text-xs uppercase tracking-wider text-primary text-center">Total users</p>
+                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.totalUsers ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/[0.08] p-3">
+                  <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300 text-center">
+                    Admin users
+                  </p>
+                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.adminUsers ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-500/30 bg-zinc-500/[0.08] p-3">
+                  <p className="text-xs uppercase tracking-wider text-zinc-700 dark:text-zinc-300 text-center">
+                    Non-admin users
+                  </p>
+                  <p className="text-2xl font-semibold text-foreground mt-1 text-center">{summary?.nonAdminUsers ?? 0}</p>
+                </div>
               </div>
               {adminUsersQuery.isLoading ? (
-                <div className="h-40 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                  Loading users...
+                <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                  Loading user list…
                 </div>
               ) : adminUsersQuery.isError ? (
                 <Alert variant="destructive" className="rounded-xl">
@@ -741,8 +775,8 @@ export default function Admin() {
                     {formatClientError(adminUsersQuery.error, "Could not fetch admin user data.")}
                   </AlertDescription>
                 </Alert>
-              ) : (
-                <div className="space-y-2.5">
+              ) : userListExpanded ? (
+                    <div className="space-y-2.5">
                   {users.map((row) => {
                     const isUpdating = updatingUserId === row.userId;
                     const isSelf = row.userId === user.userId;
@@ -826,8 +860,8 @@ export default function Admin() {
                       </div>
                     );
                   })}
-                </div>
-              )}
+                    </div>
+              ) : null}
             </div>
           </div>
           <Footer />

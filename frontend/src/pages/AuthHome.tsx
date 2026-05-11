@@ -166,12 +166,8 @@ export default function AuthHome() {
                 <h1 className="text-3xl sm:text-4xl font-bold font-display text-foreground tracking-tight">
                   Saral Job Viewer
                 </h1>
-                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed max-w-2xl">
-                  A calm workspace to review listings, submit via Midhtech, and see your weekly applies—without noise.
-                </p>
                 <p className="text-xs text-muted-foreground/85 max-w-2xl">
-                  <span className="text-foreground/80">Mon–Sun</span> stats · Same{" "}
-                  <span className="text-foreground/80">email &amp; password</span> as Midhtech · Data stays with your account
+                  <span className="text-foreground/80">Mon–Sun</span> stats
                 </p>
               </div>
             </div>

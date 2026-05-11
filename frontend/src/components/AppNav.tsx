@@ -119,7 +119,7 @@ export function AppNav() {
   );
 
   return (
-    <header className="shrink-0 z-50 w-full border-b border-border/80 bg-gradient-to-b from-background/92 via-background/85 to-background/75 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 shadow-[0_1px_0_0_hsl(var(--primary)/0.08)]">
+    <header className="sticky top-0 z-50 shrink-0 w-full border-b border-border/80 bg-gradient-to-b from-background/92 via-background/85 to-background/75 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70 shadow-[0_1px_0_0_hsl(var(--primary)/0.08)]">
       <div className="w-full px-3 sm:px-4 md:px-5 max-w-[100vw] overflow-x-hidden">
         <div className="flex min-h-14 sm:min-h-16 py-1.5 sm:py-0 items-center justify-between gap-2 sm:gap-4 w-full min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-3 md:gap-4 min-w-0 flex-1">
