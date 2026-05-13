@@ -1,4 +1,4 @@
-name: Main Deploy (Approval)
+name: Main Deploy
 
 on:
   push:
@@ -175,62 +175,10 @@ jobs:
             echo "LB missing or probe failed — ensureGlobalLoadBalancer will run after API/UI deploy."
           fi
 
-  notifyDeploymentPending:
-    name: Comment — deploy approval helper
-    runs-on: ubuntu-latest
-    needs: detectChanges
-    if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
-    continue-on-error: true
-    permissions:
-      contents: write
-    steps:
-      - name: Post commit comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const checksSkipped = context.payload.inputs?.runChecks === "false";
-            const hint = checksSkipped
-              ? "**Checks skipped** (no CI / CodeQL). This manual run deploys **API, UI, and validation**. Logs:"
-              : "**CI + CodeQL + Trivy:** open this run → **Summary** (not in the approval popup):";
-            const body = [
-              "### Deploy approval",
-              "",
-              "Environment **production-approval** is waiting for a reviewer.",
-              "",
-              hint,
-              "",
-              runUrl,
-              "",
-              "<!-- saral-deploy-notify -->",
-            ].join("\n");
-            await github.rest.repos.createCommitComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: context.sha,
-              body,
-            });
-
-  approvalGate:
-    name: Approval Required (Utsav)
-    runs-on: ubuntu-latest
-    needs: detectChanges
-    if: ${{ !cancelled() && always() && needs.detectChanges.result == 'success' }}
-    environment:
-      name: production-approval
-    steps:
-      - name: Manual run notices
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          [ "${{ github.event.inputs.runChecks }}" != "false" ] || echo "::notice title=Checks::CI and CodeQL skipped."
-          echo "::notice title=Deploy scope::Manual run — API, UI, and validation after approval."
-      - name: Await approval
-        run: echo "Approved. Continuing to deploy jobs."
-
   deployApi:
     runs-on: ubuntu-latest
-    needs: [detectChanges, approvalGate]
-    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.apiChanged == 'true' && needs.approvalGate.result == 'success' }}
+    needs: [detectChanges]
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.apiChanged == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -295,8 +243,8 @@ jobs:
 
   deployFrontend:
     runs-on: ubuntu-latest
-    needs: [detectChanges, approvalGate]
-    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.frontendChanged == 'true' && needs.approvalGate.result == 'success' }}
+    needs: [detectChanges]
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.frontendChanged == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -361,8 +309,8 @@ jobs:
 
   deployValidation:
     runs-on: ubuntu-latest
-    needs: [detectChanges, approvalGate]
-    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.validationChanged == 'true' && needs.approvalGate.result == 'success' }}
+    needs: [detectChanges]
+    if: ${{ !cancelled() && always() && needs.detectChanges.outputs.validationChanged == 'true' }}
     permissions:
       contents: read
       id-token: write
@@ -454,8 +402,8 @@ jobs:
 
   ensureGlobalLoadBalancer:
     name: Ensure global HTTPS load balancer
-    needs: [detectChanges, approvalGate, deployApi, deployFrontend]
-    if: ${{ !cancelled() && always() && needs.approvalGate.result == 'success' && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') && needs.detectChanges.outputs.lbNeedsEnsure == 'true' }}
+    needs: [detectChanges, deployApi, deployFrontend]
+    if: ${{ !cancelled() && always() && (needs.deployApi.result == 'success' || needs.deployApi.result == 'skipped') && (needs.deployFrontend.result == 'success' || needs.deployFrontend.result == 'skipped') && (needs.detectChanges.outputs.apiChanged == 'true' || needs.detectChanges.outputs.frontendChanged == 'true') && needs.detectChanges.outputs.lbNeedsEnsure == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

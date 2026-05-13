@@ -143,3 +143,26 @@ export function findJobDescriptionExperienceTags(body: string | null | undefined
     .sort((a, b) => a.index - b.index || a.display.localeCompare(b.display))
     .map((v) => v.display);
 }
+
+/** Largest integer from digit runs in a matched snippet (same heuristic as experience chips). */
+export function maxNumericFromExperienceTag(tag: string): number | null {
+  const nums = Array.from(tag.matchAll(/\d+/g))
+    .map((m) => Number(m[0]))
+    .filter((n) => Number.isFinite(n));
+  if (nums.length === 0) return null;
+  return Math.max(...nums);
+}
+
+/** True when any parsed whole number in the tag is greater than five (e.g. 6+ years). */
+export function experienceTagImpliesAboveFiveYears(tag: string): boolean {
+  const hi = maxNumericFromExperienceTag(tag);
+  return hi !== null && hi > 5;
+}
+
+/** True if any experience-style tag implies more than five years (aligns with backend pre-check). */
+export function jobDescriptionImpliesExperienceAboveFive(body: string | null | undefined): boolean {
+  for (const tag of findJobDescriptionExperienceTags(body)) {
+    if (experienceTagImpliesAboveFiveYears(tag)) return true;
+  }
+  return false;
+}

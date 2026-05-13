@@ -195,6 +195,11 @@ def upsertJobs(rows: list[dict]) -> int:
         return 0
     from pymongo import UpdateOne
 
+    from .jobDecisionService import (
+        composeRestrictionStyleText,
+        scanTextImpliesExperienceAboveFive,
+    )
+
     createTables(recreate=False)
     coll = _getMongoDb()[JOB_DATA_COLLECTION]
     ops: list[Any] = []
@@ -222,6 +227,9 @@ def upsertJobs(rows: list[dict]) -> int:
         }
         if apply_val is not None:
             set_doc["applyStatus"] = apply_val
+        set_doc["requiresExperienceAboveFive"] = bool(
+            scanTextImpliesExperienceAboveFive(composeRestrictionStyleText(row))
+        )
         ops.append(UpdateOne({"jobId": jid}, {"$set": set_doc}, upsert=True))
     if not ops:
         return 0

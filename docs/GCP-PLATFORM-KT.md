@@ -4,6 +4,7 @@ This document is for **learning, onboarding, and architecture reviews**. It expl
 
 Companion docs:
 
+- **`ARCHITECTURE-DIAGRAMS.md`** — Mermaid diagrams: **big-picture** overview, connectivity (API Redis Mongo), scraper write path vs API read path, **Main Deploy** CI/CD phases (CI, CodeQL, WIF, Artifact Registry, LB ensure).
 - **`CICD-FULL-STACK.md`** — workflow cheat sheet, secrets, LB IAM commands, architecture diagram.
 - **`MONITORING-WINDOWS-GCLOUD.md`** — monitoring scope (dashboard/uptime/alerts from **`setupMonitoring.yml`**), optional Windows **`gcloud`**, IAM, troubleshooting.
 - **`PROJECT-STATUS-CHECKLIST.md`** — what is done vs optional.
@@ -235,7 +236,7 @@ Traffic path: **DNS A → global static IP → forwarding rules → proxies → 
 
 ### 9.3 DNS (not in GCP)
 
-At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to the LB global static IP (example value used in checks: `34.8.191.9`).
+At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to the LB global static IP (resource **`sjv-global-lb-ip`**). Resolve the current address with: `gcloud compute addresses describe sjv-global-lb-ip --global --project saraljobviewer --format=value(address)`.
 
 ---
 

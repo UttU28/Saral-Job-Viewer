@@ -62,6 +62,19 @@ Implemented in **`deployment.yml`** (`ensureGlobalLoadBalancer` job after **`dep
 
 **Optional later:** Cloud Armor, Cloud CDN, remove redundant Cloud Run domain mappings after LB-only cutover.
 
+##### Cloud Run domain mappings — “domain does not appear to be verified” / “no verified domains”
+
+**`ensurePrereq.yml`** can create **`gcloud beta run domain-mappings`** when **`ensureDomainMappings`** is **true**. That path is **optional** and separate from the **global HTTPS load balancer**:
+
+| Mechanism | What you need | Who serves TLS |
+|-----------|----------------|----------------|
+| **Global LB** (from **`deployment.yml`**) | Registrar **A** records for `saral` / `saralapi` → global static IP **`sjv-global-lb-ip`** (resolve with `gcloud compute addresses describe sjv-global-lb-ip --global --project saraljobviewer --format=value(address)`). | Managed cert on the LB |
+| **Cloud Run domain mappings** | Google must treat the **same identity** that runs `gcloud` as having verified the hostnames. In **GitHub Actions** that identity is the **pipeline service account** (`GCP_SERVICE_ACCOUNT` via WIF), not your personal Google login. A record at the registrar **does not** satisfy Cloud Run’s verification check. | Managed cert on Cloud Run mapping |
+
+**If you already use the global LB + DNS:** leave **`ensureDomainMappings`** at **`false`** (default). You do **not** need Cloud Run domain mappings for production traffic.
+
+**If you still need domain mappings from CI:** verify ownership in a way that applies to the pipeline SA (advanced), or create mappings **once** from your machine while logged in as a user that has verified the domains (`gcloud auth login`), then keep **`ensureDomainMappings`** off in CI.
+
 **Typical GCP object names** (must match workflows if you rename): global IP `sjv-global-lb-ip`; cert `sjv-managed-cert`; NEGs `sjv-ui-neg` / `sjv-api-neg`; backends `sjv-ui-bes` / `sjv-api-bes`; URL map `sjv-host-routing`; proxies `sjv-https-proxy` / `sjv-http-proxy`; forwarding rules `sjv-https-fr` / `sjv-http-fr`.
 
 ##### IAM for **`ensureGlobalLoadBalancer`** (fixes `compute.globalAddresses.create` denied)

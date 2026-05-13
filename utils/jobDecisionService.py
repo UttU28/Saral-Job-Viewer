@@ -1,12 +1,18 @@
 """
-Orchestrate Accept/Reject from the job viewer UI: Midhtech login + suggest, Mongo applyStatus updates.
-Accept: only when DB status is APPLY; atomically moves to APPLYING, then APPLIED on success (reverts to APPLY on failure).
+Job UI decisions (accept/reject → Midhtech suggest) and shared local job pre-checks.
+
+Centralizes:
+  - Citizenship / work authorization / clearance / sponsorship regex scanners
+  - Years-of-experience description scan (aligned with frontend/src/lib/jobDescriptionExperience.ts)
+  - findRestrictionTagsForJob() used by ingest skip, validation sync, and suggest pre-check
 """
+
 from __future__ import annotations
 
 import json
+import re
 import traceback
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from utils.dataManager import (
     claimApplyingFromApply,
@@ -16,6 +22,177 @@ from utils.dataManager import (
     updateApplyStatusByJobId,
 )
 from utils.midhtechSuggestApi import authenticateMidhtechSessionWithCredentials, submitJobSuggestion
+
+# --- Restriction regex scanners (title + visa note + responsibility + description) ---
+
+RESTRICTION_SCANNERS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"\bu\.?\s*s\.?\s*citizen\b", re.I), "US citizen"),
+    (re.compile(r"\bcitizenship\b", re.I), "Citizenship"),
+    (
+        re.compile(
+            r"\blawful\s+permanent\s+resident\b|\bpermanent\s+resident\b|\bgreen\s+card\b",
+            re.I,
+        ),
+        "Permanent resident / green card",
+    ),
+    (re.compile(r"\bauthorized\s+to\s+work\b", re.I), "Authorized to work"),
+    (re.compile(r"\bwork\s+authorization\b", re.I), "Work authorization"),
+    (re.compile(r"\bemployment\s+authorization\b", re.I), "Employment authorization"),
+    (
+        re.compile(
+            r"\beligible\s+to\s+work\s+(?:in\s+)?(?:the\s+)?u\.?s\.?\b",
+            re.I,
+        ),
+        "Eligible to work (US)",
+    ),
+    (re.compile(r"\bi-9\b|\be-?verify\b", re.I), "I-9 / E-Verify"),
+    (re.compile(r"\btop\s+secret\b|\bt\/s\b|\bts\/sci\b", re.I), "Top secret / TS"),
+    (re.compile(r"\bsecret\s+clearance\b", re.I), "Secret clearance"),
+    (re.compile(r"\bpublic\s+trust\b", re.I), "Public trust"),
+    (re.compile(r"\bclearance\b", re.I), "Clearance"),
+    (
+        re.compile(
+            r"\bwill\s+not\s+sponsor\b|\bdoes\s+not\s+sponsor\b|\bunable\s+to\s+sponsor\b|\bcannot\s+sponsor\b",
+            re.I,
+        ),
+        "Not sponsoring",
+    ),
+    (
+        re.compile(
+            r"\bno\s+visa\s+sponsorship\b|\bnot\s+offering\s+sponsorship\b|\bwithout\s+sponsorship\b",
+            re.I,
+        ),
+        "No visa sponsorship",
+    ),
+    (re.compile(r"\bh-?1b\b|\bh1-b\b", re.I), "H-1B mentioned"),
+    (re.compile(r"\bvisa\s+sponsorship\b", re.I), "Visa sponsorship"),
+    (
+        re.compile(r"\bsolely\s+authorized\b|\bonly\s+authorized\b", re.I),
+        "Authorization restriction",
+    ),
+    (
+        re.compile(r"\b(?:must|required\s+to)\s+be\s+eligible\b", re.I),
+        "Eligibility requirement",
+    ),
+)
+
+# --- Experience patterns (same strings as frontend EXPERIENCE_SCANNERS) ---
+
+_EXPERIENCE_SCANNER_SOURCES: Final[tuple[str, ...]] = (
+    r"\b(?:minimum|min\.|at\s+least|more\s+than|over|greater\s+than|no\s+less\s+than|a\s+minimum\s+of|minimum\s+of)\s+(?:of\s+)?(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct|prior|industry))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)(?:\s+of)?\s*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct))?[\s,]*(?:experienc[a-z]*|of\s+(?:experien\b|experi[a-z]{3,}))\b",
+    r"\b\d+\s+or\s+more\s+(?:years?|yrs?\.?)(?:\s+of)?(?:\s+(?:relevant|professional|work))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b\d+\s*yrs?\.?\s+or\s+more\s+(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)(?:'|’)?\s+of\b",
+    r"\bbetween\s+\d+\s+and\s+\d+\s+years?(?:\s+of)?(?:\s+(?:relevant|professional|work))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})?\b",
+    r"\bexperienc[a-z]*\s*[:-]?\s*(?:of|with)?\s*(?:at\s+least\s+|minimum\s+|a\s+minimum\s+of\s+)?(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\b",
+    r"\b(?:\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s+(?:in|with)(?:\s+a)?\s+(?:similar|comparable|related|corresponding)\s+(?:role|position|field|environment|capacity)\b",
+    r"\b(?:proven|solid|strong)\s+(?:track\s+record|background)(?:\s+with)?\s*(?:of\s+)?(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\b",
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)\s+(?:working|developing|building|designing|shipping|leading|managing)\b",
+    r"\b\d+\s*months?(?:\s+of)?\s+(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)\s+(?:required|preferred|desired|mandatory)\b",
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)\s*\(?yoe\)?\b",
+    r"\b(?:yoe|y\.\s*o\.\s*e\.)\s*[:-]?\s*(?:\d+\s*[-–—]\s*\d+|\d+)\s*\+\b",
+    r"\b(?:yoe|y\.\s*o\.\s*e\.)\s*[:-]?\s*(?:\d+\s*[-–—]\s*\d+|\d+)\s*(?:years?|yrs?\.?)\b",
+)
+
+_EXPERIENCE_SCANNERS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(src, re.IGNORECASE) for src in _EXPERIENCE_SCANNER_SOURCES
+)
+
+_DIGIT_RUN: Final[re.Pattern[str]] = re.compile(r"\d+")
+
+
+def composeRestrictionStyleText(job: object) -> str:
+    """Concatenate fields scanned for restrictions and experience (ingest + API pre-check)."""
+    if not isinstance(job, dict):
+        return ""
+    parts = (
+        str(job.get("title") or "").strip(),
+        str(job.get("visaOrMatchNote") or "").strip(),
+        str(job.get("jobResponsibility") or "").strip(),
+        str(job.get("jobDescription") or "").strip(),
+    )
+    return "\n".join(p for p in parts if p)
+
+
+def _normalizeExperienceSnippet(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def findJobDescriptionExperienceTags(body: str | None) -> list[str]:
+    """Distinct matched snippets in document order (mirrors frontend findJobDescriptionExperienceTags)."""
+    text = (body or "").strip()
+    if not text:
+        return []
+    byKey: dict[str, tuple[int, str]] = {}
+    for pattern in _EXPERIENCE_SCANNERS:
+        for m in pattern.finditer(text):
+            display = _normalizeExperienceSnippet(m.group(0))
+            if not display:
+                continue
+            key = display.lower()
+            idx = m.start()
+            prev = byKey.get(key)
+            if prev is None or idx < prev[0]:
+                byKey[key] = (idx, display)
+    ordered = sorted(byKey.values(), key=lambda t: (t[0], t[1]))
+    return [display for _, display in ordered]
+
+
+def maxNumericFromExperienceTag(tag: str) -> int | None:
+    """Largest integer from digit runs in the snippet (same heuristic as JobDetailPane chips)."""
+    nums = [int(x) for x in _DIGIT_RUN.findall(tag) if x.isdigit()]
+    if not nums:
+        return None
+    return max(nums)
+
+
+def experienceTagImpliesAboveFiveYears(tag: str) -> bool:
+    """True when any parsed whole number in the tag is greater than five (e.g. 6+ years)."""
+    hi = maxNumericFromExperienceTag(tag)
+    return hi is not None and hi > 5
+
+
+def scanTextImpliesExperienceAboveFive(text: str | None) -> bool:
+    """True if any experience-style tag implies more than five years."""
+    for tag in findJobDescriptionExperienceTags(text):
+        if experienceTagImpliesAboveFiveYears(tag):
+            return True
+    return False
+
+
+def jobImpliesExperienceAboveFive(job: object) -> bool:
+    return scanTextImpliesExperienceAboveFive(composeRestrictionStyleText(job))
+
+
+def findRestrictionTagsForJob(job: object) -> list[str]:
+    """
+    Human-readable labels for restriction matches (citizenship, sponsorship, clearance, etc.)
+    plus high years-of-experience requirements. Empty list means no local blockers.
+    """
+    if not isinstance(job, dict):
+        return []
+    text = composeRestrictionStyleText(job)
+    if not text:
+        return []
+    labels: set[str] = set()
+    for regex, label in RESTRICTION_SCANNERS:
+        if regex.search(text):
+            labels.add(label)
+    if labels and "Clearance" in labels and (
+        "Secret clearance" in labels
+        or "Top secret / TS" in labels
+        or "Public trust" in labels
+    ):
+        labels.discard("Clearance")
+    if scanTextImpliesExperienceAboveFive(text):
+        labels.add("Requires more than 5 years experience (detected)")
+    return sorted(labels)
+
+
+# --- UI accept / reject + Midhtech submit ---
 
 Decision = Literal["accept", "reject"]
 
@@ -214,6 +391,31 @@ def executeJobUiDecision(
     # outcome == "claimed" -> row is now APPLYING
     print("[accept] Reserved APPLYING in Mongo (atomic from APPLY)", flush=True)
     steps.append(buildStep("database", True, "Reserved APPLYING (ready to submit)"))
+
+    blockTags = findRestrictionTagsForJob(job)
+    if blockTags:
+        print(
+            f"[accept] Pre-check blocked (local rules): {', '.join(blockTags)}",
+            flush=True,
+        )
+        steps.append(
+            buildStep(
+                "precheck",
+                False,
+                f"Blocked by local rules: {', '.join(blockTags)}",
+            )
+        )
+        revertApplyingToApply(job_id_str)
+        st = getApplyStatusUpperByJobId(job_id_str)
+        return _base_response(
+            ok=False,
+            decision=decision,
+            steps=steps,
+            apply_status_updated=None,
+            error="This job matches a local restriction or high experience requirement and cannot be submitted.",
+            db_apply_status=st,
+            skipped_reason=None,
+        )
 
     print("[accept] Phase 1: Midhtech login with Settings credentials", flush=True)
     steps.append(buildStep("login", False, "Connecting to Midhtech…"))

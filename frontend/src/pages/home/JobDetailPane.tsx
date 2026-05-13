@@ -24,7 +24,9 @@ import {
 } from "@/lib/api";
 import {
   buildDescriptionHighlightSegments,
+  experienceTagImpliesAboveFiveYears,
   findJobDescriptionExperienceTags,
+  maxNumericFromExperienceTag,
 } from "@/lib/jobDescriptionExperience";
 import { useAuth } from "@/auth/AuthProvider";
 import {
@@ -276,11 +278,8 @@ export function JobDetailPane({
   }, [descriptionHighlightSegments, experienceTags]);
 
   const getExperienceChipClassName = (tag: string): string => {
-    const nums = Array.from(tag.matchAll(/\d+/g))
-      .map((m) => Number(m[0]))
-      .filter((n) => Number.isFinite(n));
-    const highest = nums.length > 0 ? Math.max(...nums) : null;
-    if (highest !== null && highest >= 6) {
+    const highest = maxNumericFromExperienceTag(tag);
+    if (experienceTagImpliesAboveFiveYears(tag)) {
       return "border-red-500/55 bg-red-500/[0.12] text-red-950 hover:bg-red-500/[0.18] dark:border-red-400/50 dark:bg-red-950/45 dark:text-red-50/95";
     }
     if (highest !== null && highest <= 2) {
