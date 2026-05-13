@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildDescriptionHighlightSegments,
+  experienceTagImpliesAboveFiveYears,
   findJobDescriptionExperienceTags,
+  jobDescriptionImpliesExperienceAboveFive,
+  maxNumericFromExperienceTag,
 } from "./jobDescriptionExperience";
 
 describe("jobDescriptionExperience", () => {
@@ -35,6 +38,32 @@ describe("jobDescriptionExperience", () => {
 
     it("returnsEmptyForBlank", () => {
       expect(findJobDescriptionExperienceTags("   ")).toEqual([]);
+    });
+  });
+
+  describe("experienceTagImpliesAboveFiveYears", () => {
+    it("isFalseForFiveYearSnippet", () => {
+      expect(experienceTagImpliesAboveFiveYears("minimum 5 years of experience")).toBe(false);
+    });
+    it("isTrueForSixPlus", () => {
+      expect(experienceTagImpliesAboveFiveYears("minimum 6 years of experience")).toBe(true);
+    });
+  });
+
+  describe("maxNumericFromExperienceTag", () => {
+    it("returnsMaxDigitRun", () => {
+      expect(maxNumericFromExperienceTag("3-8 years of experience")).toBe(8);
+    });
+  });
+
+  describe("jobDescriptionImpliesExperienceAboveFive", () => {
+    it("detectsHighRequirement", () => {
+      expect(
+        jobDescriptionImpliesExperienceAboveFive("We require 10+ years of experience with Go."),
+      ).toBe(true);
+    });
+    it("isFalseForLowRequirement", () => {
+      expect(jobDescriptionImpliesExperienceAboveFive("Minimum 2 years of experience.")).toBe(false);
     });
   });
 });

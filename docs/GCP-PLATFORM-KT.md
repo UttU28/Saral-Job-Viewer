@@ -236,7 +236,7 @@ Traffic path: **DNS A → global static IP → forwarding rules → proxies → 
 
 ### 9.3 DNS (not in GCP)
 
-At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to the LB global static IP (example value used in checks: `34.8.191.9`).
+At your DNS provider, **A** records for **`saral`** / **`saralapi`** point to the LB global static IP (resource **`sjv-global-lb-ip`**). Resolve the current address with: `gcloud compute addresses describe sjv-global-lb-ip --global --project saraljobviewer --format=value(address)`.
 
 ---
 

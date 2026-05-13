@@ -10,7 +10,7 @@ from utils.dataManager import (
     loadJobsWithEmptyApplyStatus,
     updateApplyStatusByJobId,
 )
-from utils.fileManagement import findRestrictionTagsForJob
+from utils.jobDecisionService import findRestrictionTagsForJob
 from utils.midhtechSuggestApi import (
     authenticateMidhtechSession,
     buildCheckPayload,
@@ -121,6 +121,14 @@ def loginAndCheck(jobIndex: int = 0) -> None:
     session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
 
     job = loadJobAtIndex(jobIndex)
+    preTags = findRestrictionTagsForJob(job)
+    if preTags:
+        print(
+            "Skipping Midhtech check — local pre-check matched:",
+            ", ".join(preTags),
+        )
+        return
+
     print("Check request:")
     preview = buildCheckPayload(job)
     print(
@@ -164,11 +172,24 @@ def syncEmptyApplyStatuses() -> None:
     )
 
     written = 0
+    rejectedPrecheck = 0
     for i, job in enumerate(pending):
         jid = str(job.get("jobId") or "")
         plat = (str(job.get("platform") or "") or "?").strip()
         head = f"[{i + 1}/{total}] {plat} {_displayJobId(jid)}"
         try:
+            preTags = findRestrictionTagsForJob(job)
+            if preTags:
+                if updateApplyStatusByJobId(jid, "REJECTED"):
+                    rejectedPrecheck += 1
+                    log.warning(
+                        f"{head} → {formatApplyStatusBadge('REJECTED')} local pre-check: "
+                        f"{', '.join(preTags)}"
+                    )
+                else:
+                    log.warning(f"{head} → pre-check matched but no DB row updated for jobId={jid!r}")
+                continue
+
             checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
             if not isinstance(parsed, dict):
                 snippet = (checkResp.text or "").strip().replace("\n", " ")[:120]
@@ -214,7 +235,10 @@ def syncEmptyApplyStatuses() -> None:
         if delaySec > 0:
             time.sleep(delaySec)
 
-    log.info(f"Done. Wrote applyStatus for {written} job(s).")
+    log.info(
+        f"Done. Wrote applyStatus from classifier/MAAS for {written} job(s); "
+        f"REJECTED from local pre-check (restrictions / experience): {rejectedPrecheck}."
+    )
 
 
 def pushApplyJobsAfterValidate() -> int:
