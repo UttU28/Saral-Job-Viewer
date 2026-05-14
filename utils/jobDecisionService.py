@@ -3,7 +3,7 @@ Job UI decisions (accept/reject → Midhtech suggest) and shared local job pre-c
 
 Centralizes:
   - Citizenship / work authorization / clearance / sponsorship regex scanners
-  - Years-of-experience description scan (aligned with frontend/src/lib/jobDescriptionExperience.ts)
+  - Years-of-experience description scan (1–4 YoE target; ≥5 blocks — aligned with frontend/src/lib/jobDescriptionExperience.ts)
   - findRestrictionTagsForJob() used by ingest skip, validation sync, and suggest pre-check
 """
 
@@ -150,13 +150,13 @@ def maxNumericFromExperienceTag(tag: str) -> int | None:
 
 
 def experienceTagImpliesAboveFiveYears(tag: str) -> bool:
-    """True when any parsed whole number in the tag is greater than five (e.g. 6+ years)."""
+    """True when the tag's max parsed whole number is five or more (outside 1–4 YoE target)."""
     hi = maxNumericFromExperienceTag(tag)
-    return hi is not None and hi > 5
+    return hi is not None and hi >= 5
 
 
 def scanTextImpliesExperienceAboveFive(text: str | None) -> bool:
-    """True if any experience-style tag implies more than five years."""
+    """True if any experience-style tag implies five or more years (outside 1–4 YoE target)."""
     for tag in findJobDescriptionExperienceTags(text):
         if experienceTagImpliesAboveFiveYears(tag):
             return True
@@ -170,7 +170,7 @@ def jobImpliesExperienceAboveFive(job: object) -> bool:
 def findRestrictionTagsForJob(job: object) -> list[str]:
     """
     Human-readable labels for restriction matches (citizenship, sponsorship, clearance, etc.)
-    plus high years-of-experience requirements. Empty list means no local blockers.
+    plus years-of-experience outside the 1–4 target (≥5 detected). Empty list means no local blockers.
     """
     if not isinstance(job, dict):
         return []
@@ -188,7 +188,7 @@ def findRestrictionTagsForJob(job: object) -> list[str]:
     ):
         labels.discard("Clearance")
     if scanTextImpliesExperienceAboveFive(text):
-        labels.add("Requires more than 5 years experience (detected)")
+        labels.add("Requires 5+ years experience — outside 1–4 YoE target (detected)")
     return sorted(labels)
 
 
@@ -412,7 +412,7 @@ def executeJobUiDecision(
             decision=decision,
             steps=steps,
             apply_status_updated=None,
-            error="This job matches a local restriction or high experience requirement and cannot be submitted.",
+            error="This job matches a local restriction or requires 5+ years experience (outside 1–4 YoE target) and cannot be submitted.",
             db_apply_status=st,
             skipped_reason=None,
         )

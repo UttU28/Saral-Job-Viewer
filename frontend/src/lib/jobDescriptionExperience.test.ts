@@ -42,10 +42,11 @@ describe("jobDescriptionExperience", () => {
   });
 
   describe("experienceTagImpliesAboveFiveYears", () => {
-    it("isFalseForFiveYearSnippet", () => {
-      expect(experienceTagImpliesAboveFiveYears("minimum 5 years of experience")).toBe(false);
+    it("isFalseForUpToFourYearSnippet", () => {
+      expect(experienceTagImpliesAboveFiveYears("minimum 4 years of experience")).toBe(false);
     });
-    it("isTrueForSixPlus", () => {
+    it("isTrueForFiveOrMore", () => {
+      expect(experienceTagImpliesAboveFiveYears("minimum 5 years of experience")).toBe(true);
       expect(experienceTagImpliesAboveFiveYears("minimum 6 years of experience")).toBe(true);
     });
   });
@@ -61,6 +62,7 @@ describe("jobDescriptionExperience", () => {
       expect(
         jobDescriptionImpliesExperienceAboveFive("We require 10+ years of experience with Go."),
       ).toBe(true);
+      expect(jobDescriptionImpliesExperienceAboveFive("Minimum 5 years of experience with Go.")).toBe(true);
     });
     it("isFalseForLowRequirement", () => {
       expect(jobDescriptionImpliesExperienceAboveFive("Minimum 2 years of experience.")).toBe(false);

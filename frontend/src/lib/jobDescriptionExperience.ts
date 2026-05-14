@@ -153,13 +153,13 @@ export function maxNumericFromExperienceTag(tag: string): number | null {
   return Math.max(...nums);
 }
 
-/** True when any parsed whole number in the tag is greater than five (e.g. 6+ years). */
+/** True when the tag's max parsed whole number is five or more (outside 1–4 YoE target). */
 export function experienceTagImpliesAboveFiveYears(tag: string): boolean {
   const hi = maxNumericFromExperienceTag(tag);
-  return hi !== null && hi > 5;
+  return hi !== null && hi >= 5;
 }
 
-/** True if any experience-style tag implies more than five years (aligns with backend pre-check). */
+/** True if any experience-style tag implies five or more years (aligns with backend pre-check). */
 export function jobDescriptionImpliesExperienceAboveFive(body: string | null | undefined): boolean {
   for (const tag of findJobDescriptionExperienceTags(body)) {
     if (experienceTagImpliesAboveFiveYears(tag)) return true;

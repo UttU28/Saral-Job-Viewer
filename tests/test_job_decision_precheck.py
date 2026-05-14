@@ -15,13 +15,16 @@ def test_maxNumericFromExperienceTag_picksLargestRun():
 
 
 def test_experienceTagImpliesAboveFiveYears_boundary():
-    assert experienceTagImpliesAboveFiveYears("5 years of experience") is False
+    assert experienceTagImpliesAboveFiveYears("4 years of experience") is False
+    assert experienceTagImpliesAboveFiveYears("5 years of experience") is True
     assert experienceTagImpliesAboveFiveYears("6+ years of experience") is True
 
 
 def test_scanTextImpliesExperienceAboveFive():
-    body = "We need minimum 6 years of experience with Python."
+    body = "We need minimum 5 years of experience with Python."
     assert scanTextImpliesExperienceAboveFive(body) is True
+    six = "We need minimum 6 years of experience with Python."
+    assert scanTextImpliesExperienceAboveFive(six) is True
     low = "Minimum 3 years of experience with Python."
     assert scanTextImpliesExperienceAboveFive(low) is False
 
@@ -36,7 +39,7 @@ def test_jobImpliesExperienceAboveFive_usesTitleAndDescription():
         "title": "Engineer",
         "visaOrMatchNote": "",
         "jobResponsibility": "",
-        "jobDescription": "Must have 7+ years of experience leading teams.",
+        "jobDescription": "Must have 5+ years of experience leading teams.",
     }
     assert jobImpliesExperienceAboveFive(job) is True
 

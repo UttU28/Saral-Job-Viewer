@@ -1,6 +1,6 @@
 name: Ensure Prerequisites (infra/bootstrap)
 
-# Step order: confirm → auth → enable APIs → verify secrets → verify AR images → optional Redis (VPC connector before Memorystore) → optional domain mappings.
+# Step order: confirm → auth → enable APIs → verify secrets → verify AR images → optional Redis (VPC connector before Memorystore). Custom domains use the global LB in deployment.yml, not Cloud Run domain mappings.
 
 on:
   workflow_dispatch:
@@ -13,11 +13,6 @@ on:
         description: Ensure Memorystore + VPC connector exist
         required: true
         default: true
-        type: boolean
-      ensureDomainMappings:
-        description: Try to ensure custom domain mappings (requires verified domains)
-        required: true
-        default: false
         type: boolean
 
 env:
@@ -39,9 +34,6 @@ env:
   VPC_CONNECTOR_NAME: sjv-run-vpc
   VPC_NETWORK: default
   VPC_CONNECTOR_CIDR: 10.8.0.0/28
-
-  UI_DOMAIN: saral.thatinsaneguy.com
-  API_DOMAIN: saralapi.thatinsaneguy.com
 
 jobs:
   ensureStack:
@@ -160,48 +152,12 @@ jobs:
             echo "Created Redis instance: ${{ env.REDIS_INSTANCE_ID }}"
           fi
 
-      - name: Ensure gcloud beta commands are installed
-        if: inputs.ensureDomainMappings
-        shell: bash
-        run: |
-          set -euo pipefail
-          gcloud components install beta --quiet
-
-      - name: Ensure domain mappings (optional)
-        if: inputs.ensureDomainMappings
-        shell: bash
-        run: |
-          set -euo pipefail
-          for service in "${{ env.UI_SERVICE_NAME }}" "${{ env.API_SERVICE_NAME }}"; do
-            if ! gcloud run services describe "$service" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
-              echo "Cloud Run service missing: $service. Run deployment.yml first, then rerun with ensureDomainMappings=true."
-              exit 1
-            fi
-          done
-
-          ensure_mapping() {
-            local domain="$1"
-            local service="$2"
-            if gcloud beta run domain-mappings describe --domain "$domain" --project "${{ env.GCP_PROJECT_ID }}" --region "${{ env.GCP_REGION }}" >/dev/null 2>&1; then
-              echo "Domain mapping exists: $domain -> $service"
-            else
-              gcloud beta run domain-mappings create \
-                --domain "$domain" \
-                --service "$service" \
-                --project "${{ env.GCP_PROJECT_ID }}" \
-                --region "${{ env.GCP_REGION }}"
-              echo "Created domain mapping: $domain -> $service"
-            fi
-          }
-          ensure_mapping "${{ env.UI_DOMAIN }}" "${{ env.UI_SERVICE_NAME }}"
-          ensure_mapping "${{ env.API_DOMAIN }}" "${{ env.API_SERVICE_NAME }}"
-
       - name: Summary
         shell: bash
         run: |
           set -euo pipefail
           echo "Prereq ensure completed."
-          echo "What this workflow handles: APIs enabled, required secrets verified, required images checked, optional Redis/VPC infra, optional domain mappings."
-          echo "Global HTTPS load balancer is ensured by deployment.yml after API/UI Cloud Run deploy."
+          echo "What this workflow handles: APIs enabled, required secrets verified, required images checked, optional Redis/VPC infra."
+          echo "Custom hostnames: point DNS at the global LB from deployment.yml (not Cloud Run domain mappings)."
           echo "Deploy app/runtime resources via deployment.yml on main."
 
