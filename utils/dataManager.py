@@ -492,6 +492,32 @@ def deletePastDataOlderThanHours(*, hours: float = 48) -> int:
     return int(res.deleted_count or 0)
 
 
+def flushPastDataNotInJobData() -> dict[str, int]:
+    """
+    Remove pastData rows whose jobId does not exist in jobData.
+    jobData rows are left unchanged.
+    """
+    createTables(recreate=False)
+    db = _getMongoDb()
+    job_coll = db[JOB_DATA_COLLECTION]
+    past_coll = db[PAST_DATA_COLLECTION]
+    job_ids = {
+        str(doc.get("jobId") or "").strip()
+        for doc in job_coll.find({}, {"jobId": 1})
+        if doc.get("jobId")
+    }
+    if job_ids:
+        past_deleted = int(
+            past_coll.delete_many({"jobId": {"$nin": list(job_ids)}}).deleted_count or 0
+        )
+    else:
+        past_deleted = int(past_coll.delete_many({}).deleted_count or 0)
+    return {
+        "jobDataRows": len(job_ids),
+        "pastDataDeleted": past_deleted,
+    }
+
+
 def flushJobsAndPastData() -> dict[str, int]:
     """Delete all rows from jobData and pastData collections."""
     createTables(recreate=False)

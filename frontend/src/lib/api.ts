@@ -218,6 +218,7 @@ export type AdminJobAction =
   | "delete_unwanted_classified_jobs"
   | "delete_unwanted_plus_null_jobs"
   | "flush_db"
+  | "flush_past_data_orphans"
   | "push_apply_jobs"
   | "push_apply_jobs_then_cleanup";
 
@@ -366,8 +367,9 @@ export type AdminJobActionResponse = {
   pastDeletedCount?: number;
   cloudRun?: AdminJobCloudRunInfo;
   flushed?: {
-    jobDataDeleted: number;
-    pastDataDeleted: number;
+    jobDataDeleted?: number;
+    pastDataDeleted?: number;
+    jobDataRows?: number;
   };
 };
 

@@ -25,6 +25,7 @@ from utils.dataManager import (
     deleteJobsKeepingOnlyApply,
     deletePastDataOlderThanHours,
     flushJobsAndPastData,
+    flushPastDataNotInJobData,
     loadScraperSearchKeywords,
     saveScraperSearchKeywords,
     updateApplyStatusByJobId,
@@ -496,6 +497,7 @@ def postAdminJobAction(
         "delete_unwanted_classified_jobs",
         "delete_unwanted_plus_null_jobs",
         "flush_db",
+        "flush_past_data_orphans",
         "push_apply_jobs",
         "push_apply_jobs_then_cleanup",
     }
@@ -607,11 +609,32 @@ def postAdminJobAction(
             "mergedRejectedBefore": beforeMergedRejected,
             "mergedRejectedAfter": afterMergedRejected,
         }
+    if action == "flush_past_data_orphans":
+        flushed = flushPastDataNotInJobData()
+        invalidateJobCaches()
+        message = (
+            "Past data cleanup completed. "
+            f"Kept pastData rows matching {int(flushed.get('jobDataRows') or 0)} jobData id(s); "
+            f"removed {int(flushed.get('pastDataDeleted') or 0)} orphan pastData row(s)."
+        )
+        logger.info(
+            "[ADMIN_ACTION_DONE] action=%s flushed=%s admin=%s",
+            action,
+            flushed,
+            adminDetails,
+        )
+        return {
+            "ok": True,
+            "action": action,
+            "admin": adminDetails,
+            "message": message,
+            "flushed": flushed,
+        }
     if action == "flush_db":
         flushed = flushJobsAndPastData()
         invalidateJobCaches()
         message = (
-            "Flush completed successfully. "
+            "Flush all completed. "
             f"Removed {int(flushed.get('jobDataDeleted') or 0)} jobData row(s) and "
             f"{int(flushed.get('pastDataDeleted') or 0)} pastData row(s)."
         )

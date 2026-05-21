@@ -136,6 +136,10 @@ type AdminActionDialogConfig = {
   description: string;
   confirmLabel: string;
   destructive?: boolean;
+  /** Single card opens a dialog with Cancel + multiple flush actions. */
+  flushMenu?: boolean;
+  /** Single card opens a dialog with Cancel + multiple delete actions. */
+  deleteMenu?: boolean;
 };
 
 export default function Admin() {
@@ -255,7 +259,7 @@ export default function Admin() {
         await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
       }
-      if (action === "flush_db") {
+      if (action === "flush_db" || action === "flush_past_data_orphans") {
         await queryClient.invalidateQueries({ queryKey: ["adminJobStatusSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
@@ -270,7 +274,9 @@ export default function Admin() {
         title:
           action === "delete_unwanted_classified_jobs" || action === "delete_unwanted_plus_null_jobs"
             ? "Delete completed successfully"
-            : "Admin action triggered",
+            : action === "flush_past_data_orphans" || action === "flush_db"
+              ? "Flush completed successfully"
+              : "Admin action triggered",
         description:
           execLabel && execLabel !== "—"
             ? `${result.message || title} · ${execLabel}`
@@ -438,27 +444,29 @@ export default function Admin() {
 
                     <div className="space-y-2 rounded-lg border border-border/60 bg-background/55 p-3">
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Removes jobs that were classified as not needed so the list stays clean and focused.
+                        Remove classified jobs you do not need, or also clear NULL/pending rows.
                       </p>
                       <Button
                         type="button"
-                        variant="secondary"
+                        variant="destructive"
                         size="sm"
                         className="w-full"
                         disabled={Boolean(runningAction)}
                         onClick={() =>
                           openAdminActionDialog({
                             action: "delete_unwanted_classified_jobs",
-                            runTitle: "Delete unwanted classified jobs",
+                            runTitle: "Delete unwanted jobs",
                             title: "Delete unwanted jobs?",
                             description:
-                              "This will delete non-APPLY classified jobs and also clean pastData rows older than 48 hours.",
-                            confirmLabel: "Yes, delete unwanted jobs",
+                              "Delete Unwanted Jobs removes non-APPLY classified jobs and pastData older than 48 hours while keeping NULL/blank and APPLY. Delete Unwanted + Null keeps only APPLY jobs.",
+                            confirmLabel: "Delete Unwanted + Null",
                             destructive: true,
+                            deleteMenu: true,
                           })
                         }
                       >
-                        {runningAction === "delete_unwanted_classified_jobs" ? (
+                        {runningAction === "delete_unwanted_classified_jobs" ||
+                        runningAction === "delete_unwanted_plus_null_jobs" ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" aria-hidden />
                         ) : null}
                         Delete Unwanted Jobs
@@ -467,7 +475,7 @@ export default function Admin() {
 
                     <div className="space-y-2 rounded-lg border border-border/60 bg-background/55 p-3">
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Flushes all rows from jobData and pastData immediately. Use only when you want a full reset.
+                        Clean orphan pastData rows or wipe jobData and pastData completely.
                       </p>
                       <Button
                         type="button"
@@ -479,15 +487,16 @@ export default function Admin() {
                           openAdminActionDialog({
                             action: "flush_db",
                             runTitle: "Flush database",
-                            title: "Flush all jobs from database?",
+                            title: "Flush database?",
                             description:
-                              "This will permanently delete all rows from both jobData and pastData. This action cannot be undone.",
-                            confirmLabel: "Yes, flush all jobs",
+                              "Flush Past Match Job removes pastData rows whose jobId is not in jobData. Flush All permanently deletes every row in jobData and pastData.",
+                            confirmLabel: "Flush All",
                             destructive: true,
+                            flushMenu: true,
                           })
                         }
                       >
-                        {runningAction === "flush_db" ? (
+                        {runningAction === "flush_db" || runningAction === "flush_past_data_orphans" ? (
                           <Loader2 className="h-4 w-4 animate-spin mr-2 shrink-0" aria-hidden />
                         ) : null}
                         Flush the DB
@@ -880,29 +889,54 @@ export default function Admin() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={Boolean(runningAction)}>Cancel</AlertDialogCancel>
-            {adminActionDialog?.action === "delete_unwanted_classified_jobs" ? (
+            {adminActionDialog?.flushMenu ? (
               <>
                 <AlertDialogAction
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  className="bg-amber-600 text-white hover:bg-amber-600/90"
                   disabled={Boolean(runningAction)}
                   onClick={(event) => {
                     event.preventDefault();
-                    void onRunAdminAction("delete_unwanted_classified_jobs", "Delete unwanted classified jobs");
+                    void onRunAdminAction("flush_past_data_orphans", "Flush past match job");
                     setAdminActionDialog(null);
                   }}
                 >
-                  UNWANTED JOBS
+                  Flush Past Match Job
                 </AlertDialogAction>
                 <AlertDialogAction
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   disabled={Boolean(runningAction)}
                   onClick={(event) => {
                     event.preventDefault();
-                    void onRunAdminAction("delete_unwanted_plus_null_jobs", "Delete unwanted + null jobs");
+                    void onRunAdminAction("flush_db", "Flush all");
                     setAdminActionDialog(null);
                   }}
                 >
-                  UNWANTED + NULL
+                  Flush All
+                </AlertDialogAction>
+              </>
+            ) : adminActionDialog?.deleteMenu ? (
+              <>
+                <AlertDialogAction
+                  className="bg-amber-600 text-white hover:bg-amber-600/90"
+                  disabled={Boolean(runningAction)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void onRunAdminAction("delete_unwanted_classified_jobs", "Delete unwanted jobs");
+                    setAdminActionDialog(null);
+                  }}
+                >
+                  Delete Unwanted Jobs
+                </AlertDialogAction>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  disabled={Boolean(runningAction)}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    void onRunAdminAction("delete_unwanted_plus_null_jobs", "Delete unwanted + null");
+                    setAdminActionDialog(null);
+                  }}
+                >
+                  Delete Unwanted + Null
                 </AlertDialogAction>
               </>
             ) : (
