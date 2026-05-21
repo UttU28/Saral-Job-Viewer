@@ -4,11 +4,20 @@
  */
 
 const EXPERIENCE_SCANNERS: RegExp[] = [
+  // N+ years … (skills/role text) … experience — e.g. "2+ years Python experience", "1+ years Terraform experience"
+  /\b\d+\s*\+\s*(?:years?|yrs?\.?)\s+(?:[\w][\w\s/,.&()+-]{0,78}?\s+)?experienc[a-z]*\b/gi,
+
+  // N+ years / N+ year (standalone chip — bullet lists often split skill and "experience")
+  /\b\d+\s*\+\s*(?:years?|yrs?\.?)\b/gi,
+
+  // N years … experience without plus — e.g. "4 years software development experience"
+  /\b\d+\s+(?:years?|yrs?\.?)\s+[\w][\w\s/,.&()+-]{0,60}?\s*experienc[a-z]*\b/gi,
+
   // Minimum / at least / more than … N … years … (experience)
   /\b(?:minimum|min\.|at\s+least|more\s+than|over|greater\s+than|no\s+less\s+than|a\s+minimum\s+of|minimum\s+of)\s+(?:of\s+)?(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct|prior|industry))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b/gi,
 
   // N–M years … experience (incl. truncated "Experien", "experi…")
-  /\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)(?:\s+of)?\s*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b/gi,
+  /\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?\s*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b/gi,
 
   /\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct))?[\s,]*(?:experienc[a-z]*|of\s+(?:experien\b|experi[a-z]{3,}))\b/gi,
 
@@ -153,13 +162,13 @@ export function maxNumericFromExperienceTag(tag: string): number | null {
   return Math.max(...nums);
 }
 
-/** True when the tag's max parsed whole number is five or more (outside 1–4 YoE target). */
+/** True when the tag's max parsed whole number is six or more (auto-reject threshold; aligns with backend). */
 export function experienceTagImpliesAboveFiveYears(tag: string): boolean {
   const hi = maxNumericFromExperienceTag(tag);
-  return hi !== null && hi >= 5;
+  return hi !== null && hi >= 6;
 }
 
-/** True if any experience-style tag implies five or more years (aligns with backend pre-check). */
+/** True if any experience-style tag implies six or more years (aligns with backend pre-check). */
 export function jobDescriptionImpliesExperienceAboveFive(body: string | null | undefined): boolean {
   for (const tag of findJobDescriptionExperienceTags(body)) {
     if (experienceTagImpliesAboveFiveYears(tag)) return true;

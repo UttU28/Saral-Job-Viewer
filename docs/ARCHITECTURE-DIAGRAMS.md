@@ -114,13 +114,12 @@ flowchart TB
 
 ## 4. Deploy — `Main Deploy` workflow (approval, push, LB)
 
-Source of truth: **`.github/workflows/deployment.yml`**. No CI/CodeQL gate — deploy runs after **`detectChanges`** and **`production-approval`**. Secrets, IAM, and command-level detail: [`CICD-FULL-STACK.md`](./CICD-FULL-STACK.md). **Workload Identity Federation** + **`google-github-actions/auth`** mint short-lived GCP credentials for the **pipeline** service account (no JSON key in the repo).
+Source of truth: **`.github/workflows/deployment.yml`**. No CI/CodeQL gate and no manual approval — deploy runs after **`detectChanges`**. Secrets, IAM, and command-level detail: [`CICD-FULL-STACK.md`](./CICD-FULL-STACK.md). **Workload Identity Federation** + **`google-github-actions/auth`** mint short-lived GCP credentials for the **pipeline** service account (no JSON key in the repo).
 
 ```mermaid
 flowchart TB
   T[Trigger: push to main or workflow_dispatch]
   DC[detectChanges<br/>paths-filter outputs + optional WIF gcloud<br/>probe global HTTPS LB + Cloud Run]
-  AP[GitHub Environment<br/>production-approval human gate]
   subgraph P4["Conditional CD · WIF + Docker + gcloud"]
     DAPI[deployApi<br/>build push image deploy saral-api<br/>set-secrets from Secret Manager]
     DFE[deployFrontend<br/>read VITE_API_URL secret build push<br/>deploy saral-ui]
@@ -130,10 +129,9 @@ flowchart TB
   AR[(Artifact Registry)]
   RUN[Cloud Run revisions<br/>UI API validation job]
   T --> DC
-  DC --> AP
-  AP --> DAPI
-  AP --> DFE
-  AP --> DVAL
+  DC --> DAPI
+  DC --> DFE
+  DC --> DVAL
   DAPI --> AR
   DFE --> AR
   DVAL --> AR

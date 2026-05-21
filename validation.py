@@ -237,7 +237,7 @@ def syncEmptyApplyStatuses() -> None:
 
     log.info(
         f"Done. Wrote applyStatus from classifier/MAAS for {written} job(s); "
-        f"REJECTED from local pre-check (restrictions / experience): {rejectedPrecheck}."
+        f"REJECTED from local pre-check (restrictions / 6+ years experience): {rejectedPrecheck}."
     )
 
 

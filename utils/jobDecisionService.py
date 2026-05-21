@@ -2,8 +2,8 @@
 Job UI decisions (accept/reject → Midhtech suggest) and shared local job pre-checks.
 
 Centralizes:
-  - Citizenship / work authorization / clearance / sponsorship regex scanners
-  - Years-of-experience description scan (1–4 YoE target; ≥5 blocks — aligned with frontend/src/lib/jobDescriptionExperience.ts)
+  - Citizenship / clearance / sponsorship regex scanners (ingest skip, validation sync, suggest pre-check)
+  - Years-of-experience scan (6+ blocks ingest / accept; UI highlights use same threshold)
   - findRestrictionTagsForJob() used by ingest skip, validation sync, and suggest pre-check
 """
 
@@ -35,16 +35,6 @@ RESTRICTION_SCANNERS: tuple[tuple[re.Pattern[str], str], ...] = (
         ),
         "Permanent resident / green card",
     ),
-    (re.compile(r"\bauthorized\s+to\s+work\b", re.I), "Authorized to work"),
-    (re.compile(r"\bwork\s+authorization\b", re.I), "Work authorization"),
-    (re.compile(r"\bemployment\s+authorization\b", re.I), "Employment authorization"),
-    (
-        re.compile(
-            r"\beligible\s+to\s+work\s+(?:in\s+)?(?:the\s+)?u\.?s\.?\b",
-            re.I,
-        ),
-        "Eligible to work (US)",
-    ),
     (re.compile(r"\bi-9\b|\be-?verify\b", re.I), "I-9 / E-Verify"),
     (re.compile(r"\btop\s+secret\b|\bt\/s\b|\bts\/sci\b", re.I), "Top secret / TS"),
     (re.compile(r"\bsecret\s+clearance\b", re.I), "Secret clearance"),
@@ -64,23 +54,20 @@ RESTRICTION_SCANNERS: tuple[tuple[re.Pattern[str], str], ...] = (
         ),
         "No visa sponsorship",
     ),
-    (re.compile(r"\bh-?1b\b|\bh1-b\b", re.I), "H-1B mentioned"),
-    (re.compile(r"\bvisa\s+sponsorship\b", re.I), "Visa sponsorship"),
     (
         re.compile(r"\bsolely\s+authorized\b|\bonly\s+authorized\b", re.I),
         "Authorization restriction",
-    ),
-    (
-        re.compile(r"\b(?:must|required\s+to)\s+be\s+eligible\b", re.I),
-        "Eligibility requirement",
     ),
 )
 
 # --- Experience patterns (same strings as frontend EXPERIENCE_SCANNERS) ---
 
 _EXPERIENCE_SCANNER_SOURCES: Final[tuple[str, ...]] = (
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)\s+(?:[\w][\w\s/,.&()+-]{0,78}?\s+)?experienc[a-z]*\b",
+    r"\b\d+\s*\+\s*(?:years?|yrs?\.?)\b",
+    r"\b\d+\s+(?:years?|yrs?\.?)\s+[\w][\w\s/,.&()+-]{0,60}?\s*experienc[a-z]*\b",
     r"\b(?:minimum|min\.|at\s+least|more\s+than|over|greater\s+than|no\s+less\s+than|a\s+minimum\s+of|minimum\s+of)\s+(?:of\s+)?(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct|prior|industry))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
-    r"\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)(?:\s+of)?\s*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
+    r"\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?\s*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
     r"\b(\d+\s*[-–—]\s*\d+|\d+\s*\+|\d+)\s*\+?\s*(?:years?|yrs?\.?)\s*(?:'|’)?(?:\s+of)?(?:\s+(?:relevant|related|professional|work|hands-on|direct))?[\s,]*(?:experienc[a-z]*|of\s+(?:experien\b|experi[a-z]{3,}))\b",
     r"\b\d+\s+or\s+more\s+(?:years?|yrs?\.?)(?:\s+of)?(?:\s+(?:relevant|professional|work))?[\s,]*(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
     r"\b\d+\s*yrs?\.?\s+or\s+more\s+(?:experienc[a-z]*|experien\b|experi[a-z]{3,})\b",
@@ -150,13 +137,13 @@ def maxNumericFromExperienceTag(tag: str) -> int | None:
 
 
 def experienceTagImpliesAboveFiveYears(tag: str) -> bool:
-    """True when the tag's max parsed whole number is five or more (outside 1–4 YoE target)."""
+    """True when the tag's max parsed whole number is six or more (auto-reject threshold)."""
     hi = maxNumericFromExperienceTag(tag)
-    return hi is not None and hi >= 5
+    return hi is not None and hi >= 6
 
 
 def scanTextImpliesExperienceAboveFive(text: str | None) -> bool:
-    """True if any experience-style tag implies five or more years (outside 1–4 YoE target)."""
+    """True if any experience-style tag implies six or more years (auto-reject threshold)."""
     for tag in findJobDescriptionExperienceTags(text):
         if experienceTagImpliesAboveFiveYears(tag):
             return True
@@ -169,8 +156,8 @@ def jobImpliesExperienceAboveFive(job: object) -> bool:
 
 def findRestrictionTagsForJob(job: object) -> list[str]:
     """
-    Human-readable labels for restriction matches (citizenship, sponsorship, clearance, etc.)
-    plus years-of-experience outside the 1–4 target (≥5 detected). Empty list means no local blockers.
+    Human-readable labels for RESTRICTION_SCANNERS matches plus 6+ years experience when detected.
+    Empty list means no local blockers for ingest / accept pre-check.
     """
     if not isinstance(job, dict):
         return []
@@ -188,7 +175,7 @@ def findRestrictionTagsForJob(job: object) -> list[str]:
     ):
         labels.discard("Clearance")
     if scanTextImpliesExperienceAboveFive(text):
-        labels.add("Requires 5+ years experience — outside 1–4 YoE target (detected)")
+        labels.add("Requires 6+ years experience (detected)")
     return sorted(labels)
 
 
@@ -412,7 +399,7 @@ def executeJobUiDecision(
             decision=decision,
             steps=steps,
             apply_status_updated=None,
-            error="This job matches a local restriction or requires 5+ years experience (outside 1–4 YoE target) and cannot be submitted.",
+            error="This job matches a local restriction or requires 6+ years experience and cannot be submitted.",
             db_apply_status=st,
             skipped_reason=None,
         )
