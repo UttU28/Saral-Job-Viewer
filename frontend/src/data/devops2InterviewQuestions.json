@@ -1,0 +1,222 @@
+{
+  "source": "https://www.datacamp.com/blog/devops-interview-questions",
+  "note": "Curated from DataCamp blog for personal study in Saral Job Viewer.",
+  "questions": [
+    {
+      "id": "dc-devops2-01",
+      "level": "beginner",
+      "question": "What is DevOps and why is it important?",
+      "answer": "DevOps is a set of practices that brings together development and operations teams to streamline software delivery.\n\nThe goal? Faster releases, higher quality, and tighter feedback loops.\n\nIn practice, this means reducing the conflict between code writing and code running. It’s not just about tools, but about culture, automation, and ownership.\n\nIn my previous role, we adopted DevOps to accelerate the deployment of our ML models, which could drastically reduce our deployment time while also improving stability."
+    },
+    {
+      "id": "dc-devops2-02",
+      "level": "beginner",
+      "question": "How is DevOps different from traditional IT?",
+      "answer": "Traditional IT splits responsibilities: developers write code, and operations teams deploy and maintain it.\n\nDevOps combines these roles, pushing for shared responsibility and automation.\n\nWith DevOps:\n\n- Developers often write deployment scripts.\n- Ops teams get involved earlier in the development cycle.\n- Releases happen continuously and not quarterly.\n\nThink of DevOps as tearing down the wall between two departments that used to only communicate via tickets."
+    },
+    {
+      "id": "dc-devops2-03",
+      "level": "beginner",
+      "question": "What are the key principles of DevOps?",
+      "answer": "The core principles of DevOps include:\n\n- Collaboration: Breaking silos between dev, ops, QA, and security.\n- Automation: Automate testing, deployment, and monitoring.\n- Continuous integration and delivery (CI/CD): Shipping small, safe changes often.\n- Monitoring and feedback: Continuously learn and adapt based on experiences.\n\nThese principles aren’t optional, as they define whether a team is working in a DevOps culture or just using DevOps tools with old habits."
+    },
+    {
+      "id": "dc-devops2-04",
+      "level": "beginner",
+      "question": "What is CI/CD?",
+      "answer": "CI/CD stands for Continuous Integration and Continuous Delivery (or Deployment).\n\nIt’s the backbone of DevOps automation.\n\nCI/CD stands for:\n\n- CI: Developers merge code into a shared repo several times a day. Each merge triggers automated builds and tests.\n- CD: Once the code passes tests, it’s automatically deployed to production or staging environments.\n\nCI/CD reduces human error and makes releases boring, which is a good thing.\n\nWe’ve extensively used CI/CD to test our ML models and the code that runs our models behind an API. Each push to a feature branch triggered the unit tests, while a merge to the main branch triggered the build of a new container image and shipped the model to our customers' Kubernetes namespaces.\n\nIf you are interested in learning how CI/CD is used in ML, I recommend the [ CI/CD for Machine Learning](https://www.datacamp.com/courses/cicd-for-machine-learning) course and our [guide to CI/CD in machine learning.](https://www.datacamp.com/tutorial/ci-cd-for-machine-learning)"
+    },
+    {
+      "id": "dc-devops2-05",
+      "level": "beginner",
+      "question": "What are the benefits of automation in DevOps?",
+      "answer": "Automation reduces manual effort, increases reliability, and allows teams to scale their operations.\n\nBenefits include:\n\n- Faster feedback loops\n- Fewer deployment errors\n- Repeatable environments\n- Less “it works on my machine” drama\n\nAs a rule of thumb: If you do something twice, automate it."
+    },
+    {
+      "id": "dc-devops2-06",
+      "level": "beginner",
+      "question": "What is Infrastructure as Code (IaC)?",
+      "answer": "IaC is the practice of managing infrastructure (servers, databases, networks) using code.\n\nInstead of manually configuring infrastructure in cloud consoles, you define it in files (e.g., Terraform, CloudFormation).\n\nThis makes your setup:\n\n- Reproducible\n- Version-controlled (if you use Git)\n- Easy to audit\n\nIaC can enable you to provision entire environments in minutes, rather than days of manual effort."
+    },
+    {
+      "id": "dc-devops2-07",
+      "level": "beginner",
+      "question": "How do Git and version control fit into DevOps?",
+      "answer": "Version control isn’t only valid for code, but for almost everything.\n\nIn DevOps:\n\n- You version your code, infrastructure, and even documentation.\n- Git enables collaboration, rollback, and traceability.\n- Tools like GitHub Actions or GitLab CI/CD integrate directly with Git workflows for seamless automation.\n\nVersion control is the heart of every DevOps infrastructure."
+    },
+    {
+      "id": "dc-devops2-08",
+      "level": "beginner",
+      "question": "What’s the role of monitoring and logging in DevOps?",
+      "answer": "Without monitoring and logging, debugging can become a nightmare. You can’t simply tell if changes affect your applications positively or negatively without proper monitoring and logging. Or finding and fixing bugs would become nearly impossible without adequate monitoring and logging.\n\nThey solve:\n\n- Monitoring tells you what’s happening now (CPU usage, response times, uptime).\n- Logging informs you about what happened (errors, stack traces, and unexpected behavior).\n\nTogether, they allow you to observe and improve easily.\n\nI recommend setting up alerting for anomalies, not just failures. This allows you to identify issues before they occur."
+    },
+    {
+      "id": "dc-devops2-09",
+      "level": "beginner",
+      "question": "What’s a simple example of a CI/CD pipeline?",
+      "answer": "Here’s an example, but quite common, CI/CD flow:\n\n1. Developer merges changes to `main` branch.\n2. Pipeline triggers and runs unit tests, code linting, and static analysis.\n3. If the tests pass: Build a Docker image. Push the image to a registry. Deploy to staging via Kubernetes.\n4. A manual approval step enables deployment to production if the staging environment appears satisfactory.\n\nThis can be built using GitLab CI/CD, Jenkins, or GitHub Actions."
+    },
+    {
+      "id": "dc-devops2-10",
+      "level": "intermediate",
+      "question": "What is a deployment strategy? Can you name a few?",
+      "answer": "A deployment strategy outlines the process of rolling out new software versions to users. Choosing the right one depends on your system’s complexity, risk tolerance, and rollback capabilities.\n\nCommon strategies include:\n\n- Blue-green deployment: Run two environments (blue = current, green = new) and switch traffic when green is stable. This strategy allows for fast rollbacks.\n- Canary release: Gradually roll out changes to a small subset of users. This strategy is ideal for catching issues early without pissing off too many users.\n- Rolling update: Replace instances one at a time with zero downtime.\n- Recreate strategy: Shut down the old version completely, then start the new one. This leads to downtime, is riskier, and is not commonly used.\n\nAt a minimum, I recommend using rolling updates. If you are willing to invest more time and have a solid DevOps tool stack in place, I recommend taking it a step further with blue-green or canary deployments.\n\nHowever, sometimes, the recreate strategy is a valid option as well. We had ML models that consumed larger GPUs, which were constrained. This is why we had to shut down the currently running model to free up the GPU, and then we could scale up the new version."
+    },
+    {
+      "id": "dc-devops2-11",
+      "level": "intermediate",
+      "question": "How do containers and orchestration work in DevOps?",
+      "answer": "Containers (e.g., Docker) package applications with their dependencies, ensuring they run the same everywhere.\n\nOrchestration tools (like Kubernetes) handle:\n\n- Scheduling containers on nodes\n- Scaling apps based on load\n- Self-healing applications (e.g., restarting failed pods)\n- Networking, service discovery, and load balancing\n\nTogether, they bring consistency, portability, and automation to DevOps workflows.\n\nI use them in my day-to-day work life, and they have significantly improved the way we work and how we develop and deploy applications.\n\nYou can learn more about Kubernetes in the [Introduction to Kubernetes](https://www.datacamp.com/courses/introduction-to-kubernetes) course.\n\nIf you want to dive deeper into the combination of Docker and Kubernetes, I recommend the [\"Containerization and Virtualization with Docker and Kubernetes\"](https://www.datacamp.com/tracks/containerization-and-virtualization) course."
+    },
+    {
+      "id": "dc-devops2-12",
+      "level": "intermediate",
+      "question": "How would you implement blue-green deployment?",
+      "answer": "Blue-green deployment means having two identical production environments (blue=current, green=new). The new application is first deployed to the green environment, where it is tested. Once you are satisfied, traffic is switched from the blue environment to the green environment.\n\nHere’s a high-level approach:\n\n1. Spin up a green environment identical to blue (prod).\n2. Deploy the new version to green.\n3. Run tests and automated checks.\n4. If stable, switch load balancer traffic to the green environment.\n5. Keep blue alive briefly for rollback.\n\nThis approach allows you to roll back within seconds, as you can simply adapt the load balancer to send traffic to the blue environment again."
+    },
+    {
+      "id": "dc-devops2-13",
+      "level": "intermediate",
+      "question": "What is a rolling update vs. a canary release?",
+      "answer": "A rolling update replaces app instances one by one, leading to no downtime. This option is used when you are confident about your release and want to make it instantly available to all users.\n\nWith a canary release, your new version is only rolled out to a small subset of users (e.g., 5%). First, monitor and ensure everything works fine before expanding your rollout to more users. You can gradually increase it until you then roll it out to all users.\n\nCanary allows you to test in production without affecting a significant number of your users."
+    },
+    {
+      "id": "dc-devops2-14",
+      "level": "intermediate",
+      "question": "How do you secure a CI/CD pipeline?",
+      "answer": "Security often gets overlooked, but it’s critical.\n\nSome best practices include:\n\n- Use secrets management tools (e.g., Vault, AWS Secrets Manager)\n- Run builds in isolated runners\n- Validate inputs to avoid injection attacks\n- Use signed containers and verify image provenance\n- Integrate static and dynamic analysis tools (SAST/DAST)\n\nDon’t hesitate to let a pipeline fail because of security concerns."
+    },
+    {
+      "id": "dc-devops2-15",
+      "level": "intermediate",
+      "question": "What is the difference between Docker and a virtual machine (VM)?",
+      "answer": "This question is quite common to assess your basic understanding of containers.\n\n| Feature | Docker | Virtual Machine |\n| --- | --- | --- |\n| Resource usage | Lightweight (shares OS kernel) | Heavy (full OS per VM) |\n| Startup time | Seconds | Minutes |\n| Isolation | Process-level | OS-level |\n| Use case | Microservices, CI/CD pipelines | Full-system emulation, isolation |\n\nDocker is fast, portable, and great for modern app workflows. VMs are still helpful for strict isolation and legacy systems.\n\nIf you want to prepare more for Docker-related interview questions, I recommend reading [Top 26 Docker Interview Questions and Answers for 2026](https://www.datacamp.com/blog/docker-interview-questions)."
+    },
+    {
+      "id": "dc-devops2-16",
+      "level": "intermediate",
+      "question": "How does Kubernetes help in DevOps workflows?",
+      "answer": "Kubernetes automates the complex parts of running containers at scale:\n\n- Auto-scaling based on CPU/memory\n- Rolling updates and rollbacks\n- Service discovery and load balancing\n- Resource quotas and pod priorities\n\nIn DevOps, Kubernetes becomes the backbone for CI/CD, monitoring, and a self-healing infrastructure."
+    },
+    {
+      "id": "dc-devops2-17",
+      "level": "intermediate",
+      "question": "What are Helm charts and why use them?",
+      "answer": "Helm is the package manager for Kubernetes. Helm charts define, install, and upgrade K8s applications using templated YAML.\n\nTheir features include:\n\n- Simplified deployments\n- Support for versioning and reuse\n- Help with environment consistency (dev/staging/prod)\n\nIf you’ve ever had to edit massive amounts of YAML files manually over and over again, Helm is the right choice for you.\n\nI use it for all our services that we offer to customers, where they install the same set of YAML with different configs over and over again."
+    },
+    {
+      "id": "dc-devops2-18",
+      "level": "intermediate",
+      "question": "How do you handle secrets in DevOps?",
+      "answer": "Never hardcode secrets in code or config files.\n\nBetter alternatives:\n\n- Using secret management tools (e.g., HashiCorp Vault, AWS Secrets Manager)\n- Using sealed secrets or encrypted K8s secrets\n- Restricting access via RBAC\n- Rotating credentials regularly\n\nWe sometimes find customers storing sensitive information in their Git repositories, which can lead to serious security breaches."
+    },
+    {
+      "id": "dc-devops2-19",
+      "level": "intermediate",
+      "question": "How do you troubleshoot failing builds?",
+      "answer": "This is an essential part of a DevOps engineer, as there will always be errors and failing builds.\n\nA systematic approach would be to:\n\n1. Check the logs of your builds first.\n2. Try to reproduce the error locally by running the same steps as in the CI step.\n3. Check if there are any environment differences (e.g., missing dependencies, environment variables, file paths).\n4. Roll back recent changes step by step.\n\nThe most common issue in my history was missing environment variables that I had when building and testing locally, but that I had not added to my CI setup."
+    },
+    {
+      "id": "dc-devops2-20",
+      "level": "advanced",
+      "question": "What is GitOps and how is it different from DevOps?",
+      "answer": "GitOps is a subset of DevOps that uses Git as the single source of truth for infrastructure and application delivery.\n\nIn GitOps, all changes to the application or infrastructure are made using pull requests to Git repositories.\n\nA GitOps operator (e.g., ArgoCD, Flux) monitors changes and synchronizes them to the cluster, maintaining a one-to-one relationship between the Git repository and the cluster.\n\nSo GitOps brings version control, auditability, and rollbacks to infrastructure workflows."
+    },
+    {
+      "id": "dc-devops2-21",
+      "level": "advanced",
+      "question": "How would you design a scalable CI/CD system?",
+      "answer": "Designing a scalable CI/CD system is essential, and addressing design questions is popular, as the interviewer can see how you think and how you articulate your arguments.\n\nA few key components of your design:\n\n- Decoupled stages (build, test, deploy) with clear responsibilities\n- Parallelization for speed (e.g., run tests across nodes)\n- Dynamic runners on Kubernetes for elasticity\n- Caching layers for dependencies and artifacts\n- Secrets & access isolation between projects\n\nFor scale, consider using tools like Tekton or Gitlab CI with Kubernetes runners."
+    },
+    {
+      "id": "dc-devops2-22",
+      "level": "advanced",
+      "question": "What’s your approach to incident response?",
+      "answer": "This is an important part, as the interviewer wants to see how you interact with customers, who are mostly pissed because something is broken. Resolving incidents is a crucial part of a DevOps engineer's day-to-day work.\n\nKey principles include:\n\n1. Stay calm\n2. Diagnose fast (Network issue? App level? Infra?)\n3. Communicate clearly\n4. Document everything\n5. Run a post-mortem (identify root cause and learn)\n\nRemember one important thing: Never blame people.\n\nInstead, focus on systems, processes, and improvements."
+    },
+    {
+      "id": "dc-devops2-23",
+      "level": "advanced",
+      "question": "How do you manage observability across microservices?",
+      "answer": "Microservices play an essential role in today's DevOps landscape. Therefore, you should also be able to answer basic questions about them, as this demonstrates your general understanding of DevOps.\n\nFor observability, you need three components:\n\n1. Logging: Centralized, structured, searchable (e.g., ELK, Loki)\n2. Metrics: Prometheus-style time-series + dashboards (e.g., Grafana)\n3. Tracing: Distributed tracing tools like Jaeger or OpenTelemetry\n\nPut it all together using correlation IDs to track requests across services."
+    },
+    {
+      "id": "dc-devops2-24",
+      "level": "advanced",
+      "question": "How would you optimize slow pipelines?",
+      "answer": "This happens quite often, and there are some typical steps you should follow:\n\n- Measure first: Use pipeline metrics and step timings to optimize your workflow.\n- Cache smartly: Dependencies, Docker layers, test results.\n- Split tests: Parallelize test suites by type or module.\n- Use pre-commit hooks: Catch errors early.\n- Skip unnecessary steps: Use conditional logic (e.g., only build Docker if code changed in respective code location).\n\nSometimes, adding faster hardware alone doesn’t solve the problem, but implementing your pipelines more efficiently does."
+    },
+    {
+      "id": "dc-devops2-25",
+      "level": "advanced",
+      "question": "How do you approach compliance in DevOps workflows?",
+      "answer": "Compliance should be proactively integrated from the beginning of the software development cycle.\n\nSteps to follow:\n\n- Version control everything (code, infra, policies)\n- Audit trails through Git, CI/CD logs, and monitoring tools\n- Automated compliance checks (e.g., CIS benchmarks, security scanners)\n- Access control via RBAC and least-privilege\n- Secrets management with rotation policies"
+    },
+    {
+      "id": "dc-devops2-26",
+      "level": "advanced",
+      "question": "Can you explain service meshes in the context of DevOps?",
+      "answer": "A service mesh (e.g., Istio, Linkerd) manages service-to-service communication with features like:\n\n- Traffic control (e.g., retries, timeouts, routing)\n- Security (mTLS between services)\n- Observability (per-service telemetry)\n\nInstead of embedding this logic in each app, the mesh handles it through sidecar proxies."
+    },
+    {
+      "id": "dc-devops2-27",
+      "level": "advanced",
+      "question": "How do you architect zero-downtime deployments?",
+      "answer": "Zero-downtime deployments are essential, as they enable you to roll out changes without disrupting the user experience.\n\nStrategies for a zero-downtime deployment include:\n\n- Blue-green or canary deployments to shift traffic safely\n- Database migrations handled with backward compatibility\n- Load balancer health checks before adding new instances\n- Graceful shutdowns so in-flight requests complete"
+    },
+    {
+      "id": "dc-devops2-28",
+      "level": "advanced",
+      "question": "What is chaos engineering, and have you used it?",
+      "answer": "Chaos engineering involves intentionally injecting failures into your systems to test resilience.\n\nExample tools:\n\n- Gremlin\n- Chaos Monkey\n- Litmus\n\nScenarios simulated to test your system's stability include:\n\n- Killing of random pods\n- Simulate network latency\n- Drop DB connections\n\nChaos engineering is also heavily used by Netflix.\n\nIt helps to simulate different scenarios and see how your system behaves."
+    },
+    {
+      "id": "dc-devops2-29",
+      "level": "others",
+      "question": "Describe a conflict with a developer. How did you handle it?",
+      "answer": "As DevOps sits at the intersection of multiple teams, conflicts happen. The interviewer here wants to see that you have some emotional intelligence.\n\nFrame it like:\n\n- The root of the conflict (e.g., rushed release, unclear ownership)\n- How you approached the conversation (empathy + data)\n- The resolution (e.g., updated process, clarified responsibilities)\n\nJust be honest and avoid finger-pointing at the developer. Always point out how you tried to focus on a good collaboration.\n\nAnd always keep this in mind: Developers and DevOps engineers often have different priorities. Developers want to ship features fast, while you might be focused on security, stability, and long-term maintainability. That tension is normal, and understanding their perspective can help you handle conflicts more constructively."
+    },
+    {
+      "id": "dc-devops2-30",
+      "level": "others",
+      "question": "How do you balance speed vs. stability in release cycles?",
+      "answer": "This is a never-ending tension of DevOps.\n\nYou can focus on:\n\n- Feature flags: Enable or disable features in production.\n- Deployment Strategy: Canary or blue-green deployments\n- Agile methods: Use agile methods to iterate fast.\n- Monitoring: Strong observability, allowing you to react quickly if something breaks.\n- Communication: Establish an open feedback culture and continuous learning from mistakes.\n- Automation: Automate as much as possible, and where it makes sense to achieve faster and more stable results.\n\nYou don’t have to decide between speed and safety, as you can design your DevOps system to improve both."
+    },
+    {
+      "id": "dc-devops2-31",
+      "level": "others",
+      "question": "Can you walk me through your process after a production outage?",
+      "answer": "Systems will occasionally fail. Therefore, being able to return them to normal as quickly as possible is crucial.\n\nTherefore, you can follow the steps below to get your systems back to normal:\n\n1. Acknowledge and contain: Alert the relevant parties and communicate promptly.\n2. Diagnose quickly: Check the logs, metrics, and dashboards to identify the issue.\n3. Fix the issue: Apply a patch, roll back your application, or reconfigure to bring it back online.\n4. Post-mortem: Document the time it took to find the issue and fix it, the root cause, and action items to avoid such problems from happening in the future.\n\nIf you’ve never led an incident call, practice it. It’s a skill that senior engineers are expected to have."
+    },
+    {
+      "id": "dc-devops2-32",
+      "level": "others",
+      "question": "Can you describe your experience working with cross-functional teams?",
+      "answer": "As a DevOps engineer, you will work with a lot of different cross-functional teams. Good collaboration is therefore essential, and interviewers will take a detailed look at your collaboration skills.\n\nYou could talk about:\n\n- How you bridged the gaps between dev and ops\n- How you helped data scientists adopt CI/CD\n- How do you resolve an issue between security and product teams (they fight a lot, trust me)\n\nIf you’ve ever created documentation or internal tooling to help others move more efficiently, mention that too, as it demonstrates initiative."
+    },
+    {
+      "id": "dc-devops2-33",
+      "level": "others",
+      "question": "Have you ever automated yourself out of a task?",
+      "answer": "This one’s my favorite.\n\nLet’s be real: one of the core goals of DevOps is to automate repetitive workflows. But when you automate everything, what’s left to do? It’s not uncommon for DevOps engineers to automate themselves out of their tasks.\n\nStill, automation is the point. You want to demonstrate that it’s integrated into your thought process. Manual work should feel like a red flag, something to eliminate, not tolerate.\n\nExample:\n\n“I used to deploy our staging environment every Monday manually. I wrote a script to handle it with a single command, then wrapped it in a GitHub Action so the team could trigger it anytime.”\n\nThe goal is to prove that you think like a DevOps engineer: reduce friction, remove bottlenecks, and free humans to solve more complex problems."
+    },
+    {
+      "id": "dc-devops2-34",
+      "level": "others",
+      "question": "How do you onboard junior engineers into DevOps practices?",
+      "answer": "This question tests your leadership and team collaboration skills.\n\nSome ideas for onboarding junior engineers:\n\n- Creating a “Getting Started” documentation page with all relevant information and links\n- Pair programming or co-debugging sessions\n- Documenting runbooks and workflows\n- Creating sandbox environments for safe experimentation\n- Hosting internal workshops on Docker/Kubernetes basics\n\nThe difference between a good and a great engineer lies in teaching skills."
+    },
+    {
+      "id": "dc-devops2-35",
+      "level": "others",
+      "question": "What would you improve in your current DevOps pipeline?",
+      "answer": "This question demonstrates your self-critical and forward-thinking nature.\n\nAvoid saying “nothing”. Instead, you could:\n\n- Mention a bottleneck (e.g., slow test suite)\n- A tooling upgrade you’re planning (e.g., moving from Jenkins to Tekton)\n- An observability gap you’re fixing\n- Or even a cultural tweak (e.g., better documentation)\n\nYou’re being evaluated not just for what you know, but how you think."
+    },
+    {
+      "id": "dc-devops2-36",
+      "level": "others",
+      "question": "Tell me about a time you introduced a new tool or practice. How did you get buy-in?",
+      "answer": "As a DevOps engineer, you enhance workflows and automate tasks. This means you change the status quo, which often leads to people being hesitant, as they don’t want change.\n\nYou need to show that you can handle such situations calmly and professionally.\n\nYou can include in your answer:\n\n- Why did you push for the tool/practice?\n- How did you pitch it to the team?\n- How did you deal with resistance?\n- What was the outcome?\n\nFor example: “I proposed adopting Terraform to replace manual AWS provisioning. Some teammates were hesitant, so I demoed a repeatable workflow, added documentation, and helped with onboarding.”"
+    }
+  ]
+}

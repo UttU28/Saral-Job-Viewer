@@ -15,32 +15,36 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  DEVOPS_INTERVIEW_COUNT,
-  DEVOPS_INTERVIEW_QUESTIONS,
-  DEVOPS_INTERVIEW_SOURCE_URL,
-  type DevopsInterviewQuestion,
-  type DevopsQuestionLevel,
-} from "@/data/devopsInterviewQuestions";
+  DEFAULT_INTERVIEW_CATEGORY_ID,
+  getInterviewCategory,
+  INTERVIEW_CATEGORIES,
+  type InterviewCategory,
+  type InterviewCategoryId,
+  type InterviewQuestion,
+  type InterviewQuestionLevel,
+} from "@/data/interviewQuestions";
 import { cn } from "@/lib/utils";
 
-const LEVEL_ORDER: readonly DevopsQuestionLevel[] = ["beginner", "intermediate", "advanced"];
+const LEVEL_ORDER: readonly InterviewQuestionLevel[] = ["beginner", "intermediate", "advanced", "others"];
 
-const LEVEL_LABEL: Record<DevopsQuestionLevel, string> = {
+const LEVEL_LABEL: Record<InterviewQuestionLevel, string> = {
   beginner: "Beginner",
   intermediate: "Intermediate",
   advanced: "Advanced",
+  others: "Others",
 };
 
-const LEVEL_BADGE: Record<DevopsQuestionLevel, string> = {
+const LEVEL_BADGE: Record<InterviewQuestionLevel, string> = {
   beginner: "border-emerald-500/35 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200",
   intermediate: "border-sky-500/35 bg-sky-500/10 text-sky-900 dark:text-sky-100",
   advanced: "border-violet-500/35 bg-violet-500/12 text-violet-900 dark:text-violet-100",
+  others: "border-amber-500/40 bg-amber-500/12 text-amber-950 dark:text-amber-100",
 };
 
 function filterByLevel(
-  items: readonly DevopsInterviewQuestion[],
-  level: DevopsQuestionLevel | "all",
-): DevopsInterviewQuestion[] {
+  items: readonly InterviewQuestion[],
+  level: InterviewQuestionLevel | "all",
+): InterviewQuestion[] {
   if (level === "all") return [...items];
   return items.filter((q) => q.level === level);
 }
@@ -52,9 +56,9 @@ function shuffleInPlace<T>(arr: T[]): void {
   }
 }
 
-function useInterviewDeck() {
-  const [levelFilter, setLevelFilter] = useState<DevopsQuestionLevel | "all">("all");
-  const [order, setOrder] = useState<DevopsInterviewQuestion[]>(() => [...DEVOPS_INTERVIEW_QUESTIONS]);
+function useInterviewDeck(questions: readonly InterviewQuestion[]) {
+  const [levelFilter, setLevelFilter] = useState<InterviewQuestionLevel | "all">("all");
+  const [order, setOrder] = useState<InterviewQuestion[]>(() => [...questions]);
   const [index, setIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
 
@@ -81,14 +85,14 @@ function useInterviewDeck() {
     });
   }, [total]);
 
-  const onFilterChange = (next: DevopsQuestionLevel | "all") => {
+  const onFilterChange = (next: InterviewQuestionLevel | "all") => {
     setLevelFilter(next);
     setIndex(0);
     setShowAnswer(false);
   };
 
   const onShuffle = () => {
-    const next = filterByLevel([...DEVOPS_INTERVIEW_QUESTIONS], levelFilter);
+    const next = filterByLevel([...questions], levelFilter);
     shuffleInPlace(next);
     setOrder(next);
     setIndex(0);
@@ -96,7 +100,7 @@ function useInterviewDeck() {
   };
 
   const onResetOrder = () => {
-    setOrder([...DEVOPS_INTERVIEW_QUESTIONS]);
+    setOrder([...questions]);
     setIndex(0);
     setShowAnswer(false);
   };
@@ -116,14 +120,49 @@ function useInterviewDeck() {
   };
 }
 
+function InterviewCategoryPicker({
+  categoryId,
+  onCategoryChange,
+}: Readonly<{
+  categoryId: InterviewCategoryId;
+  onCategoryChange: (id: InterviewCategoryId) => void;
+}>) {
+  return (
+    <div
+      className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-themed"
+      role="tablist"
+      aria-label="Interview category"
+    >
+      {INTERVIEW_CATEGORIES.map((cat) => (
+        <Button
+          key={cat.id}
+          type="button"
+          role="tab"
+          aria-selected={categoryId === cat.id}
+          variant={categoryId === cat.id ? "default" : "outline"}
+          size="sm"
+          className={cn(
+            "rounded-xl shrink-0 gap-1.5",
+            categoryId === cat.id && "shadow-sm",
+          )}
+          onClick={() => onCategoryChange(cat.id)}
+        >
+          {cat.label}
+          <span className="text-[10px] tabular-nums opacity-80">({cat.questions.length})</span>
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function InterviewLevelFilters({
   levelFilter,
   onFilterChange,
   onShuffle,
   onResetOrder,
 }: Readonly<{
-  levelFilter: DevopsQuestionLevel | "all";
-  onFilterChange: (next: DevopsQuestionLevel | "all") => void;
+  levelFilter: InterviewQuestionLevel | "all";
+  onFilterChange: (next: InterviewQuestionLevel | "all") => void;
   onShuffle: () => void;
   onResetOrder: () => void;
 }>) {
@@ -162,7 +201,7 @@ function InterviewLevelFilters({
   );
 }
 
-function DevopsFlashcard({
+function InterviewFlashcard({
   current,
   at,
   total,
@@ -171,7 +210,7 @@ function DevopsFlashcard({
   goPrev,
   goNext,
 }: Readonly<{
-  current: DevopsInterviewQuestion;
+  current: InterviewQuestion;
   at: number;
   total: number;
   showAnswer: boolean;
@@ -290,7 +329,7 @@ function DevopsFlashcard({
   );
 }
 
-function InterviewQuestionBankList() {
+function InterviewQuestionBankList({ questions }: Readonly<{ questions: readonly InterviewQuestion[] }>) {
   return (
     <section className="space-y-4 pt-2 border-t border-border/70" aria-labelledby="interview-bank-heading">
       <div className="space-y-1">
@@ -302,7 +341,7 @@ function InterviewQuestionBankList() {
         </p>
       </div>
       <Accordion type="multiple" className="w-full rounded-2xl border border-border bg-card/50 p-1 sm:p-2 shadow-sm">
-        {DEVOPS_INTERVIEW_QUESTIONS.map((q, i) => (
+        {questions.map((q, i) => (
           <AccordionItem key={q.id} value={q.id} className="border-border/60 px-2 sm:px-3">
             <AccordionTrigger className="text-left text-sm sm:text-base font-medium leading-snug hover:no-underline py-4 gap-2 sm:gap-3 text-foreground/95 [&>svg]:shrink-0">
               <span className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
@@ -345,8 +384,70 @@ function InterviewQuestionBankList() {
   );
 }
 
+function sourceAttribution(category: InterviewCategory): { linkLabel: string; footer: string } {
+  const url = category.sourceUrl ?? "";
+  if (url.includes("datacamp.com")) {
+    return {
+      linkLabel: "View original on DataCamp",
+      footer: `Content is from the DataCamp ${category.label} interview guide (personal study copy in Saral Job Viewer).`,
+    };
+  }
+  if (url.includes("roadmap.sh")) {
+    return {
+      linkLabel: "View original on roadmap.sh",
+      footer:
+        "Content is from the public roadmap.sh DevOps interview guide; diagrams load from their CDN when a card includes one.",
+    };
+  }
+  return {
+    linkLabel: "View original source",
+    footer: category.sourceNote ?? "",
+  };
+}
+
+function InterviewCategoryContent({ category }: Readonly<{ category: InterviewCategory }>) {
+  const attribution = sourceAttribution(category);
+  const deck = useInterviewDeck(category.questions);
+
+  return (
+    <>
+      <InterviewLevelFilters
+        levelFilter={deck.levelFilter}
+        onFilterChange={deck.onFilterChange}
+        onShuffle={deck.onShuffle}
+        onResetOrder={deck.onResetOrder}
+      />
+
+      {deck.current ? (
+        <InterviewFlashcard
+          current={deck.current}
+          at={deck.at}
+          total={deck.total}
+          showAnswer={deck.showAnswer}
+          setShowAnswer={deck.setShowAnswer}
+          goPrev={deck.goPrev}
+          goNext={deck.goNext}
+        />
+      ) : (
+        <p className="text-sm text-muted-foreground">No questions in this filter.</p>
+      )}
+
+      <InterviewQuestionBankList questions={category.questions} />
+
+      {attribution.footer ? (
+        <p className="text-sm text-muted-foreground leading-relaxed">{attribution.footer}</p>
+      ) : null}
+    </>
+  );
+}
+
 export default function Interview() {
-  const deck = useInterviewDeck();
+  const [categoryId, setCategoryId] = useState<InterviewCategoryId>(DEFAULT_INTERVIEW_CATEGORY_ID);
+  const category = useMemo(() => getInterviewCategory(categoryId), [categoryId]);
+
+  const onCategoryChange = (id: InterviewCategoryId) => {
+    setCategoryId(id);
+  };
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col">
@@ -360,47 +461,25 @@ export default function Interview() {
                 </div>
                 <div className="space-y-2 min-w-0 flex-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-primary">Interview prep</p>
-                  <h1 className="text-2xl sm:text-3xl font-bold font-display text-foreground">DevOps flashcards</h1>
-                  <a
-                    href={DEVOPS_INTERVIEW_SOURCE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                  >
-                    View original on roadmap.sh
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                  </a>
+                  <h1 className="text-2xl sm:text-3xl font-bold font-display text-foreground">{category.title}</h1>
+                  {category.sourceUrl ? (
+                    <a
+                      href={category.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                    >
+                      {sourceAttribution(category).linkLabel}
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                    </a>
+                  ) : null}
                 </div>
               </div>
             </div>
 
-            <InterviewLevelFilters
-              levelFilter={deck.levelFilter}
-              onFilterChange={deck.onFilterChange}
-              onShuffle={deck.onShuffle}
-              onResetOrder={deck.onResetOrder}
-            />
+            <InterviewCategoryPicker categoryId={categoryId} onCategoryChange={onCategoryChange} />
 
-            {deck.current ? (
-              <DevopsFlashcard
-                current={deck.current}
-                at={deck.at}
-                total={deck.total}
-                showAnswer={deck.showAnswer}
-                setShowAnswer={deck.setShowAnswer}
-                goPrev={deck.goPrev}
-                goNext={deck.goNext}
-              />
-            ) : (
-              <p className="text-sm text-muted-foreground">No questions in this filter.</p>
-            )}
-
-            <InterviewQuestionBankList />
-
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Content is from the public roadmap.sh DevOps interview guide; diagrams load from their CDN when a card
-              includes one.
-            </p>
+            <InterviewCategoryContent key={categoryId} category={category} />
           </div>
           <Footer />
         </div>
