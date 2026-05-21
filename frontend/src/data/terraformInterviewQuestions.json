@@ -1,0 +1,126 @@
+{
+  "source": "https://www.datacamp.com/blog/terraform-interview-questions",
+  "note": "Curated from DataCamp blog for personal study in Saral Job Viewer.",
+  "questions": [
+    {
+      "id": "dc-tf-01",
+      "level": "beginner",
+      "question": "What is Terraform, and what is its primary purpose?",
+      "answer": "Terraform is an open-source Infrastructure as Code (IaC) tool created by HashiCorp. It allows you to define and manage cloud and on-premises infrastructure using a declarative configuration language called HCL (HashiCorp Configuration Language). Terraform automates provisioning, updating, and versioning infrastructure, to ensure consistency and reduce manual effort."
+    },
+    {
+      "id": "dc-tf-02",
+      "level": "beginner",
+      "question": "How does Terraform differ from other IaC tools like CloudFormation or Ansible?",
+      "answer": "Terraform versus CloudFormation: Terraform is cloud-agnostic, meaning it can manage infrastructure across multiple providers (AWS, Azure, GCP, etc.), whereas AWS CloudFormation is specific to AWS. Terraform also has a more flexible syntax and state management.\n\nTerraform versus Ansible: Ansible is primarily a configuration management tool (managing software, packages, and OS configurations), while Terraform focuses on provisioning and managing infrastructure resources declaratively."
+    },
+    {
+      "id": "dc-tf-03",
+      "level": "beginner",
+      "question": "What are the key Terraform commands, and what do they do?",
+      "answer": "- `terraform init` – Initializes a Terraform project and downloads necessary provider plugins.\n- `terraform plan` – Creates an execution plan showing what changes Terraform will apply.\n- `terraform apply` – Applies the planned changes and provisions resources.\n- `terraform destroy` – Deletes all managed resources.\n- `terraform validate` – Checks for syntax errors in the Terraform configuration files."
+    },
+    {
+      "id": "dc-tf-04",
+      "level": "beginner",
+      "question": "What is a Terraform state file?",
+      "answer": "Terraform maintains a state file (`terraform.tfstate`) to track the real-world infrastructure it manages. The state file helps Terraform understand the current state of resources, detect drift, and efficiently apply changes. It is crucial for collaboration, but because it contains sensitive data, it should be stored securely."
+    },
+    {
+      "id": "dc-tf-05",
+      "level": "beginner",
+      "question": "What are Terraform providers, and why are they important?",
+      "answer": "Providers in Terraform are plugins that enable it to interact with cloud platforms, SaaS services, and other APIs. Each provider (e.g., AWS, Azure, Kubernetes) defines the resources Terraform can manage. Without providers, Terraform wouldn’t know how to create or configure infrastructure resources.\n\nIf you want to know more about Terraform and how it works, have a look at this [beginner’s guide](https://www.datacamp.com/tutorial/getting-started-terraform). In that article, I dive into the key components of Terraform in more detail and go over the pros and cons of the tool. There is even a mini tutorial to get you started with provisioning infrastructure on AWS."
+    },
+    {
+      "id": "dc-tf-06",
+      "level": "intermediate",
+      "question": "What are Terraform modules?",
+      "answer": "Terraform modules are reusable components that help organize infrastructure code by grouping related resources together. They improve maintainability, enable your team to reuse code across projects, and simplify deployments.\n\nA module can be as simple as a directory containing `.tf` files and an optional variables.tf file!"
+    },
+    {
+      "id": "dc-tf-07",
+      "level": "intermediate",
+      "question": "How does Terraform manage remote state?",
+      "answer": "By default, Terraform stores the state locally, but for collaboration, it supports remote backends (S3 with DynamoDB for AWS, GCS for Google Cloud, or Terraform Cloud). Remote state enables:\n\n- Shared access for multiple team members.\n- State locking to prevent conflicts.\n- Better security with encryption and controlled access."
+    },
+    {
+      "id": "dc-tf-08",
+      "level": "intermediate",
+      "question": "What are Terraform workspaces, and when should you use them?",
+      "answer": "Terraform workspaces allow you to maintain separate state files within the same configuration. They are useful when managing multiple environments (like dev, staging, prod) without duplicating code.\n\nWorkspaces are best for simple environment separation but may be too difficult to maintain for complex multi-account setups."
+    },
+    {
+      "id": "dc-tf-09",
+      "level": "intermediate",
+      "question": "How does Terraform handle importing existing infrastructure, and what are the limitations?",
+      "answer": "Terraform can import existing resources into its state using the terraform import command. However, it doesn’t automatically generate configuration files (the `.tf` files) for those resources, so you’ll need to write them manually.\n\nThere are some limitations to this import functionality:\n\n- Complex setups require manual configuration reconciliation.\n- Some resource types are not supported for import.\n- There is a drift risk if the imported resource configuration doesn’t match actual infrastructure."
+    },
+    {
+      "id": "dc-tf-10",
+      "level": "intermediate",
+      "question": "What are Terraform provisioners, and when should you use them?",
+      "answer": "Provisioners execute scripts or commands on a resource after it is created. They are often used for tasks like configuring VMs or installing software.\n\nThere are two types of provisioners:\n\n- Local provisioners, which run on the machine executing Terraform).\n- Remote provisioners, which run on the target resource via SSH or WinRM.\n\nSince provisioners introduce dependencies and reduce Terraform's declarative nature, they should be used sparingly. An alternative is to use configuration management tools like Ansible or cloud-init."
+    },
+    {
+      "id": "dc-tf-11",
+      "level": "intermediate",
+      "question": "What is drift detection in Terraform, and how can it be addressed?",
+      "answer": "Drift detection refers to the situation when the actual infrastructure state diverges from the state defined in Terraform’s configuration. This can happen when manual changes are made outside of Terraform, like updates in the cloud provider’s console or other automation tools.\n\nTerraform can detect drift by running terraform plan, which compares the current state from the state file with the real infrastructure.\n\nIf drift is detected, you should revert the manual changes to match the Terraform configuration, update the configuration to reflect the new desired state and run terraform apply to bring the infrastructure back into alignment with the configuration."
+    },
+    {
+      "id": "dc-tf-12",
+      "level": "intermediate",
+      "question": "How would you implement a rolling update using Terraform for an application deployed in multiple instances?",
+      "answer": "A rolling update allows you to update your infrastructure incrementally to reduce downtime and make sure that a subset of your application instances remain available during the update. In a rolling update scenario, Terraform creates a new instance of the resource, waits for it to become healthy (using health checks), and then gradually replaces the old instances.\n\nPractically, you can implement a rolling update by defining immutable infrastructure in Terraform and using count or for_each within your resource definitions (e.g., EC2 instances, load balancers)."
+    },
+    {
+      "id": "dc-tf-13",
+      "level": "intermediate",
+      "question": "How do you handle resource dependencies in Terraform, and what is the role of implicit and explicit dependencies?",
+      "answer": "In Terraform, resource dependencies are handled automatically through its graph-building mechanism. Implicit dependencies are created when one resource references another in its configuration (for example, referencing an aws_security_group in an aws_instance) and Terraform automatically infers the dependency order.\n\nExplicit dependencies are useful for handling edge cases where Terraform cannot automatically infer the dependency order. They are created when the depends_on argument is used, which forces Terraform to apply a specific order of execution even when resources are not directly referenced."
+    },
+    {
+      "id": "dc-tf-14",
+      "level": "advanced",
+      "question": "How do you manage complex multi-cloud deployments with Terraform?",
+      "answer": "Managing multi-cloud environments requires handling multiple providers in one configuration. Terraform allows you to configure resources from different cloud providers (e.g., AWS, Azure, Google Cloud) in the same main.tf file by specifying different providers and using provider-specific resources.\n\nYou can use provider aliases to manage multiple instances of the same provider (e.g., AWS in different regions), and leverage modules to abstract common configurations and prevent duplication. Make sure you manage cross-cloud dependencies carefully though, because resources in different clouds might not have direct relationships."
+    },
+    {
+      "id": "dc-tf-15",
+      "level": "advanced",
+      "question": "What are the taint and untaint commands in Terraform? How would you use them in a real-world scenario?",
+      "answer": "terraform taint marks a resource for recreation the next time terraform apply is run, even if there are no changes to the configuration. This is useful when a resource has become problematic or is in an undesirable state.\n\nFor example, if an EC2 instance fails and needs to be recreated, you can taint it to trigger its destruction and recreation during the next apply.terraform untaint is used to undo the taint command and prevent the resource from being recreated."
+    },
+    {
+      "id": "dc-tf-16",
+      "level": "advanced",
+      "question": "What is Terraform Cloud and Terraform Enterprise, and what are their key differences?",
+      "answer": "Terraform Cloud is a SaaS offering from HashiCorp that provides collaboration features, such as remote state management, workspace management, version control integration, and policy enforcement. It's ideal for small to medium teams.\n\nTerraform Enterprise is a self-hosted version that adds more advanced features like private module registries, more granular access controls, and advanced security features, including on-premise deployments.\n\nIn short: Terraform Cloud is hosted and maintained by HashiCorp, while Terraform Enterprise is self-hosted and gives organizations full control over their infrastructure."
+    },
+    {
+      "id": "dc-tf-17",
+      "level": "advanced",
+      "question": "How do you manage state locking and concurrency issues in Terraform when working with large teams?",
+      "answer": "State locking in Terraform is meant to prevent two users from modifying the same state simultaneously because that can lead to corrupted state files.\n\nTerraform Cloud and Enterprise automatically handles state locking using a backend.\n\nFor remote backends like S3 with DynamoDB, Terraform uses DynamoDB for state locking and to prevent concurrency issues."
+    },
+    {
+      "id": "dc-tf-18",
+      "level": "advanced",
+      "question": "What are zero-downtime deployments, and how can Terraform achieve them?",
+      "answer": "Zero-downtime deployments happen when applying changes to infrastructure without interrupting the availability of services. Terraform can achieve this through strategies like:\n\n- Blue-Green deployment: Using two identical environments (Blue and Green), where you switch traffic between them to deploy changes without downtime.\n- Rolling updates: Gradually applying changes to a small subset of instances at a time, allowing the rest to remain active during updates.\n\nThese are common strategies in cloud architecture and Terraform provides features that can help implement them. However, fully implementing these zero-downtime strategies often requires additional tools, like load balancers."
+    },
+    {
+      "id": "dc-tf-19",
+      "level": "advanced",
+      "question": "How do you handle secrets management in Terraform, and what are the best practices?",
+      "answer": "Terraform itself doesn’t manage secrets but can integrate with external secrets management tools. For example, you can use:\n\n- HashiCorp Vault: Terraform has built-in support for Vault to retrieve secrets like API keys or passwords at runtime, ensuring they aren’t hardcoded in configuration files.\n- Environment variables: For sensitive values, you can set them as environment variables.\n- Remote backends with encryption: Store state files in remote backends with encryption enabled to prevent unauthorized access to sensitive data.\n- Use of sensitive argument: Mark outputs and variables as sensitive to prevent them from appearing in Terraform plan/apply logs."
+    },
+    {
+      "id": "dc-tf-20",
+      "level": "advanced",
+      "question": "How do you implement custom Terraform providers, and when would you need one?",
+      "answer": "Custom Terraform providers are used when you need to manage resources or services that Terraform doesn’t natively support. They are implemented in Go and involve creating custom functions that interact with APIs or services that aren't covered by existing providers, like an in-house API, a niche cloud service, or a proprietary technology.\n\nTerraform provides the Terraform Plugin SDK to help you build providers, but you’ll need to handle authentication, CRUD (Create, Read, Update, Delete) operations, and any special configuration specific to the API you’re interacting with."
+    }
+  ]
+}

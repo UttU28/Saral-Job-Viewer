@@ -7,6 +7,7 @@
 *.pdf
 *.log
 venv/
+.pytest_cache/
 *.html
 !frontend/index.html
 gcp-sa.json

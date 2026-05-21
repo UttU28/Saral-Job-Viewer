@@ -1,6 +1,0 @@
-name: CodeQL JavaScript/TypeScript (frontend SPA)
-paths:
-  - frontend/src
-paths-ignore:
-  - frontend/node_modules
-  - frontend/dist

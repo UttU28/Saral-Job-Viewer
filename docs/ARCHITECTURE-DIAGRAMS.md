@@ -112,33 +112,24 @@ flowchart TB
 
 ---
 
-## 4. Complete CI/CD — `Main Deploy` workflow (testing, auth, push, LB)
+## 4. Deploy — `Main Deploy` workflow (approval, push, LB)
 
-Source of truth: **`.github/workflows/deployment.yml`** (calls **`.github/workflows/ci.yml`** and **`.github/workflows/codeql.yml`**). Secrets, IAM, and command-level detail: [`CICD-FULL-STACK.md`](./CICD-FULL-STACK.md). **Workload Identity Federation** + **`google-github-actions/auth`** mint short-lived GCP credentials for the **pipeline** service account (no JSON key in the repo). **Manual** runs can set **`runChecks: false`** to skip CI and CodeQL; deploy jobs for API, UI, and validation still run after approval.
+Source of truth: **`.github/workflows/deployment.yml`**. No CI/CodeQL gate — deploy runs after **`detectChanges`** and **`production-approval`**. Secrets, IAM, and command-level detail: [`CICD-FULL-STACK.md`](./CICD-FULL-STACK.md). **Workload Identity Federation** + **`google-github-actions/auth`** mint short-lived GCP credentials for the **pipeline** service account (no JSON key in the repo).
 
 ```mermaid
 flowchart TB
   T[Trigger: push to main or workflow_dispatch]
-  subgraph P1["Phase 1 · parallel quality gates"]
-    CI[CI reusable workflow<br/>pytest pip-audit npm audit<br/>tsc vitest vite build<br/>Trivy build scan 3 Dockerfiles]
-    CQ[CodeQL reusable workflow<br/>Python + JavaScript analysis]
-  end
-  DC[Phase 2 · detectChanges<br/>paths-filter outputs + optional WIF gcloud<br/>probe global HTTPS LB + Cloud Run]
-  NT[notifyDeploymentPending<br/>commit comment with run link]
-  AP[Phase 3 · GitHub Environment<br/>production-approval human gate]
-  subgraph P4["Phase 4 · conditional CD WIF + Docker + gcloud"]
+  DC[detectChanges<br/>paths-filter outputs + optional WIF gcloud<br/>probe global HTTPS LB + Cloud Run]
+  AP[GitHub Environment<br/>production-approval human gate]
+  subgraph P4["Conditional CD · WIF + Docker + gcloud"]
     DAPI[deployApi<br/>build push image deploy saral-api<br/>set-secrets from Secret Manager]
     DFE[deployFrontend<br/>read VITE_API_URL secret build push<br/>deploy saral-ui]
-    DVAL[deployValidation<br/>build push update saral-dvalidate-job<br/>ensure Cloud Scheduler POST run]
+    DVAL[deployValidation<br/>build push update saral-dvalidate-job]
   end
-  ELB[Phase 5 · ensureGlobalLoadBalancer<br/>runs only if UI or API path deployed<br/>AND LB probe marked missing]
+  ELB[ensureGlobalLoadBalancer<br/>runs only if UI or API path deployed<br/>AND LB probe marked missing]
   AR[(Artifact Registry)]
   RUN[Cloud Run revisions<br/>UI API validation job]
-  T --> CI
-  T --> CQ
-  CI --> DC
-  CQ --> DC
-  DC --> NT
+  T --> DC
   DC --> AP
   AP --> DAPI
   AP --> DFE
