@@ -23,7 +23,6 @@ env:
   API_SERVICE_NAME: saral-api
   UI_SERVICE_NAME: saral-ui
   RUN_JOB_NAME: saral-dvalidate-job
-  SCHEDULER_JOB_NAME: saral-dvalidate-midnight-utc
 
   API_IMAGE_NAME: api
   UI_IMAGE_NAME: frontend
@@ -69,7 +68,6 @@ jobs:
             run.googleapis.com \
             artifactregistry.googleapis.com \
             secretmanager.googleapis.com \
-            cloudscheduler.googleapis.com \
             iamcredentials.googleapis.com \
             redis.googleapis.com \
             vpcaccess.googleapis.com \
