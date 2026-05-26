@@ -5,6 +5,8 @@ import time
 import traceback
 
 from utils.dataManager import (
+    deleteJobsKeepingOnlyApply,
+    deletePastDataOlderThanHours,
     loadAllJobs,
     loadJobsByApplyStatus,
     loadJobsWithEmptyApplyStatus,
@@ -304,6 +306,23 @@ def pushApplyJobsAfterValidate() -> int:
     return applied
 
 
+def cleanupDeleteUnwantedPlusNullAndPastData(*, pastHours: float = 48) -> tuple[int, int]:
+    """
+    Match app.py action `delete_unwanted_plus_null_jobs`:
+    - keep APPLY rows only in jobData (remove NULL/empty + all non-APPLY)
+    - delete pastData rows older than `pastHours`
+    """
+    log = ScraperRunLog(PLATFORM_MIDHTECH, "cleanup", mirrorToScrapeLog=False)
+    log.info("Running cleanup: keep APPLY only in jobData + trim old pastData…")
+    deleted_jobs = int(deleteJobsKeepingOnlyApply())
+    deleted_past = int(deletePastDataOlderThanHours(hours=pastHours))
+    log.info(
+        f"Cleanup done. jobData deleted={deleted_jobs}; "
+        f"pastData older than {int(pastHours)}h deleted={deleted_past}."
+    )
+    return deleted_jobs, deleted_past
+
+
 def _parseDelay(raw: str | None) -> float:
     if not raw:
         return 0.0
@@ -317,19 +336,20 @@ def promptMenu() -> str | None:
     print()
     print("  1  Validate all pending (applyStatus NULL -> check API, FIFO)")
     print("  2  Push all APPLY jobs to API (suggest)")
+    print("  3  Cleanup (Delete Unwanted + NULL; pastData older than 48h)")
     print("  q  Quit")
     while True:
-        raw = input("Choose 1, 2, or q: ").strip().lower()
+        raw = input("Choose 1, 2, 3, or q: ").strip().lower()
         if raw in ("q", "quit", ""):
             return None
-        if raw in ("1", "2"):
+        if raw in ("1", "2", "3"):
             return raw
-        print("Invalid choice. Enter 1, 2, or q.")
+        print("Invalid choice. Enter 1, 2, 3, or q.")
 
 
 def _parseCliChoice(argv: list[str]) -> str | None:
     """
-    If the first argument is -1..-2 (or 1..2), return normalized '1'..'2'.
+    If the first argument is -1..-3 (or 1..3), return normalized '1'..'3'.
     If there are no arguments, return None → caller shows interactive menu.
     """
     if len(argv) < 2:
@@ -337,22 +357,26 @@ def _parseCliChoice(argv: list[str]) -> str | None:
     raw = argv[1].strip()
     if raw in ("-h", "--help"):
         print(
-            "Usage: python validation.py [-1|-2]\n\n"
+            "Usage: python validation.py [-1|-2|-3]\n\n"
             "  -1  Validate all pending (applyStatus NULL -> check API, FIFO)\n"
             "  -2  Push all APPLY jobs to suggest API\n\n"
+            "  -3  Cleanup: Delete Unwanted + NULL (keep APPLY only) and "
+            "delete pastData older than 48h\n\n"
             "With no arguments, an interactive menu is shown."
         )
         raise SystemExit(0)
     mapping = {
         "-1": "1",
         "-2": "2",
+        "-3": "3",
         "1": "1",
         "2": "2",
+        "3": "3",
     }
     if raw in mapping:
         return mapping[raw]
     print(
-        f"Unknown argument: {raw!r}. Use -1, -2, or run with no arguments for the menu.\n"
+        f"Unknown argument: {raw!r}. Use -1, -2, -3, or run with no arguments for the menu.\n"
         "Try: python validation.py --help",
         file=sys.stderr,
     )
@@ -368,8 +392,10 @@ def main() -> int:
         return 0
     if choice == "1":
         syncEmptyApplyStatuses()
-    else:
+    elif choice == "2":
         pushApplyJobsAfterValidate()
+    else:
+        cleanupDeleteUnwantedPlusNullAndPastData(pastHours=48)
     return 0
 
 

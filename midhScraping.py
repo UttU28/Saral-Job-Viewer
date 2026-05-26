@@ -18,6 +18,11 @@ from utils.scraperTerminalLog import PLATFORM_MIDHTECH, ScraperRunLog
 REPO_ROOT = Path(__file__).resolve().parent
 load_dotenv(REPO_ROOT / ".env", override=False)
 
+VALIDATION_COMPOSE_SERVICE = "dvalidate"
+VALIDATION_IMAGE = "saral-dvalidate:local"
+VALIDATION_DOCKERFILE = REPO_ROOT / "docker" / "Dockerfile.validation"
+COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
+
 # Order matters: scrapers run top-to-bottom.
 SCRAPER_SCRIPTS: list[tuple[str, str]] = [
     ("jobright", "scraping/aJobRight.py"),
@@ -96,8 +101,26 @@ def parseArgs() -> argparse.Namespace:
         "--skip-admin-actions",
         action="store_true",
         help=(
-            "Do not call Saral admin APIs after a successful scrape "
-            "(delete_unwanted_classified_jobs, classify_all_pending_null_jobs)."
+            "Skip post-scrape steps: Saral API delete_unwanted_classified_jobs "
+            "and local validation Docker container."
+        ),
+    )
+    parser.add_argument(
+        "--rebuild-validation",
+        action="store_true",
+        help=(
+            "Rebuild the dvalidate image before running local validation "
+            "(docker compose run --build)."
+        ),
+    )
+    parser.add_argument(
+        "--validation-mode",
+        type=str,
+        default="1",
+        help=(
+            "Validation mode for local dvalidate container "
+            "(1=verify pending NULL, 2=push APPLY jobs, 3=cleanup delete unwanted+NULL). "
+            "Current post-scrape flow always runs mode 1."
         ),
     )
     return parser.parse_args()
@@ -225,20 +248,150 @@ def _postSaralAdminJobAction(
     return True
 
 
-def runPostScrapeAdminPipeline(*, log: ScraperRunLog, skip: bool) -> bool:
+def _validationModeArg(mode: str) -> str:
+    """Map validation.py CLI mode: 1 -> -1, 2 -> -2, 3 -> -3."""
+    m = str(mode or "1").strip().lstrip("-")
+    if m in ("1", "2", "3"):
+        return f"-{m}"
+    if str(mode or "").startswith("-"):
+        return str(mode)
+    raise ValueError(f"unsupported validation mode: {mode!r}")
+
+
+def runLocalValidationContainer(
+    log: ScraperRunLog,
+    *,
+    mode: str = "1",
+    rebuild: bool = False,
+) -> bool:
     """
-    After all scrapers succeed: delete unwanted classified jobs, then classify NULL pending.
-    Returns True if completed or skipped successfully; False on login/API failure.
+    Run validation.py in the local dvalidate image (docker/Dockerfile.validation).
+    Uses docker compose when docker-compose.yml exists; otherwise docker build + run.
+    """
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        log.error(f".env not found at {env_file}; required for validation container.")
+        return False
+
+    try:
+        mode_arg = _validationModeArg(mode)
+    except ValueError as exc:
+        log.error(str(exc))
+        return False
+
+    log.bindPhase("validation-docker")
+
+    if COMPOSE_FILE.is_file():
+        cmd: list[str] = [
+            "docker",
+            "compose",
+            "-f",
+            str(COMPOSE_FILE),
+            "run",
+            "--rm",
+            "--no-deps",
+            VALIDATION_COMPOSE_SERVICE,
+            mode_arg,
+        ]
+        if rebuild:
+            cmd.insert(cmd.index("run") + 1, "--build")
+    else:
+        if not VALIDATION_DOCKERFILE.is_file():
+            log.error(f"validation Dockerfile not found: {VALIDATION_DOCKERFILE}")
+            return False
+        if rebuild or not _dockerImageExists(VALIDATION_IMAGE):
+            build_rc = subprocess.run(
+                [
+                    "docker",
+                    "build",
+                    "-f",
+                    str(VALIDATION_DOCKERFILE),
+                    "-t",
+                    VALIDATION_IMAGE,
+                    str(REPO_ROOT),
+                ],
+                cwd=str(REPO_ROOT),
+                check=False,
+            ).returncode
+            if build_rc != 0:
+                log.error(f"docker build failed (rc={build_rc})")
+                return False
+        cmd = [
+            "docker",
+            "run",
+            "--rm",
+            "--env-file",
+            str(env_file),
+            VALIDATION_IMAGE,
+            mode_arg,
+        ]
+
+    log.info(f"launching → {' '.join(cmd)}")
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
+    except FileNotFoundError:
+        log.error("docker not found on PATH; install Docker to run local validation.")
+        return False
+    except KeyboardInterrupt:
+        elapsed = time.monotonic() - start
+        log.warning(
+            f"validation container interrupted after {_formatDuration(elapsed)}"
+        )
+        raise
+    except Exception as exc:
+        elapsed = time.monotonic() - start
+        log.error(f"failed to launch validation container: {exc!r}")
+        return False
+
+    elapsed = time.monotonic() - start
+    if proc.returncode == 0:
+        log.info(
+            f"validation container finished OK in {_formatDuration(elapsed)} "
+            f"(mode {mode_arg})"
+        )
+        return True
+    log.error(
+        f"validation container exited rc={proc.returncode} "
+        f"after {_formatDuration(elapsed)} (mode {mode_arg})"
+    )
+    return False
+
+
+def _dockerImageExists(image: str) -> bool:
+    try:
+        proc = subprocess.run(
+            ["docker", "image", "inspect", image],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return False
+    return proc.returncode == 0
+
+
+def runPostScrapeAdminPipeline(
+    *,
+    log: ScraperRunLog,
+    skip: bool,
+    rebuild_validation: bool = False,
+    requested_validation_mode: str = "1",
+) -> bool:
+    """
+    After all scrapers succeed: delete unwanted jobs via Saral API, then run local
+    validation (docker/Dockerfile.validation, same as compose service dvalidate).
+    Returns True if completed or skipped successfully; False on failure.
     """
     if skip:
-        log.info("skipping post-scrape admin actions (--skip-admin-actions).")
+        log.info("skipping post-scrape steps (--skip-admin-actions).")
         return True
 
     email = (os.getenv("MIDHTECH_EMAIL") or "").strip()
     password = os.getenv("MIDHTECH_PASSWORD") or ""
     if not email or not password:
         log.error(
-            "post-scrape admin actions require MIDHTECH_EMAIL and MIDHTECH_PASSWORD in .env."
+            "post-scrape admin delete requires MIDHTECH_EMAIL and MIDHTECH_PASSWORD in .env."
         )
         return False
 
@@ -252,18 +405,28 @@ def runPostScrapeAdminPipeline(*, log: ScraperRunLog, skip: bool) -> bool:
     if not token:
         return False
 
-    steps = (
-        "delete_unwanted_classified_jobs",
-        "classify_all_pending_null_jobs",
-    )
-    for action in steps:
-        log.info(f"admin pipeline → {action}")
-        if not _postSaralAdminJobAction(
-            baseUrl=baseUrl, token=token, action=action, log=log
-        ):
-            return False
+    log.info("post-scrape → delete_unwanted_classified_jobs (Saral API)")
+    if not _postSaralAdminJobAction(
+        baseUrl=baseUrl,
+        token=token,
+        action="delete_unwanted_classified_jobs",
+        log=log,
+    ):
+        return False
 
-    log.info("post-scrape admin pipeline finished.")
+    if str(requested_validation_mode).strip().lstrip("-") != "1":
+        log.warning(
+            "post-scrape currently forces validation mode 1; "
+            f"ignoring --validation-mode={requested_validation_mode!r} for now."
+        )
+
+    log.info("post-scrape → validation (local Docker, validation.py -1)")
+    if not runLocalValidationContainer(
+        log, mode="1", rebuild=rebuild_validation
+    ):
+        return False
+
+    log.info("post-scrape pipeline finished.")
     return True
 
 
@@ -287,6 +450,13 @@ def main() -> int:
         log.info(
             "on-error: continue to next scraper (use --stop-on-error to abort)."
         )
+    requestedMode = str(args.validation_mode or "1").strip().lstrip("-")
+    if requestedMode not in {"1", "2", "3"}:
+        log.error(
+            f"invalid --validation-mode={args.validation_mode!r}; allowed: 1, 2, 3"
+        )
+        return 2
+    log.info(f"validation mode requested: {requestedMode} (post-scrape currently runs mode 1).")
 
     runStart = time.monotonic()
     results: list[tuple[str, int, float]] = []
@@ -334,7 +504,10 @@ def main() -> int:
     if scrapersOk:
         log.bindPhase("orchestrator")
         adminOk = runPostScrapeAdminPipeline(
-            log=log, skip=bool(args.skip_admin_actions)
+            log=log,
+            skip=bool(args.skip_admin_actions),
+            rebuild_validation=bool(args.rebuild_validation),
+            requested_validation_mode=requestedMode,
         )
         if not adminOk:
             return 1
