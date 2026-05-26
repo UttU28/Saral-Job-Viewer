@@ -19,27 +19,28 @@
 set -euo pipefail
 
 repoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-composeFile="${repoRoot}/docker-compose.yml"
+venvPython="${repoRoot}/venv/bin/python"
+validationPy="${repoRoot}/validation.py"
 
 mkdir -p "${repoRoot}/zata/cron"
 logFile="${repoRoot}/zata/cron/cleanAfterApply-$(date +%Y-%m-%d).log"
 echo "======== $(date -Is) cleanAfterApply start pid=$$ repo=${repoRoot} ========" >>"${logFile}"
 exec >>"${logFile}" 2>&1
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "error: docker not found on PATH" >&2
+if [[ ! -x "${venvPython}" ]]; then
+  echo "error: expected venv python at ${venvPython}" >&2
   exit 1
 fi
 
-if [[ ! -f "${composeFile}" ]]; then
-  echo "error: docker-compose.yml not found at ${composeFile}" >&2
+if [[ ! -f "${validationPy}" ]]; then
+  echo "error: validation.py not found at ${validationPy}" >&2
   exit 1
 fi
 
 echo "[step 1/2] apply jobs via validation mode -2"
-docker compose -f "${composeFile}" run --rm --no-deps dvalidate -2
+"${venvPython}" "${validationPy}" -2
 
 echo "[step 2/2] cleanup via validation mode -3 (delete unwanted + NULL, trim pastData >48h)"
-docker compose -f "${composeFile}" run --rm --no-deps dvalidate -3
+"${venvPython}" "${validationPy}" -3
 
 echo "cleanAfterApply completed successfully at $(date -Is)"
