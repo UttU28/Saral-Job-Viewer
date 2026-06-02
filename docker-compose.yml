@@ -1,24 +1,43 @@
-# Default: one-shot validation job (same as before).
+# Default: one-shot validation job.
 #   docker compose up
 #   docker compose up --build
 #
-# Local API + Redis (matches .env.example REDIS_URL=redis://sjv-redis:6379/0):
+# Local dev stack (Redis + API + UI on shared network sjv-net):
 #   docker compose --profile dev up --build
 #   docker compose --profile dev up -d
 #
 # Requires `.env` at repo root (see `.env.example`). For `api`, set at least
-# MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, MIDHTECH_*, GCP_* / RUN_JOB_NAME if
-# you use admin job triggers; REDIS_* as needed.
+# MONGODB_URI, MONGODB_DATABASE, JWT_SECRET, MIDHTECH_*; REDIS_* can use compose defaults.
 #
 # Optional: uncomment volumes on `api` to mount gcp-sa.json for local JobsClient.
+
+name: saral-job-viewer
+
+networks:
+  sjv-net:
+    driver: bridge
+
 services:
   sjv-redis:
     profiles: ["dev"]
-    image: redis:7-alpine
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.redis
+    image: saral-redis:local
     container_name: saral-sjv-redis
+    networks:
+      - sjv-net
     ports:
       - "6379:6379"
+    volumes:
+      - sjv-redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   api:
     profiles: ["dev"]
@@ -27,15 +46,40 @@ services:
       dockerfile: docker/Dockerfile.api
     image: saral-api:local
     container_name: saral-api-local
+    networks:
+      - sjv-net
     env_file:
       - .env
+    environment:
+      REDIS_ENABLED: "true"
+      REDIS_URL: redis://sjv-redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
-      - sjv-redis
+      sjv-redis:
+        condition: service_healthy
     init: true
+    restart: unless-stopped
     # volumes:
     #   - ./gcp-sa.json:/app/secrets/gcp-sa.json:ro
+
+  frontend:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        # Browser calls the API on the host-mapped port (not the Docker service name).
+        VITE_API_URL: http://localhost:8000
+    image: saral-ui:local
+    container_name: saral-ui-local
+    networks:
+      - sjv-net
+    ports:
+      - "8080:8080"
+    depends_on:
+      - api
+    restart: unless-stopped
 
   dvalidate:
     build:
@@ -43,7 +87,12 @@ services:
       dockerfile: docker/Dockerfile.validation
     image: saral-dvalidate:local
     container_name: saral-dvalidate
+    networks:
+      - sjv-net
     env_file:
       - .env
     command: ["-1"]
     init: true
+
+volumes:
+  sjv-redis-data:

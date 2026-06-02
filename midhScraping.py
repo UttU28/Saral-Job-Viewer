@@ -96,8 +96,18 @@ def parseArgs() -> argparse.Namespace:
         "--skip-admin-actions",
         action="store_true",
         help=(
-            "Do not call Saral admin APIs after a successful scrape "
-            "(delete_unwanted_classified_jobs, classify_all_pending_null_jobs)."
+            "Skip post-scrape steps: Saral API delete_unwanted_classified_jobs "
+            "and local validation script."
+        ),
+    )
+    parser.add_argument(
+        "--validation-mode",
+        type=str,
+        default="1",
+        help=(
+            "Validation mode for local dvalidate container "
+            "(1=verify pending NULL, 2=push APPLY jobs, 3=cleanup delete unwanted+NULL). "
+            "Current post-scrape flow always runs mode 1."
         ),
     )
     return parser.parse_args()
@@ -225,20 +235,98 @@ def _postSaralAdminJobAction(
     return True
 
 
-def runPostScrapeAdminPipeline(*, log: ScraperRunLog, skip: bool) -> bool:
+def _validationModeArg(mode: str) -> str:
+    """Map validation.py CLI mode: 1 -> -1, 2 -> -2, 3 -> -3."""
+    m = str(mode or "1").strip().lstrip("-")
+    if m in ("1", "2", "3"):
+        return f"-{m}"
+    if str(mode or "").startswith("-"):
+        return str(mode)
+    raise ValueError(f"unsupported validation mode: {mode!r}")
+
+
+def _resolveValidationPython() -> str:
+    venv_python = REPO_ROOT / "venv" / "bin" / "python"
+    if venv_python.is_file() and os.access(venv_python, os.X_OK):
+        return str(venv_python)
+    return sys.executable
+
+
+def runLocalValidationScript(
+    log: ScraperRunLog,
+    *,
+    mode: str = "1",
+) -> bool:
+    """Run validation.py directly via local venv/system Python."""
+    env_file = REPO_ROOT / ".env"
+    if not env_file.is_file():
+        log.error(f".env not found at {env_file}; required for validation.py.")
+        return False
+
+    try:
+        mode_arg = _validationModeArg(mode)
+    except ValueError as exc:
+        log.error(str(exc))
+        return False
+
+    log.bindPhase("validation-local")
+    validation_path = REPO_ROOT / "validation.py"
+    if not validation_path.is_file():
+        log.error(f"validation script not found: {validation_path}")
+        return False
+
+    python_bin = _resolveValidationPython()
+    cmd: list[str] = [python_bin, str(validation_path), mode_arg]
+
+    log.info(f"launching → {' '.join(cmd)}")
+    start = time.monotonic()
+    try:
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), check=False)
+    except KeyboardInterrupt:
+        elapsed = time.monotonic() - start
+        log.warning(
+            f"validation script interrupted after {_formatDuration(elapsed)}"
+        )
+        raise
+    except Exception as exc:
+        elapsed = time.monotonic() - start
+        log.error(f"failed to launch validation script: {exc!r}")
+        return False
+
+    elapsed = time.monotonic() - start
+    if proc.returncode == 0:
+        log.info(
+            f"validation script finished OK in {_formatDuration(elapsed)} "
+            f"(mode {mode_arg})"
+        )
+        return True
+    log.error(
+        f"validation script exited rc={proc.returncode} "
+        f"after {_formatDuration(elapsed)} (mode {mode_arg})"
+    )
+    return False
+
+
+def runPostScrapeAdminPipeline(
+    *,
+    log: ScraperRunLog,
+    skip: bool,
+    requested_validation_mode: str = "1",
+) -> bool:
     """
-    After all scrapers succeed: delete unwanted classified jobs, then classify NULL pending.
-    Returns True if completed or skipped successfully; False on login/API failure.
+    After all scrapers succeed: delete unwanted jobs via Saral API, then run local
+    validation via local validation.py.
+    Returns True if completed or skipped successfully; False on failure.
     """
     if skip:
-        log.info("skipping post-scrape admin actions (--skip-admin-actions).")
+        log.info("skipping post-scrape steps (--skip-admin-actions).")
         return True
 
     email = (os.getenv("MIDHTECH_EMAIL") or "").strip()
     password = os.getenv("MIDHTECH_PASSWORD") or ""
     if not email or not password:
         log.error(
-            "post-scrape admin actions require MIDHTECH_EMAIL and MIDHTECH_PASSWORD in .env."
+            "post-scrape admin delete requires MIDHTECH_EMAIL and MIDHTECH_PASSWORD in .env."
         )
         return False
 
@@ -252,18 +340,26 @@ def runPostScrapeAdminPipeline(*, log: ScraperRunLog, skip: bool) -> bool:
     if not token:
         return False
 
-    steps = (
-        "delete_unwanted_classified_jobs",
-        "classify_all_pending_null_jobs",
-    )
-    for action in steps:
-        log.info(f"admin pipeline → {action}")
-        if not _postSaralAdminJobAction(
-            baseUrl=baseUrl, token=token, action=action, log=log
-        ):
-            return False
+    log.info("post-scrape → delete_unwanted_classified_jobs (Saral API)")
+    if not _postSaralAdminJobAction(
+        baseUrl=baseUrl,
+        token=token,
+        action="delete_unwanted_classified_jobs",
+        log=log,
+    ):
+        return False
 
-    log.info("post-scrape admin pipeline finished.")
+    if str(requested_validation_mode).strip().lstrip("-") != "1":
+        log.warning(
+            "post-scrape currently forces validation mode 1; "
+            f"ignoring --validation-mode={requested_validation_mode!r} for now."
+        )
+
+    log.info("post-scrape → validation (local Python, validation.py -1)")
+    if not runLocalValidationScript(log, mode="1"):
+        return False
+
+    log.info("post-scrape pipeline finished.")
     return True
 
 
@@ -287,6 +383,13 @@ def main() -> int:
         log.info(
             "on-error: continue to next scraper (use --stop-on-error to abort)."
         )
+    requestedMode = str(args.validation_mode or "1").strip().lstrip("-")
+    if requestedMode not in {"1", "2", "3"}:
+        log.error(
+            f"invalid --validation-mode={args.validation_mode!r}; allowed: 1, 2, 3"
+        )
+        return 2
+    log.info(f"validation mode requested: {requestedMode} (post-scrape currently runs mode 1).")
 
     runStart = time.monotonic()
     results: list[tuple[str, int, float]] = []
@@ -334,7 +437,9 @@ def main() -> int:
     if scrapersOk:
         log.bindPhase("orchestrator")
         adminOk = runPostScrapeAdminPipeline(
-            log=log, skip=bool(args.skip_admin_actions)
+            log=log,
+            skip=bool(args.skip_admin_actions),
+            requested_validation_mode=requestedMode,
         )
         if not adminOk:
             return 1

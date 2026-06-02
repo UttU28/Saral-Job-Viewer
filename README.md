@@ -36,7 +36,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 - **MongoDB** (Atlas in production)  
 - **Redis** (optional locally via Docker; **Memorystore** + VPC connector in production API)  
 - **FastAPI**, **Uvicorn**, **Pydantic**  
-- **Docker** / **docker compose** for validation image and local API+Redis (`--profile dev`)  
+- **Docker** / **docker compose** for validation image and local stack (`--profile dev`: Redis + API + UI)  
 
 Dependencies for backend/scrapers: **`requirements.txt`**.
 
@@ -56,8 +56,9 @@ Dependencies for backend/scrapers: **`requirements.txt`**.
 ├── docker/
 │   ├── Dockerfile.api
 │   ├── Dockerfile.frontend
+│   ├── Dockerfile.redis
 │   └── Dockerfile.validation
-├── docker-compose.yml     # dvalidate default; api + redis with --profile dev
+├── docker-compose.yml     # dvalidate default; Redis + API + UI with --profile dev
 ├── .github/workflows/     # deployment, ensurePrereq, destroyStack, runValidationManual, setupMonitoring
 └── docs/                  # Architecture & CI/CD docs (see table above)
 ```
@@ -198,22 +199,24 @@ docker compose up --build
 
 Runs **`dvalidate`** with **`command: ["-1"]`** — adjust in **`docker-compose.yml`** if needed.
 
-### API + Redis (dev profile)
+### Local dev stack (dev profile: Redis + API + UI)
 
 ```powershell
 docker compose --profile dev up --build
 ```
 
-- API: **http://localhost:8000**  
-- Redis: **localhost:6379**  
+- UI: **http://localhost:8080** (nginx; **`VITE_API_URL`** baked as **`http://localhost:8000`**)
+- API: **http://localhost:8000** (waits for Redis healthcheck; **`REDIS_URL=redis://sjv-redis:6379/0`** on **`sjv-net`**)
+- Redis: **localhost:6379** (image **`docker/Dockerfile.redis`**, data volume **`sjv-redis-data`**)
 
 Mount **`gcp-sa.json`** only when testing Cloud Run Jobs API from local API (see commented **`volumes`** in **`docker-compose.yml`**).
 
 ### Build images individually
 
 ```powershell
+docker build -f docker/Dockerfile.redis -t saral-redis:local .
 docker build -f docker/Dockerfile.api -t saral-api:local .
-docker build -f docker/Dockerfile.frontend -t saral-ui:local .
+docker build -f docker/Dockerfile.frontend --build-arg VITE_API_URL=http://localhost:8000 -t saral-ui:local .
 docker build -f docker/Dockerfile.validation -t saral-dvalidate:local .
 ```
 
