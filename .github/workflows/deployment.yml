@@ -1,9 +1,10 @@
 name: Main Deploy
 
 on:
-  push:
-    branches:
-      - main
+  # Disabled: do not deploy on push to main (re-enable when ready)
+  # push:
+  #   branches:
+  #     - main
   workflow_dispatch:
 
 env:
