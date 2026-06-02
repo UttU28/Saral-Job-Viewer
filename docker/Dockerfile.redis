@@ -5,9 +5,9 @@ COPY docker/redis.conf /usr/local/etc/redis/redis.conf
 RUN mkdir -p /data && chown redis:redis /data
 
 VOLUME ["/data"]
-EXPOSE 6379
+EXPOSE 9262
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
-    CMD redis-cli ping | grep -q PONG
+    CMD redis-cli -p 9262 ping | grep -q PONG
 
 CMD ["redis-server", "/usr/local/etc/redis/redis.conf"]

@@ -32,11 +32,11 @@ import {
   setUserAdminStatus,
   saveAdminScraperKeywords,
   type AdminJobAction,
-  type CloudRunExecutionRow,
+  type ValidationExecutionRow,
 } from "@/lib/api";
 import { formatClientError } from "@/lib/api";
 import {
-  useAdminCloudRunExecutionsQuery,
+  useAdminValidationExecutionsQuery,
   useAdminJobStatusSummaryQuery,
   useAdminScraperKeywordsQuery,
   useAdminUsersQuery,
@@ -68,7 +68,7 @@ function formatDurationMs(ms: number): string {
   return `${s}s`;
 }
 
-function cloudRunExecutionTiming(row: CloudRunExecutionRow, nowMs: number): {
+function validationExecutionTiming(row: ValidationExecutionRow, nowMs: number): {
   startLabel: string;
   durationLabel: string;
   title: string;
@@ -103,7 +103,7 @@ function cloudRunExecutionTiming(row: CloudRunExecutionRow, nowMs: number): {
 }
 
 /** Suffix after the final hyphen in the execution tail (e.g. KVGZ4), for compact display. */
-function cloudRunExecutionDisplayId(shortName: string, executionName: string): string {
+function validationExecutionDisplayId(shortName: string, executionName: string): string {
   const raw = (shortName || executionName.split("/").filter(Boolean).pop() || "").trim();
   if (!raw) return "—";
   const i = raw.lastIndexOf("-");
@@ -111,8 +111,8 @@ function cloudRunExecutionDisplayId(shortName: string, executionName: string): s
   return suffix.toUpperCase();
 }
 
-const CLOUD_RUN_EXECUTIONS_INITIAL = 4;
-const CLOUD_RUN_ERROR_LIMIT = 5;
+const VALIDATION_EXECUTIONS_INITIAL = 4;
+const VALIDATION_ERROR_LIMIT = 5;
 
 function executionStateStyles(state: string): string {
   switch (state) {
@@ -145,16 +145,16 @@ type AdminActionDialogConfig = {
 export default function Admin() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [cloudRunPollingEnabled, setCloudRunPollingEnabled] = useState(true);
-  const [cloudRunErrorCount, setCloudRunErrorCount] = useState(0);
-  const [lastCloudRunErrorAt, setLastCloudRunErrorAt] = useState(0);
+  const [validationPollingEnabled, setValidationPollingEnabled] = useState(true);
+  const [validationErrorCount, setValidationErrorCount] = useState(0);
+  const [lastValidationErrorAt, setLastValidationErrorAt] = useState(0);
   const adminUsersQuery = useAdminUsersQuery(Boolean(user?.isAdmin));
   const adminJobStatusQuery = useAdminJobStatusSummaryQuery(Boolean(user?.isAdmin));
-  const cloudRunExecQuery = useAdminCloudRunExecutionsQuery(
-    Boolean(user?.isAdmin) && cloudRunPollingEnabled,
+  const validationExecQuery = useAdminValidationExecutionsQuery(
+    Boolean(user?.isAdmin) && validationPollingEnabled,
   );
   const adminScraperKeywordsQuery = useAdminScraperKeywordsQuery(Boolean(user?.isAdmin));
-  const [cloudRunExecutionsExpanded, setCloudRunExecutionsExpanded] = useState(false);
+  const [validationExecutionsExpanded, setValidationExecutionsExpanded] = useState(false);
   const [userListExpanded, setUserListExpanded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<AdminJobAction | null>(null);
@@ -162,16 +162,16 @@ export default function Admin() {
   const [newKeywordDraft, setNewKeywordDraft] = useState("");
   const [keywordMutationInFlight, setKeywordMutationInFlight] = useState(false);
   const [adminActionDialog, setAdminActionDialog] = useState<AdminActionDialogConfig | null>(null);
-  const [, forceCloudRunTick] = useReducer((value: number) => value + 1, 0);
+  const [, forceValidationTick] = useReducer((value: number) => value + 1, 0);
 
-  const cloudRunExecutionsAll = cloudRunExecQuery.data?.executions ?? [];
-  const hasRunningCloudExecution = cloudRunExecutionsAll.some((r) => r.state === "RUNNING");
+  const validationExecutionsAll = validationExecQuery.data?.executions ?? [];
+  const hasRunningValidation = validationExecutionsAll.some((r) => r.state === "RUNNING");
 
   useEffect(() => {
-    if (!hasRunningCloudExecution) return;
-    const id = globalThis.setInterval(() => forceCloudRunTick(), 1000);
+    if (!hasRunningValidation) return;
+    const id = globalThis.setInterval(() => forceValidationTick(), 1000);
     return () => clearInterval(id);
-  }, [hasRunningCloudExecution]);
+  }, [hasRunningValidation]);
 
   useEffect(() => {
     if (!adminScraperKeywordsQuery.data) return;
@@ -179,24 +179,24 @@ export default function Admin() {
   }, [adminScraperKeywordsQuery.data]);
 
   useEffect(() => {
-    if (!cloudRunExecQuery.isError) return;
-    if (!cloudRunExecQuery.errorUpdatedAt) return;
-    if (cloudRunExecQuery.errorUpdatedAt === lastCloudRunErrorAt) return;
-    setLastCloudRunErrorAt(cloudRunExecQuery.errorUpdatedAt);
-    setCloudRunErrorCount((prev) => {
+    if (!validationExecQuery.isError) return;
+    if (!validationExecQuery.errorUpdatedAt) return;
+    if (validationExecQuery.errorUpdatedAt === lastValidationErrorAt) return;
+    setLastValidationErrorAt(validationExecQuery.errorUpdatedAt);
+    setValidationErrorCount((prev) => {
       const next = prev + 1;
-      if (next >= CLOUD_RUN_ERROR_LIMIT) {
-        setCloudRunPollingEnabled(false);
+      if (next >= VALIDATION_ERROR_LIMIT) {
+        setValidationPollingEnabled(false);
       }
       return next;
     });
-  }, [cloudRunExecQuery.isError, cloudRunExecQuery.errorUpdatedAt, lastCloudRunErrorAt]);
+  }, [validationExecQuery.isError, validationExecQuery.errorUpdatedAt, lastValidationErrorAt]);
 
   useEffect(() => {
-    if (!cloudRunExecQuery.isSuccess) return;
-    if (cloudRunErrorCount === 0) return;
-    setCloudRunErrorCount(0);
-  }, [cloudRunExecQuery.isSuccess, cloudRunErrorCount]);
+    if (!validationExecQuery.isSuccess) return;
+    if (validationErrorCount === 0) return;
+    setValidationErrorCount(0);
+  }, [validationExecQuery.isSuccess, validationErrorCount]);
 
   if (!user?.isAdmin) {
     return (
@@ -224,11 +224,11 @@ export default function Admin() {
   const mergedRejectedCount =
     (statusSummary?.rejected ?? 0) + (statusSummary?.doNotApply ?? 0) + (statusSummary?.existing ?? 0);
 
-  const cloudRunExecutionsVisible =
-    cloudRunExecutionsExpanded || cloudRunExecutionsAll.length <= CLOUD_RUN_EXECUTIONS_INITIAL
-      ? cloudRunExecutionsAll
-      : cloudRunExecutionsAll.slice(0, CLOUD_RUN_EXECUTIONS_INITIAL);
-  const cloudRunHiddenCount = Math.max(0, cloudRunExecutionsAll.length - CLOUD_RUN_EXECUTIONS_INITIAL);
+  const validationExecutionsVisible =
+    validationExecutionsExpanded || validationExecutionsAll.length <= VALIDATION_EXECUTIONS_INITIAL
+      ? validationExecutionsAll
+      : validationExecutionsAll.slice(0, VALIDATION_EXECUTIONS_INITIAL);
+  const validationHiddenCount = Math.max(0, validationExecutionsAll.length - VALIDATION_EXECUTIONS_INITIAL);
 
   const onToggleAdmin = async (targetUserId: string, nextIsAdmin: boolean) => {
     setUpdatingUserId(targetUserId);
@@ -264,11 +264,11 @@ export default function Admin() {
         await queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
       }
-      if (result.cloudRun?.executionName) {
-        await queryClient.invalidateQueries({ queryKey: ["adminCloudRunExecutions"] });
+      if (result.validationRun?.executionName) {
+        await queryClient.invalidateQueries({ queryKey: ["adminValidationExecutions"] });
       }
-      const execLabel = result.cloudRun?.executionName
-        ? cloudRunExecutionDisplayId("", result.cloudRun.executionName)
+      const execLabel = result.validationRun?.executionName
+        ? validationExecutionDisplayId("", result.validationRun.executionName)
         : "";
       toast({
         title:
@@ -428,9 +428,9 @@ export default function Admin() {
                           openAdminActionDialog({
                             action: "classify_all_pending_null_jobs",
                             runTitle: "Classify pending null jobs",
-                            title: "Run Cloud Run classify job?",
+                            title: "Run validation classify job?",
                             description:
-                              "This will trigger a Cloud Run container job for pending classification. It can take some time to execute and finish.",
+                              "This will start a local Docker validation container for pending classification. It can take some time to execute and finish.",
                             confirmLabel: "Yes, run classify job",
                           })
                         }
@@ -505,7 +505,7 @@ export default function Admin() {
 
                     <div className="space-y-2 rounded-lg border border-border/60 bg-background/55 p-3">
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Pushes APPLY jobs to the suggest API using Cloud Run job mode 2.
+                        Pushes APPLY jobs to the suggest API using validation mode 2.
                       </p>
                       <Button
                         type="button"
@@ -516,9 +516,9 @@ export default function Admin() {
                           openAdminActionDialog({
                             action: "push_apply_jobs",
                             runTitle: "Push APPLY jobs",
-                            title: "Run Cloud Run apply job?",
+                            title: "Run validation apply job?",
                             description:
-                              "This will trigger a Cloud Run container job to process APPLY jobs. It can take some time to execute and finish.",
+                              "This will start a local Docker validation container to process APPLY jobs. It can take some time to execute and finish.",
                             confirmLabel: "Yes, run apply job",
                           })
                         }
@@ -538,9 +538,9 @@ export default function Admin() {
             <div className="rounded-2xl border border-border bg-card/45 p-4 sm:p-5">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1 min-w-0">
-                  <h2 className="text-sm sm:text-base font-semibold text-foreground">Cloud Run job executions</h2>
+                  <h2 className="text-sm sm:text-base font-semibold text-foreground">Validation runs</h2>
                   <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                    Recent runs of your configured validation job (newest first on each page).
+                    Recent local Docker validation containers (newest first on each page).
                   </p>
                 </div>
                 <Button
@@ -548,45 +548,45 @@ export default function Admin() {
                   variant="outline"
                   size="sm"
                   className="shrink-0 self-start"
-                  disabled={cloudRunExecQuery.isFetching}
+                  disabled={validationExecQuery.isFetching}
                   onClick={() => {
-                    setCloudRunErrorCount(0);
-                    setLastCloudRunErrorAt(0);
-                    setCloudRunPollingEnabled(true);
-                    queryClient.invalidateQueries({ queryKey: ["adminCloudRunExecutions"] });
+                    setValidationErrorCount(0);
+                    setLastValidationErrorAt(0);
+                    setValidationPollingEnabled(true);
+                    queryClient.invalidateQueries({ queryKey: ["adminValidationExecutions"] });
                   }}
                 >
                   <RefreshCw
-                    className={cn("h-4 w-4 mr-2", cloudRunExecQuery.isFetching && "animate-spin")}
+                    className={cn("h-4 w-4 mr-2", validationExecQuery.isFetching && "animate-spin")}
                     aria-hidden
                   />
                   Refresh
                 </Button>
               </div>
-              {cloudRunExecQuery.isLoading ? (
+              {validationExecQuery.isLoading ? (
                 <div className="h-24 flex items-center justify-center text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin mr-2" />
                   Loading executions…
                 </div>
-              ) : cloudRunExecQuery.isError ? (
+              ) : validationExecQuery.isError ? (
                 <Alert variant="destructive" className="rounded-xl">
-                  <AlertTitle>Could not load Cloud Run executions</AlertTitle>
+                  <AlertTitle>Could not load validation runs</AlertTitle>
                   <AlertDescription>
-                    {formatClientError(cloudRunExecQuery.error, "Check GCP credentials and RUN_JOB_NAME / region.")}
-                    {cloudRunErrorCount >= CLOUD_RUN_ERROR_LIMIT ? (
+                    {formatClientError(validationExecQuery.error, "Check Docker is running and the API container has access to /var/run/docker.sock.")}
+                    {validationErrorCount >= VALIDATION_ERROR_LIMIT ? (
                       <span className="block mt-1">
-                        Auto-requests paused after {CLOUD_RUN_ERROR_LIMIT} errors. Click Refresh to try again.
+                        Auto-requests paused after {VALIDATION_ERROR_LIMIT} errors. Click Refresh to try again.
                       </span>
                     ) : null}
                   </AlertDescription>
                 </Alert>
               ) : (
                 <div className="space-y-2">
-                  {cloudRunExecutionsAll.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No executions returned for this job yet.</p>
+                  {validationExecutionsAll.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No validation runs yet.</p>
                   ) : null}
-                  {cloudRunExecutionsVisible.map((row) => {
-                    const timing = cloudRunExecutionTiming(row, Date.now());
+                  {validationExecutionsVisible.map((row) => {
+                    const timing = validationExecutionTiming(row, Date.now());
                     return (
                     <div
                       key={row.executionName}
@@ -605,7 +605,7 @@ export default function Admin() {
                           className="font-mono text-sm font-semibold tabular-nums tracking-wide text-foreground"
                           title={row.executionName}
                         >
-                          {cloudRunExecutionDisplayId(row.shortName, row.executionName)}
+                          {validationExecutionDisplayId(row.shortName, row.executionName)}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] sm:text-xs text-muted-foreground tabular-nums">
@@ -626,24 +626,24 @@ export default function Admin() {
                     </div>
                     );
                   })}
-                  {cloudRunHiddenCount > 0 ? (
+                  {validationHiddenCount > 0 ? (
                     <div className="pt-1">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => setCloudRunExecutionsExpanded((v) => !v)}
+                        onClick={() => setValidationExecutionsExpanded((v) => !v)}
                       >
-                        {cloudRunExecutionsExpanded
+                        {validationExecutionsExpanded
                           ? "Show less"
-                          : `Show more (${cloudRunHiddenCount} older)`}
+                          : `Show more (${validationHiddenCount} older)`}
                       </Button>
                     </div>
                   ) : null}
-                  {cloudRunExecQuery.data?.nextPageToken ? (
+                  {validationExecQuery.data?.nextPageToken ? (
                     <p className="text-[11px] text-muted-foreground pt-1">
-                      More executions exist in GCP; only the first page is shown here.
+                      More validation runs exist; only the first page is shown here.
                     </p>
                   ) : null}
                 </div>

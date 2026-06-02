@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import {
-  fetchAdminCloudRunExecutions,
+  fetchAdminValidationExecutions,
   fetchAdminJobStatusSummary,
   fetchAdminScraperKeywords,
   fetchAdminUsers,
@@ -98,10 +98,10 @@ export function useAdminJobStatusSummaryQuery(enabled: boolean) {
   });
 }
 
-export function useAdminCloudRunExecutionsQuery(enabled: boolean) {
+export function useAdminValidationExecutionsQuery(enabled: boolean) {
   return useQuery({
-    queryKey: ["adminCloudRunExecutions"],
-    queryFn: () => fetchAdminCloudRunExecutions({ limit: 25 }),
+    queryKey: ["adminValidationExecutions"],
+    queryFn: () => fetchAdminValidationExecutions({ limit: 25 }),
     retry: false,
     staleTime: 5_000,
     enabled,

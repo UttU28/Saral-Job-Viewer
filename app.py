@@ -1,6 +1,6 @@
 """
 FastAPI backend for the job viewer UI: paginated MongoDB reads with filters.
-Run: uvicorn app:app --host 0.0.0.0 --port 8000
+Run: uvicorn app:app --host 0.0.0.0 --port 9260
 """
 from __future__ import annotations
 
@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from google.cloud import run_v2
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
@@ -68,6 +67,11 @@ from utils.redisCache import (
     keyProfileCurrentWeekAccepts,
     keyProfileWeeklyReport,
     setCachedJson,
+)
+from utils.validationDocker import (
+    fetchValidationExecutionStatus,
+    listValidationExecutions,
+    triggerValidationContainer,
 )
 
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
@@ -143,130 +147,6 @@ def _adminStatusDebugSnapshot() -> dict[str, int]:
         "redo": int(snap.get("redo") or 0),
         "otherStatus": int(snap.get("otherStatus") or 0),
     }
-
-
-def _cloudRunConfigFromEnv() -> tuple[str, str, str]:
-    projectId = str(os.getenv("GCP_PROJECT_ID") or "").strip()
-    region = str(os.getenv("GCP_REGION") or "").strip()
-    jobName = str(os.getenv("RUN_JOB_NAME") or "").strip()
-    if not projectId or not region or not jobName:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                "Cloud Run job config missing. Set GCP_PROJECT_ID, GCP_REGION, and RUN_JOB_NAME "
-                "in backend environment."
-            ),
-        )
-    return projectId, region, jobName
-
-
-def _executionStateFromExecution(execution: run_v2.Execution) -> str:
-    if int(getattr(execution, "failed_count", 0) or 0) > 0:
-        return "FAILED"
-    if int(getattr(execution, "succeeded_count", 0) or 0) > 0:
-        return "SUCCEEDED"
-    if int(getattr(execution, "cancelled_count", 0) or 0) > 0:
-        return "CANCELLED"
-    return "RUNNING"
-
-
-def _executionShortName(fullName: str) -> str:
-    parts = str(fullName or "").rstrip("/").split("/")
-    return parts[-1] if parts else str(fullName or "")
-
-
-def _executionToPayload(execution: run_v2.Execution) -> dict[str, Any]:
-    """Serialize a Cloud Run v2 Execution for API responses."""
-    full_name = str(getattr(execution, "name", "") or "")
-    return {
-        "executionName": full_name,
-        "shortName": _executionShortName(full_name),
-        "jobName": str(getattr(execution, "job", "") or ""),
-        "state": _executionStateFromExecution(execution),
-        "succeededCount": int(getattr(execution, "succeeded_count", 0) or 0),
-        "failedCount": int(getattr(execution, "failed_count", 0) or 0),
-        "cancelledCount": int(getattr(execution, "cancelled_count", 0) or 0),
-        "runningCount": int(getattr(execution, "running_count", 0) or 0),
-        "startTime": str(getattr(execution, "start_time", "") or ""),
-        "completionTime": str(getattr(execution, "completion_time", "") or ""),
-    }
-
-
-def listCloudRunExecutions(*, limit: int, pageToken: str = "") -> dict[str, Any]:
-    """List recent executions for the configured job (newest first within each page)."""
-    projectId, region, jobName = _cloudRunConfigFromEnv()
-    jobs_client = run_v2.JobsClient()
-    executions_client = run_v2.ExecutionsClient()
-    full_job_name = jobs_client.job_path(projectId, region, jobName)
-    cap = min(max(1, limit), 50)
-    request = run_v2.ListExecutionsRequest(
-        parent=full_job_name,
-        page_size=cap,
-        page_token=str(pageToken or "").strip(),
-    )
-    pager = executions_client.list_executions(request=request)
-    page = next(iter(pager.pages))
-    executions = [_executionToPayload(ex) for ex in page.executions]
-    return {
-        "parentJob": full_job_name,
-        "executions": executions,
-        "nextPageToken": str(getattr(page, "next_page_token", "") or ""),
-    }
-
-
-def triggerCloudRunJob(*, modeNumber: str) -> dict[str, str]:
-    projectId, region, jobName = _cloudRunConfigFromEnv()
-    jobsClient = run_v2.JobsClient()
-    executionsClient = run_v2.ExecutionsClient()
-    fullJobName = jobsClient.job_path(projectId, region, jobName)
-    runRequest = run_v2.RunJobRequest(
-        name=fullJobName,
-        overrides=run_v2.RunJobRequest.Overrides(
-            container_overrides=[
-                run_v2.RunJobRequest.Overrides.ContainerOverride(
-                    args=["validation.py", f"-{modeNumber}"]
-                )
-            ]
-        ),
-    )
-    operation = jobsClient.run_job(request=runRequest)
-    operationName = str(getattr(getattr(operation, "operation", None), "name", "") or "")
-
-    executionName = ""
-    try:
-        latestExecution = next(iter(executionsClient.list_executions(parent=fullJobName)), None)
-        if latestExecution is not None:
-            executionName = str(getattr(latestExecution, "name", "") or "")
-    except Exception:
-        executionName = ""
-
-    logger.info(
-        "[CLOUD_RUN_TRIGGER] job=%s mode=%s operation=%s execution=%s",
-        fullJobName,
-        modeNumber,
-        operationName or "n/a",
-        executionName or "n/a",
-    )
-    return {
-        "projectId": projectId,
-        "region": region,
-        "jobName": jobName,
-        "fullJobName": fullJobName,
-        "operationName": operationName,
-        "executionName": executionName,
-    }
-
-
-def fetchCloudRunExecutionStatus(*, executionName: str) -> dict[str, Any]:
-    name = str(executionName or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="executionName is required.")
-    executionsClient = run_v2.ExecutionsClient()
-    execution = executionsClient.get_execution(name=name)
-    payload = _executionToPayload(execution)
-    if name and not payload.get("executionName"):
-        payload["executionName"] = name
-    return payload
 
 
 @app.middleware("http")
@@ -348,7 +228,7 @@ app.add_middleware(
 
 @app.get("/")
 def root():
-    """Cloud Run root URL has no nginx path prefix; API lives under /api/…."""
+    """API routes live under /api/… (no path prefix on the root URL)."""
     return {
         "service": "saral-job-viewer-api",
         "health": "/api/health",
@@ -511,24 +391,24 @@ def postAdminJobAction(
     }
     logger.info("[ADMIN_ACTION_START] action=%s admin=%s", action, adminDetails)
     if action == "classify_all_pending_null_jobs":
-        cloudRun = triggerCloudRunJob(modeNumber="1")
-        message = "Verify job started on Cloud Run."
+        validationRun = triggerValidationContainer(modeNumber="1")
+        message = "Validation container started for pending classification."
         return {
             "ok": True,
             "action": action,
             "admin": adminDetails,
             "message": message,
-            "cloudRun": cloudRun,
+            "validationRun": validationRun,
         }
     if action in {"push_apply_jobs", "push_apply_jobs_then_cleanup"}:
-        cloudRun = triggerCloudRunJob(modeNumber="2")
-        message = "Apply job started on Cloud Run."
+        validationRun = triggerValidationContainer(modeNumber="2")
+        message = "Validation container started to process APPLY jobs."
         return {
             "ok": True,
             "action": action,
             "admin": adminDetails,
             "message": message,
-            "cloudRun": cloudRun,
+            "validationRun": validationRun,
         }
 
     before = _adminStatusDebugSnapshot()
@@ -661,9 +541,9 @@ def postAdminJobExecutionStatus(
     currentUser: dict[str, Any] = Depends(requireAdmin),
 ):
     try:
-        statusPayload = fetchCloudRunExecutionStatus(executionName=body.executionName)
+        statusPayload = fetchValidationExecutionStatus(executionName=body.executionName)
         logger.info(
-            "[CLOUD_RUN_STATUS] admin=%s execution=%s state=%s",
+            "[VALIDATION_STATUS] admin=%s execution=%s state=%s",
             str(currentUser.get("email") or ""),
             statusPayload.get("executionName"),
             statusPayload.get("state"),
@@ -675,17 +555,17 @@ def postAdminJobExecutionStatus(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.get("/api/admin/jobs/cloud-run-executions")
-def getAdminCloudRunExecutions(
+@app.get("/api/admin/jobs/validation-executions")
+def getAdminValidationExecutions(
     limit: int = Query(default=20, ge=1, le=50),
     page_token: str = Query(default="", alias="pageToken"),
     currentUser: dict[str, Any] = Depends(requireAdmin),
 ):
     try:
-        payload = listCloudRunExecutions(limit=limit, pageToken=page_token)
+        payload = listValidationExecutions(limit=limit, pageToken=page_token)
         running = sum(1 for row in payload["executions"] if row.get("state") == "RUNNING")
         logger.info(
-            "[CLOUD_RUN_LIST] admin=%s count=%s runningInPage=%s",
+            "[VALIDATION_LIST] admin=%s count=%s runningInPage=%s",
             str(currentUser.get("email") or ""),
             len(payload.get("executions") or []),
             running,
@@ -918,7 +798,7 @@ if __name__ == "__main__":
     import uvicorn
 
     host = (os.getenv("API_HOST") or "0.0.0.0").strip()
-    port = int((os.getenv("API_PORT") or "8000").strip())
+    port = int((os.getenv("API_PORT") or "9260").strip())
     uvicorn.run("app:app", host=host, port=port, reload=True)
 
 # deployTouch: 2026-05-10T16:11:17Z

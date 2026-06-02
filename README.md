@@ -1,6 +1,6 @@
 ﻿# Saral Job Viewer
 
-End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter) write to **MongoDB**, a **FastAPI** backend serves cached reads with **Redis**, a **Vite/React** SPA is the primary UI (jobs, auth, admin), and **`validation.py`** checks and pushes listings to **Midhtech**. Production runs on **Google Cloud** (Cloud Run, Memorystore, global HTTPS LB, Artifact Registry, Secret Manager) with **GitHub Actions** (Workload Identity Federation — no long-lived keys in the repo).
+End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter) write to **MongoDB**, a **FastAPI** backend serves cached reads with **Redis**, a **Vite/React** SPA is the primary UI (jobs, auth, admin), and **`validation.py`** checks and pushes listings to **Midhtech**. Deploy the full stack with **`./deploy.sh`** (Docker + nginx + SSL).
 
 ---
 
@@ -22,7 +22,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 | Layer | Role |
 |-------|------|
 | **Scrapers** | **`scraping/aJobRight.py`**, **`scraping/bGlassDoor.py`**, **`scraping/cZipRecruiter.py`** — Selenium/Chrome; persist via **`utils/dataManager.py`**. Run all in order from root: **`python midhScraping.py`**. |
-| **API** | **`app.py`** — FastAPI: job queries, filters, auth (JWT), admin (users, scraper keywords, cache bust, Cloud Run job trigger), Redis-backed caching (**`utils/redisCache.py`**). |
+| **API** | **`app.py`** — FastAPI: job queries, filters, auth (JWT), admin (users, scraper keywords, cache bust, local Docker validation trigger), Redis-backed caching (**`utils/redisCache.py`**). |
 | **Frontend** | **`frontend/`** — Vite + React + TypeScript + Tailwind/Radix (`npm run dev` / `npm run build`). Calls API using **`VITE_API_URL`**. |
 | **Validation** | **`validation.py`** — Midhtech validation/suggest flow against MongoDB (`-1` pending checks, `-2` push APPLY jobs). Same logic ships in **`docker/Dockerfile.validation`** as **`saral-dvalidate-job`** on a schedule. |
 | **Utilities** | **`utils/`** — data access, Midhtech client, JWT/auth helpers, job decisions, weekly stats, Redis, scraper helpers. |
@@ -36,7 +36,7 @@ End-to-end job pipeline: **browser scrapers** (JobRight, Glassdoor, ZipRecruiter
 - **MongoDB** (Atlas in production)  
 - **Redis** (optional locally via Docker; **Memorystore** + VPC connector in production API)  
 - **FastAPI**, **Uvicorn**, **Pydantic**  
-- **Docker** / **docker compose** for validation image and local stack (`--profile dev`: Redis + API + UI)  
+- **Docker** / **docker compose** — single stack: Redis, API, UI, nginx, certbot (`./deploy.sh`)
 
 Dependencies for backend/scrapers: **`requirements.txt`**.
 
@@ -58,8 +58,8 @@ Dependencies for backend/scrapers: **`requirements.txt`**.
 │   ├── Dockerfile.frontend
 │   ├── Dockerfile.redis
 │   └── Dockerfile.validation
-├── docker-compose.yml     # dvalidate default; Redis + API + UI with --profile dev
-├── .github/workflows/     # deployment, ensurePrereq, destroyStack, runValidationManual, setupMonitoring
+├── docker-compose.yml     # Redis + API + UI + nginx + certbot
+├── deploy.sh              # Build, SSL, and start the stack
 └── docs/                  # Architecture & CI/CD docs (see table above)
 ```
 
@@ -93,21 +93,20 @@ Chrome binary path, dedicated profile directory, port, headless flags. Search ke
 
 ### API & frontend URL
 
-- **`API_HOST`**, **`API_PORT`** — local API bind  
-- **`VITE_API_URL`** — browser-facing API base URL (local dev: `http://127.0.0.1:8000`; production SPA build: public HTTPS API URL, typically set via **Secret Manager** in **`deployment.yml`**)
+- **`SARAL_DOMAIN`**, **`SARAL_SSL_EMAIL`** — required for `./deploy.sh` (Let's Encrypt)
+- **`VITE_API_URL`** — `https://saral.thatinsaneguy.com` (same origin; `/api` proxied by nginx)
+- **`SARAL_API_BASE_URL`** — public API base for scraper admin callbacks
 
 ### Redis (API cache)
 
-- **`REDIS_ENABLED`**, **`REDIS_URL`**, **`REDIS_PREFIX`**, TTL/timeouts — local compose uses **`redis://sjv-redis:6379/0`** on the **`dev`** profile  
+- **`REDIS_ENABLED`**, **`REDIS_URL`**, **`REDIS_PREFIX`**, TTL/timeouts — internal **`redis://sjv-redis:9262/0`**
 
-### Cloud Run job trigger (API only)
+### Docker validation (Admin UI triggers on demand)
 
-When the UI/admin triggers the validation job from GCP:
+- **`VALIDATION_IMAGE`** — default **`saral-dvalidate:latest`**
+- **`VALIDATION_DOCKER_NETWORK`** — default **`saral-job-viewer_sjv-net`**
 
-- **`GOOGLE_APPLICATION_CREDENTIALS`** — path to SA JSON when running locally (compose snippet in **`docker-compose.yml`** comments)  
-- **`GCP_PROJECT_ID`**, **`GCP_REGION`**, **`RUN_JOB_NAME`** — default **`saral-dvalidate-job`**  
-
-Production uses **Workload Identity** / runtime SA on Cloud Run — no key baked into images.
+The API container needs **`/var/run/docker.sock`** mounted (see **`docker-compose.yml`**) to start validation containers on demand.
 
 ---
 
@@ -191,59 +190,40 @@ Install **`tqdm`** for per-process progress bars (`requirements.txt` includes it
 
 ## Docker
 
-### Validation image (default compose service)
+Set in `.env`:
 
-```powershell
-docker compose up --build
+```env
+SARAL_DOMAIN=saral.thatinsaneguy.com
+SARAL_SSL_EMAIL=you@thatinsaneguy.com
+VITE_API_URL=https://saral.thatinsaneguy.com
+SARAL_API_BASE_URL=https://saral.thatinsaneguy.com
 ```
 
-Runs **`dvalidate`** with **`command: ["-1"]`** — adjust in **`docker-compose.yml`** if needed.
+Point DNS **A** record for `saral.thatinsaneguy.com` at the server, open ports **80** and **443**, then:
 
-### Local dev stack (dev profile: Redis + API + UI)
-
-```powershell
-docker compose --profile dev up --build
+```bash
+./deploy.sh
 ```
 
-- UI: **http://localhost:8080** (nginx; **`VITE_API_URL`** baked as **`http://localhost:8000`**)
-- API: **http://localhost:8000** (waits for Redis healthcheck; **`REDIS_URL=redis://sjv-redis:6379/0`** on **`sjv-net`**)
-- Redis: **localhost:6379** (image **`docker/Dockerfile.redis`**, data volume **`sjv-redis-data`**)
+| URL | Service |
+|-----|---------|
+| `https://saral.thatinsaneguy.com` | Frontend |
+| `https://saral.thatinsaneguy.com/api/*` | Backend |
 
-Mount **`gcp-sa.json`** only when testing Cloud Run Jobs API from local API (see commented **`volumes`** in **`docker-compose.yml`**).
+`deploy.sh` builds all images, starts the stack, obtains Let's Encrypt SSL on first run, and runs a certbot sidecar for renewal. The validation image is built but not started — trigger it from the Admin UI.
 
-### Build images individually
+Manual validation:
 
-```powershell
-docker build -f docker/Dockerfile.redis -t saral-redis:local .
-docker build -f docker/Dockerfile.api -t saral-api:local .
-docker build -f docker/Dockerfile.frontend --build-arg VITE_API_URL=http://localhost:8000 -t saral-ui:local .
-docker build -f docker/Dockerfile.validation -t saral-dvalidate:local .
+```bash
+docker run --rm --network saral-job-viewer_sjv-net --env-file .env saral-dvalidate:latest -1
+docker run --rm --network saral-job-viewer_sjv-net --env-file .env saral-dvalidate:latest -2
 ```
-
----
-
-## CI/CD (GitHub Actions → GCP)
-
-Production deploy identity uses **OIDC → GCP service account** (secrets **`GCP_WORKLOAD_IDENTITY_PROVIDER`**, **`GCP_SERVICE_ACCOUNT`**); runtime uses **`GCP_API_RUN_SERVICE_ACCOUNT`**.
-
-| Workflow | Purpose |
-|----------|---------|
-| **`deployment.yml`** | Path-filtered builds; **`production-approval`** on `main`; deploy **`saral-api`**, **`saral-ui`**, **`saral-dvalidate-job`** + Cloud Scheduler; **`ensureGlobalLoadBalancer`** after API/UI jobs when applicable. |
-| **`ensurePrereq.yml`** | Bootstrap: APIs, secret/image checks; optional Memorystore + VPC connector; optional Cloud Run domain mappings (**not** the global LB). |
-| **`destroyStack.yml`** | Confirmed teardown; optional LB delete; parallel Run service deletes; job + Scheduler; Redis/VPC ordering as scripted. |
-| **`runValidationManual.yml`** | One-off job execution + optional wait. |
-| **`setupMonitoring.yml`** | Manual: Monitoring dashboard + uptime checks + alert policies (definitions embedded in workflow); repo secret **`MONITORING_ALERT_EMAIL`** unless **`skipNotificationChannelAndAlerts`**. |
-
-Detailed secrets, LB object names, and IAM for the pipeline SA: **[docs/CICD-FULL-STACK.md](docs/CICD-FULL-STACK.md)**.
-
-**Typical flow:** push to **`main`** or dispatch **`deployment.yml`** → approval → deploy changed paths → LB sync when UI/API change → optionally run **`setupMonitoring.yml`** after DNS/LB are stable.
 
 ---
 
 ## Security
 
-- Do not commit **`.env`** or service-account JSON.  
-- Production paths use **Secret Manager** and **WIF** — avoid **`gcp-sa.json`** in Cloud Run images for normal operation.  
+- Do not commit **`.env`** or credentials.
 - Rotate **`JWT_SECRET`** and Midhtech credentials per your policy.
 
 ---
@@ -259,4 +239,4 @@ python klean.py
 
 ## Resource naming
 
-Internal project name **Saral Job Viewer**; GCP resources and workflows use prefixes such as **`sjv-`** / **`saral-`** as listed in **[docs/GCP-PLATFORM-KT.md](docs/GCP-PLATFORM-KT.md)**.
+Internal project name **Saral Job Viewer**; Docker images use **`saral-*:latest`** tags.

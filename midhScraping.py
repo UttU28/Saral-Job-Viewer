@@ -141,7 +141,7 @@ def _saralApiBaseUrl() -> str:
     raw = (os.getenv("SARAL_API_BASE_URL") or os.getenv("VITE_API_URL") or "").strip()
     if raw:
         return raw.rstrip("/")
-    return "http://127.0.0.1:8000"
+    return os.getenv("SARAL_API_BASE_URL", "http://127.0.0.1:9260").rstrip("/")
 
 
 def _loginSaralAdminAndGetToken(

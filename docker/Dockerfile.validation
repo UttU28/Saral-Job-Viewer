@@ -16,7 +16,7 @@ RUN pip install --upgrade pip \
 
 COPY utils/ ./utils/
 COPY validation.py .
-# Runtime env/secrets from Cloud Run (do not bake .env into image).
+# Runtime env from compose / docker run (do not bake .env into image).
 
 ENTRYPOINT ["python", "validation.py"]
 CMD ["-1"]

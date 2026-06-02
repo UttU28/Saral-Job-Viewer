@@ -57,7 +57,7 @@ def getRedisClient():
         _redisUnavailable = True
         return None
     try:
-        redisUrl = str(os.getenv("REDIS_URL") or "redis://127.0.0.1:6379/0").strip()
+        redisUrl = str(os.getenv("REDIS_URL") or "redis://127.0.0.1:9262/0").strip()
         socketTimeoutMs = int(str(os.getenv("REDIS_SOCKET_TIMEOUT_MS") or "500").strip())
         socketConnectTimeoutMs = int(str(os.getenv("REDIS_CONNECT_TIMEOUT_MS") or "500").strip())
         client = redis.Redis.from_url(

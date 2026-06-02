@@ -2,10 +2,14 @@ FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    API_PORT=9260
 
 WORKDIR /app
-RUN mkdir -p /app/secrets
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends docker.io \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir \
@@ -15,15 +19,14 @@ RUN pip install --upgrade pip \
         "uvicorn[standard]>=0.30.0,<1" \
         "pymongo>=4.6,<5" \
         "dnspython>=2.0.0,<3" \
-        "redis>=5.0.0,<6" \
-        "google-cloud-run>=0.10.16,<1"
+        "redis>=5.0.0,<6"
 
 COPY app.py .
 COPY utils/ ./utils/
 
-EXPOSE 8000
+EXPOSE 9260
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=4)" || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9260/api/health', timeout=4)" || exit 1
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app:app --host 0.0.0.0 --port ${API_PORT:-9260}"]

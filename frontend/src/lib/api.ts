@@ -320,16 +320,16 @@ export function fetchAdminJobStatusSummary(): Promise<AdminJobStatusSummaryRespo
   return fetchJson<AdminJobStatusSummaryResponse>("/api/admin/jobs/status-summary");
 }
 
-export type AdminJobCloudRunInfo = {
-  projectId: string;
-  region: string;
-  jobName: string;
-  fullJobName: string;
-  operationName: string;
+export type AdminJobValidationRunInfo = {
+  image: string;
+  network: string;
+  containerName: string;
+  containerId: string;
   executionName: string;
+  mode: string;
 };
 
-export type CloudRunExecutionRow = {
+export type ValidationExecutionRow = {
   executionName: string;
   shortName: string;
   jobName: string;
@@ -342,18 +342,18 @@ export type CloudRunExecutionRow = {
   completionTime: string;
 };
 
-export type AdminCloudRunExecutionsResponse = {
+export type AdminValidationExecutionsResponse = {
   ok: boolean;
   parentJob: string;
-  executions: CloudRunExecutionRow[];
+  executions: ValidationExecutionRow[];
   nextPageToken: string;
 };
 
-export function fetchAdminCloudRunExecutions(params?: {
+export function fetchAdminValidationExecutions(params?: {
   limit?: number;
   pageToken?: string;
-}): Promise<AdminCloudRunExecutionsResponse> {
-  return fetchJson<AdminCloudRunExecutionsResponse>("/api/admin/jobs/cloud-run-executions", {
+}): Promise<AdminValidationExecutionsResponse> {
+  return fetchJson<AdminValidationExecutionsResponse>("/api/admin/jobs/validation-executions", {
     limit: params?.limit != null ? String(params.limit) : undefined,
     pageToken: params?.pageToken,
   });
@@ -365,7 +365,7 @@ export type AdminJobActionResponse = {
   message: string;
   deletedCount?: number;
   pastDeletedCount?: number;
-  cloudRun?: AdminJobCloudRunInfo;
+  validationRun?: AdminJobValidationRunInfo;
   flushed?: {
     jobDataDeleted?: number;
     pastDataDeleted?: number;
