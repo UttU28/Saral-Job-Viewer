@@ -107,6 +107,7 @@ export async function fetchJobList(params: {
   platform?: string;
   applyStatus?: string;
   search?: string;
+  category?: string;
 }): Promise<JobListResponse> {
   return fetchJson<JobListResponse>("/api/jobs", {
     page: String(params.page),
@@ -114,6 +115,7 @@ export async function fetchJobList(params: {
     platform: params.platform,
     applyStatus: params.applyStatus,
     search: params.search,
+    category: params.category,
   });
 }
 
@@ -123,6 +125,10 @@ export async function fetchJobSummary(): Promise<JobSummary> {
 
 export async function fetchJobPlatforms(): Promise<{ platforms: string[] }> {
   return fetchJson<{ platforms: string[] }>("/api/jobs/platforms");
+}
+
+export async function fetchJobCategories(): Promise<{ categories: string[] }> {
+  return fetchJson<{ categories: string[] }>("/api/jobs/categories");
 }
 
 export async function fetchJobDetail(jobId: string): Promise<JobRow> {

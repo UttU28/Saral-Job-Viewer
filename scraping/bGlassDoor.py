@@ -1140,7 +1140,9 @@ def scrapeGlassdoorSearch(
                 jobUrl,
             )
             if isinstance(data, dict) and outputPath is not None:
-                added, _ = mergeNewJobsIntoDocument(data, [rec])
+                added, _ = mergeNewJobsIntoDocument(
+                    data, [rec], category=phaseLabel or None
+                )
                 if added:
                     saveOutputDocument(outputPath, data)
                     out.append(rec)

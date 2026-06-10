@@ -93,6 +93,7 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
         job_col.create_index("jobId", unique=True)
         past_col.create_index("jobId", unique=True)
         job_col.create_index("platform")
+        job_col.create_index("category")
         past_col.create_index("platform")
         settings_col.create_index("_id", unique=True)
     except PyMongoError as exc:
@@ -177,6 +178,7 @@ def _mongoDocToJobRow(doc: dict) -> dict:
         "timestamp",
         "applyStatus",
         "platform",
+        "category",
     )
     out: dict[str, Any] = {}
     for k in keys:
@@ -224,6 +226,7 @@ def upsertJobs(rows: list[dict]) -> int:
             "jobDescription": str(row.get("jobDescription") or ""),
             "timestamp": str(row.get("timestamp") or _utcNowIso()),
             "platform": str(row.get("platform") or "Unknown"),
+            "category": str(row.get("category") or "").strip(),
         }
         if apply_val is not None:
             set_doc["applyStatus"] = apply_val

@@ -82,16 +82,69 @@ _zipCardHostedApplyPhrases: tuple[tuple[str, str], ...] = (
 )
 
 
+# One browser round-trip for all list cards (avoids slow per-card Selenium .text).
+_HOSTED_APPLY_PAGE_SCAN_JS = """
+const phrases = arguments[0];
+const out = {};
+const section = document.querySelector('section.job_results_two_pane');
+if (!section) return out;
+for (const card of section.querySelectorAll('article[id^="job-card-"]')) {
+  const id = card.id;
+  if (!id) continue;
+  const probes = card.querySelectorAll(
+    'button[aria-label], a[aria-label], [data-testid], span, p'
+  );
+  let label = null;
+  outer: for (const el of probes) {
+    const raw = (
+      (el.getAttribute('aria-label') || '') + ' ' +
+      (el.getAttribute('data-testid') || '') + ' ' +
+      (el.textContent || '')
+    ).toLowerCase().replace(/\\s+/g, ' ');
+    for (const pair of phrases) {
+      if (raw.includes(pair[0])) {
+        label = pair[1];
+        break outer;
+      }
+    }
+  }
+  if (label) out[id] = label;
+}
+return out;
+"""
+
+
+def hostedApplyLabelsOnPage(driver: webdriver.Chrome) -> dict[str, str]:
+    """Map job-card id → apply label for Zip-hosted apply badges on the current list page."""
+    pairs = [[needle.casefold(), label] for needle, label in _zipCardHostedApplyPhrases]
+    try:
+        raw = driver.execute_script(_HOSTED_APPLY_PAGE_SCAN_JS, pairs)
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items() if k and v}
+
+
 def cardShowsZipHostedApply(card) -> str | None:
     """
-    True when the job list card shows Zip's in-flow apply (Quick / Easy / 1-click).
-    Matching is substring-based on normalized card text (list UI only).
+    Fallback when page scan misses a badge: check aria-labels only (no full card .text).
     """
-    raw = (getattr(card, "text", None) or "").casefold()
-    collapsed = " ".join(raw.split())
-    for needle, label in _zipCardHostedApplyPhrases:
-        if needle.casefold() in collapsed:
-            return label
+    probes = card.find_elements(
+        By.CSS_SELECTOR,
+        'button[aria-label], a[aria-label], [data-testid]',
+    )
+    for el in probes:
+        raw = " ".join(
+            (
+                (el.get_attribute("aria-label") or ""),
+                (el.get_attribute("data-testid") or ""),
+            )
+        ).casefold()
+        collapsed = " ".join(raw.split())
+        for needle, label in _zipCardHostedApplyPhrases:
+            if needle.casefold() in collapsed:
+                return label
     return None
 
 
@@ -490,11 +543,21 @@ def scrapeCurrentPageJobs(
     skippedMerge = 0
     skippedKnown = 0
     cards = getCardElementsOnPage(driver)
+    hostedOnPage = hostedApplyLabelsOnPage(driver)
     n = len(cards)
     log.info(
-        f"Page {pageNumber}: found {n} list items; "
-        "skipping jobIds already in output, opening detail for the rest…",
+        f"Page {pageNumber}: found {n} list items "
+        f"({len(hostedOnPage)} Quick/Easy/1-click on list); "
+        "skipping known ids and hosted-apply cards, opening detail for the rest…",
     )
+
+    skipBucket = data.get(skippedOriginalUrlIdsKey)
+    if not isinstance(skipBucket, list):
+        data[skippedOriginalUrlIdsKey] = []
+        skipBucket = data[skippedOriginalUrlIdsKey]
+    skipIdsSet = {sid.strip() for sid in skipBucket if isinstance(sid, str) and sid.strip()}
+    skipBucketDirty = False
+    hostedSkipCount = 0
 
     for idx, card in enumerate(cards):
         cardId = (card.get_attribute("id") or "").strip()
@@ -504,30 +567,15 @@ def scrapeCurrentPageJobs(
             continue
         if cardId in globalSeenIds:
             skippedKnown += 1
-            log.jobSkip(
-                idx + 1,
-                n,
-                "on disk",
-                f"{companyPreview} — {cardId}",
-            )
             continue
 
-        hostedLabel = cardShowsZipHostedApply(card)
+        hostedLabel = hostedOnPage.get(cardId) or cardShowsZipHostedApply(card)
         if hostedLabel:
-            skipBucket = data.setdefault(skippedOriginalUrlIdsKey, [])
-            if not isinstance(skipBucket, list):
-                data[skippedOriginalUrlIdsKey] = []
-                skipBucket = data[skippedOriginalUrlIdsKey]
-            if cardId not in skipBucket:
-                skipBucket.append(cardId)
-                saveOutputDocument(outputPath, data)
+            if cardId not in skipIdsSet:
+                skipIdsSet.add(cardId)
+                skipBucketDirty = True
             globalSeenIds.add(cardId)
-            log.jobSkip(
-                idx + 1,
-                n,
-                hostedLabel,
-                f"{companyPreview} — {cardId}",
-            )
+            hostedSkipCount += 1
             continue
 
         fallback = {
@@ -588,7 +636,9 @@ def scrapeCurrentPageJobs(
             "jobResponsibility": detail.get("jobResponsibility") or "",
             "postedAgo": detail.get("postedAgo"),
         }
-        added, skipped = mergeNewJobsIntoDocument(data, [jobRecord])
+        added, skipped = mergeNewJobsIntoDocument(
+            data, [jobRecord], category=phaseLabel or None
+        )
         if added:
             saveOutputDocument(outputPath, data)
             addedCount += added
@@ -598,6 +648,19 @@ def scrapeCurrentPageJobs(
         label = jobRecord.get("companyName") or companyPreview or "?"
         preview = str(jobRecord.get("jobUrl") or "").strip()[:70]
         log.jobLine(idx + 1, n, f"{label} — {preview}…")
+
+    if skipBucketDirty:
+        data[skippedOriginalUrlIdsKey] = sorted(skipIdsSet)
+        saveOutputDocument(outputPath, data)
+    if hostedSkipCount:
+        log.info(
+            f"Page {pageNumber}: skipped {hostedSkipCount} Zip-hosted apply card(s) "
+            "(Quick/Easy/1-click) without opening detail.",
+        )
+    if skippedKnown:
+        log.info(
+            f"Page {pageNumber}: skipped {skippedKnown} list card(s) already known on disk.",
+        )
     return addedCount, skippedMerge, skippedKnown
 
 

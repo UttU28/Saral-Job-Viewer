@@ -43,6 +43,7 @@ from utils.authService import (
 from utils.jobDecisionService import executeJobUiDecision
 from utils.jobViewerQueries import (
     fetchAdminJobStatusSummary,
+    fetchDistinctCategories,
     fetchDistinctPlatforms,
     fetchJobDataPage,
     fetchJobDetailByJobId,
@@ -60,6 +61,7 @@ from utils.redisCache import (
     keyAdminJobStatusSummary,
     getCachedJson,
     keyAdminUsers,
+    keyJobCategories,
     keyJobDetail,
     keyJobPlatforms,
     keyJobsList,
@@ -208,6 +210,7 @@ def requireAdmin(currentUser: dict[str, Any] = Depends(requireAuth)) -> dict[str
 def invalidateJobCaches(*, userId: str | None = None, jobId: str | None = None) -> None:
     deleteCacheKey(keyJobsSummary())
     deleteCacheKey(keyJobPlatforms())
+    deleteCacheKey(keyJobCategories())
     deleteCacheKey(keyAdminJobStatusSummary())
     if jobId:
         deleteCacheKey(keyJobDetail(jobId))
@@ -627,6 +630,21 @@ def getJobPlatforms(currentUser: dict[str, str] = Depends(requireAuth)):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/jobs/categories")
+def getJobCategories(currentUser: dict[str, str] = Depends(requireAuth)):
+    try:
+        cacheKey = keyJobCategories()
+        cached = getCachedJson(cacheKey)
+        if cached is not None:
+            return cached
+        categories = fetchDistinctCategories()
+        payload = {"categories": categories}
+        setCachedJson(cacheKey, payload, ttlSeconds=300)
+        return payload
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @app.post("/api/jobs/decision")
 def postJobDecision(body: JobDecisionBody, currentUser: dict[str, str] = Depends(requireAuth)):
     """
@@ -750,16 +768,20 @@ def listJobs(
     platform: str | None = Query(None),
     applyStatus: str | None = Query(None),
     search: str | None = Query(None),
+    category: str | None = Query(None),
     currentUser: dict[str, str] = Depends(requireAuth),
 ):
     try:
         platformValue = platform.strip() if platform and platform.strip() else None
         applyValue = applyStatus.strip() if applyStatus and applyStatus.strip() else None
         searchValue = search.strip() if search and search.strip() else None
+        categoryValue = category.strip() if category and category.strip() else None
         if applyValue and applyValue.lower() == "all":
             applyValue = None
         if platformValue and platformValue.lower() == "all":
             platformValue = None
+        if categoryValue and categoryValue.lower() == "all":
+            categoryValue = None
 
         cacheParams = {
             "page": page,
@@ -767,6 +789,7 @@ def listJobs(
             "platform": platformValue or "",
             "applyStatus": applyValue or "",
             "search": searchValue or "",
+            "category": categoryValue or "",
         }
         cacheKey = keyJobsList(cacheParams)
         cached = getCachedJson(cacheKey)
@@ -779,6 +802,7 @@ def listJobs(
             platform=platformValue,
             applyStatus=applyValue,
             search=searchValue,
+            category=categoryValue,
         )
         totalPages = max(1, math.ceil(total / pageSize)) if pageSize else 1
         payload = {

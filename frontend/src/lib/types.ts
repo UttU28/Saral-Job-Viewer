@@ -30,6 +30,7 @@ export type JobRow = {
   timestamp: string | null;
   applyStatus: string | null;
   platform: string | null;
+  category?: string | null;
   jobDescription?: string;
   descriptionPreview?: string;
   hasLongDescription?: boolean;

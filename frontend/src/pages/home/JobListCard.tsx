@@ -4,7 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { pastelMetaLineClasses } from "./constants";
 import type { JobListCardDecisionUi } from "./types";
-import { applyStatusBadgeClasses, applyStatusBadgeVariant, formatApplyStatusLabel, jobMetaHighlights } from "./utils";
+import {
+  applyStatusBadgeClasses,
+  applyStatusBadgeVariant,
+  formatApplyStatusLabel,
+  formatCategoryLabel,
+  jobMetaHighlights,
+} from "./utils";
 
 export function JobListCard({
   job,
@@ -45,6 +51,19 @@ export function JobListCard({
         )}
       >
         <div className="flex flex-wrap items-center gap-1.5 mb-1">
+          {(job.category ?? "").trim() ? (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[11px] px-2 py-0 h-6 font-medium",
+                selected
+                  ? "border-violet-400/50 text-violet-700 dark:text-violet-300"
+                  : "border-border dark:border-white/15 text-muted-foreground",
+              )}
+            >
+              {formatCategoryLabel(job.category)}
+            </Badge>
+          ) : null}
           <Badge
             variant="outline"
             className={cn(

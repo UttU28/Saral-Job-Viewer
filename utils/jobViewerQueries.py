@@ -21,6 +21,7 @@ def ensureJobListingIndexes() -> None:
     createTables(recreate=False)
     jobCol = getMongoDb()[JOB_DATA_COLLECTION]
     jobCol.create_index([("platform", 1), ("applyStatus", 1)])
+    jobCol.create_index([("category", 1), ("timestamp", 1)])
     jobCol.create_index([("timestamp", 1), ("jobId", 1)])
     _listingIndexesEnsured = True
 
@@ -33,11 +34,14 @@ def buildMatchStage(
     platform: str | None,
     applyStatus: str | None,
     search: str | None,
+    category: str | None = None,
 ) -> dict[str, Any]:
     matchClauses: list[dict[str, Any]] = []
     hiddenStatuses = ("APPLYING", "DO_NOT_APPLY", "REDO")
     if platform and str(platform).strip():
         matchClauses.append({"platform": str(platform).strip()})
+    if category and str(category).strip():
+        matchClauses.append({"category": str(category).strip()})
     if applyStatus and str(applyStatus).strip():
         raw = str(applyStatus).strip().lower()
         if raw == "pending":
@@ -108,6 +112,7 @@ def normalizeJobListDoc(doc: dict[str, Any]) -> dict[str, Any]:
         "timestamp",
         "applyStatus",
         "platform",
+        "category",
     )
     out: dict[str, Any] = {}
     for key in keys:
@@ -133,6 +138,7 @@ def fetchJobDataPage(
     platform: str | None = None,
     applyStatus: str | None = None,
     search: str | None = None,
+    category: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     """
     One aggregation: match → FIFO sort (same as sortJobsFifoByTimestamp) → facet skip/limit + count.
@@ -142,7 +148,7 @@ def fetchJobDataPage(
     ensureJobListingIndexes()
     createTables(recreate=False)
     jobCol = getMongoDb()[JOB_DATA_COLLECTION]
-    matchStage = buildMatchStage(platform, applyStatus, search)
+    matchStage = buildMatchStage(platform, applyStatus, search, category)
     aggPipeline: list[dict[str, Any]] = []
     if matchStage:
         aggPipeline.append({"$match": matchStage})
@@ -186,6 +192,7 @@ def fetchJobDataPage(
                                 "timestamp": 1,
                                 "applyStatus": 1,
                                 "platform": 1,
+                                "category": 1,
                                 "descriptionPreview": {
                                     "$substrCP": [
                                         {"$ifNull": ["$jobDescription", ""]},
@@ -232,6 +239,17 @@ def fetchDistinctPlatforms() -> list[str]:
         key=str.lower,
     )
     return out
+
+
+def fetchDistinctCategories() -> list[str]:
+    ensureJobListingIndexes()
+    createTables(recreate=False)
+    jobCol = getMongoDb()[JOB_DATA_COLLECTION]
+    values = jobCol.distinct("category")
+    return sorted(
+        {str(v).strip() for v in values if v is not None and str(v).strip()},
+        key=str.lower,
+    )
 
 
 def fetchJobSummaryCamel() -> dict[str, int]:

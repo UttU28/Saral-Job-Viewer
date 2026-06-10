@@ -42,7 +42,16 @@ OPTIONAL_JOB_FIELDS: tuple[str, ...] = (
     "timestamp",
     "applyStatus",
     "platform",
+    "category",
 )
+
+
+def applyScrapeCategory(row: dict, category: str | None) -> dict:
+    """Attach search-keyword category (scrape phase label) when not already set."""
+    cat = _strOrBlank(category)
+    if cat and not _strOrBlank(row.get("category")):
+        row["category"] = cat
+    return row
 
 TARGET_PORTAL_DOMAINS = ("indeed.com", "linkedin.com", "jobright.ai")
 ORIGINAL_URL_SKIP_KEY = "skippedOriginalUrlIds"
@@ -453,6 +462,7 @@ def mergeNewJobsIntoDocument(
     newRows: list[dict],
     *,
     idKey: str = "jobId",
+    category: str | None = None,
 ) -> tuple[int, int]:
     platform = inferPlatformFromPath(Path(str(data.get("_sourcePath") or "")))
     if platform == "Unknown":
@@ -471,6 +481,7 @@ def mergeNewJobsIntoDocument(
             skipped += 1
             continue
         row = normalizeJobRecord(row)
+        row = applyScrapeCategory(row, category)
         jid = row.get(idKey)
         if not jid or jid in seen:
             row["platform"] = row.get("platform") or platform

@@ -33,6 +33,7 @@ from utils.startChrome import (
     promptBeforeClosingBrowserIfHeaded,
 )
 from utils.fileManagement import (
+    applyScrapeCategory,
     inferPlatformFromPath,
     isCompleteJobRow,
     loadExistingJobsAndMeta,
@@ -805,7 +806,9 @@ def fetchAndMergeSearchSelenium(
     appended = 0
     skipped = 0
     for row in fetched:
-        added, skippedOne = mergeNewJobsIntoDocument(data, [row])
+        added, skippedOne = mergeNewJobsIntoDocument(
+            data, [row], category=phaseLabel or None
+        )
         if added:
             appended += 1
             try:
@@ -1232,6 +1235,7 @@ def scrapePendingJobDetails(
 
     for index, job in enumerate(pending):
         n = index + 1
+        applyScrapeCategory(job, phaseLabel)
         jobUrl = job.get("jobUrl")
         preview = str(jobUrl).strip()[:70]
         statusBits: list[str] = []

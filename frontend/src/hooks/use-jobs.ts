@@ -7,6 +7,7 @@ import {
   fetchCurrentWeekAccepts,
   fetchJobDetail,
   fetchJobList,
+  fetchJobCategories,
   fetchJobPlatforms,
   fetchJobSummary,
   fetchWeeklyReport,
@@ -28,11 +29,20 @@ export function useJobPlatformsQuery() {
   });
 }
 
+export function useJobCategoriesQuery() {
+  return useQuery({
+    queryKey: ["jobCategories"],
+    queryFn: fetchJobCategories,
+    staleTime: 300_000,
+  });
+}
+
 export function useJobInfiniteQuery(params: {
   pageSize: number;
   platform?: string;
   applyStatus?: string;
   search?: string;
+  category?: string;
 }) {
   return useInfiniteQuery({
     queryKey: [
@@ -41,6 +51,7 @@ export function useJobInfiniteQuery(params: {
       params.platform ?? "",
       params.applyStatus ?? "",
       params.search ?? "",
+      params.category ?? "",
     ],
     queryFn: ({ pageParam }) =>
       fetchJobList({
@@ -49,6 +60,7 @@ export function useJobInfiniteQuery(params: {
         platform: params.platform,
         applyStatus: params.applyStatus,
         search: params.search,
+        category: params.category,
       }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>

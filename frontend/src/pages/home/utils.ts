@@ -33,6 +33,17 @@ export function formatApplyStatusLabel(raw: string | null | undefined): string {
   return s.replaceAll("_", " ");
 }
 
+/** Display scraper category in Title Case (e.g. "cloud engineer" → "Cloud Engineer"). */
+export function formatCategoryLabel(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim();
+  if (!s) return "";
+  return s
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function applyStatusBadgeVariant(
   raw: string | null | undefined,
 ): "default" | "secondary" | "destructive" | "outline" {

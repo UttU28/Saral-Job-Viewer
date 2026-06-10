@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Briefcase, Loader2, SlidersHorizontal } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { useJobInfiniteQuery, useJobPlatformsQuery } from "@/hooks/use-jobs";
+import { useJobCategoriesQuery, useJobInfiniteQuery, useJobPlatformsQuery } from "@/hooks/use-jobs";
 import type { CurrentWeekAcceptsResponse, JobDecision, JobDecisionResponse } from "@/lib/api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -16,6 +16,7 @@ import { formatApiDecisionError } from "./home/utils";
 
 export default function Home() {
   const [platformFilter, setPlatformFilter] = useState<string>(ALL_VALUE);
+  const [categoryFilter, setCategoryFilter] = useState<string>(ALL_VALUE);
   const [applyFilter, setApplyFilter] = useState<string>(DEFAULT_APPLY_FILTER);
   const [searchDraft, setSearchDraft] = useState("");
   const [committedSearch, setCommittedSearch] = useState("");
@@ -30,10 +31,12 @@ export default function Home() {
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   const platformsQuery = useJobPlatformsQuery();
+  const categoriesQuery = useJobCategoriesQuery();
 
   const infiniteQuery = useJobInfiniteQuery({
     pageSize: PAGE_SIZE,
     platform: platformFilter === ALL_VALUE ? undefined : platformFilter,
+    category: categoryFilter === ALL_VALUE ? undefined : categoryFilter,
     applyStatus: applyFilter === ALL_VALUE ? undefined : applyFilter,
     search: committedSearch || undefined,
   });
@@ -254,9 +257,12 @@ export default function Home() {
             onSearchCommit={commitSearch}
             platformFilter={platformFilter}
             onPlatformFilterChange={setPlatformFilter}
+            categoryFilter={categoryFilter}
+            onCategoryFilterChange={setCategoryFilter}
             applyFilter={applyFilter}
             onApplyFilterChange={setApplyFilter}
             platforms={platformsQuery.data?.platforms ?? []}
+            categories={categoriesQuery.data?.categories ?? []}
           />
         </div>
 
@@ -313,9 +319,12 @@ export default function Home() {
                       onSearchCommit={commitSearch}
                       platformFilter={platformFilter}
                       onPlatformFilterChange={setPlatformFilter}
+                      categoryFilter={categoryFilter}
+                      onCategoryFilterChange={setCategoryFilter}
                       applyFilter={applyFilter}
                       onApplyFilterChange={setApplyFilter}
                       platforms={platformsQuery.data?.platforms ?? []}
+                      categories={categoriesQuery.data?.categories ?? []}
                     />
                   </div>
                 ) : null}

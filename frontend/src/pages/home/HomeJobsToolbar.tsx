@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ALL_VALUE, APPLY_OPTIONS } from "./constants";
+import { formatCategoryLabel } from "./utils";
 
 type HomeJobsToolbarProps = Readonly<{
   searchDraft: string;
@@ -19,7 +20,10 @@ type HomeJobsToolbarProps = Readonly<{
   onPlatformFilterChange: (value: string) => void;
   applyFilter: string;
   onApplyFilterChange: (value: string) => void;
+  categoryFilter: string;
+  onCategoryFilterChange: (value: string) => void;
   platforms: string[];
+  categories: string[];
 }>;
 
 export function HomeJobsToolbar({
@@ -30,7 +34,10 @@ export function HomeJobsToolbar({
   onPlatformFilterChange,
   applyFilter,
   onApplyFilterChange,
+  categoryFilter,
+  onCategoryFilterChange,
   platforms,
+  categories,
 }: HomeJobsToolbarProps) {
   return (
     <motion.div
@@ -68,6 +75,23 @@ export function HomeJobsToolbar({
           <Search aria-hidden />
         </Button>
       </form>
+      <Select value={categoryFilter} onValueChange={onCategoryFilterChange}>
+        <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/70 border-border/80 rounded-lg w-full sm:w-[11.5rem] shrink-0">
+          <SelectValue placeholder="Category">
+            {categoryFilter === ALL_VALUE
+              ? "All categories"
+              : formatCategoryLabel(categoryFilter)}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL_VALUE}>All categories</SelectItem>
+          {categories.map((c) => (
+            <SelectItem key={c} value={c}>
+              {formatCategoryLabel(c)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       <Select value={platformFilter} onValueChange={onPlatformFilterChange}>
         <SelectTrigger className="h-10 sm:h-9 text-base sm:text-sm bg-background/70 border-border/80 rounded-lg w-full sm:w-[11.5rem] shrink-0">
           <SelectValue placeholder="Platform" />

@@ -161,6 +161,10 @@ def keyJobPlatforms() -> str:
     return "jobs:platforms"
 
 
+def keyJobCategories() -> str:
+    return "jobs:categories"
+
+
 def keyJobDetail(jobId: str) -> str:
     return f"jobs:detail:{str(jobId or '').strip()}"
 
