@@ -13,9 +13,14 @@ except ImportError:
     pass
 
 try:
-    from pymongo.errors import PyMongoError
+    from pymongo.errors import ConfigurationError, PyMongoError
 except ImportError:  # pragma: no cover - fallback when pymongo missing at import time
+    ConfigurationError = Exception  # type: ignore[misc,assignment]
     PyMongoError = Exception  # type: ignore[misc,assignment]
+
+
+class MongoUnavailableError(RuntimeError):
+    """MongoDB connection or DNS resolution failed."""
 
 JOB_DATA_COLLECTION = "jobData"
 PAST_DATA_COLLECTION = "pastData"
@@ -24,6 +29,13 @@ SCRAPER_KEYWORDS_DOCUMENT_ID = "searchKeywords"
 
 _mongo_client: Any = None
 _mongo_db: Any = None
+
+
+def _logMongoFailure(label: str, exc: BaseException) -> None:
+    appendScrapeLog(
+        f"{label} skipped (MongoDB unavailable): {type(exc).__name__}: {exc}",
+        platform="MongoDB",
+    )
 
 
 def _getMongoDb():
@@ -44,8 +56,15 @@ def _getMongoDb():
         (os.getenv("MONGODB_DATABASE") or os.getenv("MONGODB_DB_NAME") or "").strip()
         or "saralJobViewer"
     )
-    _mongo_client = MongoClient(uri)
-    _mongo_db = _mongo_client[db_name]
+    try:
+        _mongo_client = MongoClient(uri, serverSelectionTimeoutMS=15000)
+        _mongo_db = _mongo_client[db_name]
+    except (ConfigurationError, PyMongoError) as exc:
+        _mongo_client = None
+        _mongo_db = None
+        raise MongoUnavailableError(
+            f"MongoDB connection failed (check MONGODB_URI and DNS): {exc}"
+        ) from exc
     return _mongo_db
 
 
@@ -96,7 +115,7 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
         job_col.create_index("category")
         past_col.create_index("platform")
         settings_col.create_index("_id", unique=True)
-    except PyMongoError as exc:
+    except (MongoUnavailableError, PyMongoError) as exc:
         appendScrapeLog(
             f"Mongo index ensure skipped due to transient error: {type(exc).__name__}: {exc}",
             platform="MongoDB",
@@ -128,10 +147,14 @@ def _normalizeScraperKeywords(values: list[object] | tuple[object, ...]) -> list
 
 
 def loadScraperSearchKeywords() -> list[str]:
-    createTables(recreate=False)
-    doc = _getMongoDb()[SCRAPER_SETTINGS_COLLECTION].find_one(
-        {"_id": SCRAPER_KEYWORDS_DOCUMENT_ID}
-    )
+    try:
+        createTables(recreate=False)
+        doc = _getMongoDb()[SCRAPER_SETTINGS_COLLECTION].find_one(
+            {"_id": SCRAPER_KEYWORDS_DOCUMENT_ID}
+        )
+    except (MongoUnavailableError, PyMongoError) as exc:
+        _logMongoFailure("loadScraperSearchKeywords", exc)
+        return []
     if not isinstance(doc, dict):
         return []
     raw = doc.get("keywords")
@@ -531,19 +554,23 @@ def flushJobsAndPastData() -> dict[str, int]:
 
 
 def loadKnownJobIdsByPlatform(platform: str) -> set[str]:
-    createTables(recreate=False)
-    db = _getMongoDb()
-    job_ids = {
-        str(d["jobId"]).strip()
-        for d in db[JOB_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
-        if d.get("jobId")
-    }
-    past_ids = {
-        str(d["jobId"]).strip()
-        for d in db[PAST_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
-        if d.get("jobId")
-    }
-    return job_ids | past_ids
+    try:
+        createTables(recreate=False)
+        db = _getMongoDb()
+        job_ids = {
+            str(d["jobId"]).strip()
+            for d in db[JOB_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
+            if d.get("jobId")
+        }
+        past_ids = {
+            str(d["jobId"]).strip()
+            for d in db[PAST_DATA_COLLECTION].find({"platform": platform}, {"jobId": 1})
+            if d.get("jobId")
+        }
+        return job_ids | past_ids
+    except (MongoUnavailableError, PyMongoError) as exc:
+        _logMongoFailure(f"loadKnownJobIdsByPlatform({platform})", exc)
+        return set()
 
 
 def recordPastData(rows: list[dict], *, platform: str) -> int:

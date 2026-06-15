@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from utils.dataManager import (
+    MongoUnavailableError,
     deleteJobsByApplyStatusNotIn,
     deleteJobsKeepingOnlyApply,
     deletePastDataOlderThanHours,
@@ -276,6 +277,15 @@ def postAuthLogin(body: LoginBody):
         }
     except ValueError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
+    except MongoUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Database temporarily unavailable. Check MONGODB_URI and DNS.",
+        ) from exc
+    except RuntimeError as exc:
+        if "Database temporarily unavailable" in str(exc):
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 

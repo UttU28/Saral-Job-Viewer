@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from utils.dataManager import getMongoDb
+from utils.dataManager import MongoUnavailableError, getMongoDb
 from utils.jwtAuth import createJwtToken, verifyJwtToken
 from utils.userWeeklyStats import (
     fetchCurrentWeekAcceptedCountsByUsers,
@@ -112,9 +112,12 @@ def loginUser(*, email: str, password: str) -> dict[str, str]:
     if not cleanEmail or not cleanPassword:
         raise ValueError("Email and password are required")
 
-    ensureUserIndexes()
-    users = getMongoDb()[USER_COLLECTION]
-    userDoc = users.find_one({"email": cleanEmail})
+    try:
+        ensureUserIndexes()
+        users = getMongoDb()[USER_COLLECTION]
+        userDoc = users.find_one({"email": cleanEmail})
+    except MongoUnavailableError as exc:
+        raise RuntimeError("Database temporarily unavailable") from exc
     if not userDoc:
         raise ValueError("Invalid email or password")
     if str(userDoc.get("password") or "") != cleanPassword:

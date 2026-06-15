@@ -28,6 +28,17 @@ def _validationNetwork() -> str:
     return str(os.getenv("VALIDATION_DOCKER_NETWORK") or "saral-job-viewer_sjv-net").strip()
 
 
+def _validationDnsArgs() -> list[str]:
+    """Use public DNS so mongodb+srv resolves inside spawned validation containers."""
+    servers = str(os.getenv("VALIDATION_DOCKER_DNS") or "8.8.8.8,8.8.4.4").strip()
+    args: list[str] = []
+    for server in servers.split(","):
+        host = server.strip()
+        if host:
+            args.extend(["--dns", host])
+    return args
+
+
 def _dockerCmd(args: list[str]) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
@@ -125,6 +136,7 @@ def triggerValidationContainer(*, modeNumber: str) -> dict[str, str]:
         "--network",
         network,
         "--init",
+        *_validationDnsArgs(),
         *_validationEnvArgs(),
         image,
         f"-{mode}",

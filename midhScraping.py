@@ -163,10 +163,13 @@ def _loginSaralAdminAndGetToken(
         log.error(f"Saral API login request failed: {exc!r}")
         return None
     if resp.status_code != 200:
-        log.error(
-            f"Saral API login HTTP {resp.status_code}: "
-            f"{(resp.text or '')[:500]}"
-        )
+        detail = (resp.text or "")[:500]
+        if resp.status_code == 503:
+            log.error(
+                f"Saral API login HTTP 503 (database unavailable): {detail}"
+            )
+        else:
+            log.error(f"Saral API login HTTP {resp.status_code}: {detail}")
         return None
     try:
         data: dict[str, Any] = resp.json()
@@ -318,6 +321,23 @@ def runPostScrapeAdminPipeline(
     validation via local validation.py.
     Returns True if completed or skipped successfully; False on failure.
     """
+    try:
+        return _runPostScrapeAdminPipelineImpl(
+            log=log,
+            skip=skip,
+            requested_validation_mode=requested_validation_mode,
+        )
+    except Exception as exc:
+        log.error(f"post-scrape pipeline failed unexpectedly: {exc!r}")
+        return False
+
+
+def _runPostScrapeAdminPipelineImpl(
+    *,
+    log: ScraperRunLog,
+    skip: bool,
+    requested_validation_mode: str = "1",
+) -> bool:
     if skip:
         log.info("skipping post-scrape steps (--skip-admin-actions).")
         return True
@@ -436,13 +456,21 @@ def main() -> int:
     scrapersOk = failCount == 0 and not aborted
     if scrapersOk:
         log.bindPhase("orchestrator")
-        adminOk = runPostScrapeAdminPipeline(
-            log=log,
-            skip=bool(args.skip_admin_actions),
-            requested_validation_mode=requestedMode,
-        )
+        try:
+            adminOk = runPostScrapeAdminPipeline(
+                log=log,
+                skip=bool(args.skip_admin_actions),
+                requested_validation_mode=requestedMode,
+            )
+        except Exception as exc:
+            log.error(f"post-scrape pipeline crashed: {exc!r}")
+            adminOk = False
         if not adminOk:
-            return 1
+            log.warning(
+                "scrapers finished OK; post-scrape admin/validation failed or was skipped "
+                "(see errors above). Scrape output is still on disk."
+            )
+            return 0
 
     return 0 if failCount == 0 else 1
 
