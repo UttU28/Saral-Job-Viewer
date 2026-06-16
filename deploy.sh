@@ -14,8 +14,27 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+step()   { echo -e "${BLUE}[saral]${NC} $*"; }
+info()   { echo -e "${GREEN}[saral]${NC} $*"; }
+warn()   { echo -e "${YELLOW}[saral]${NC} $*" >&2; }
+err()    { echo -e "${RED}[saral]${NC} $*" >&2; }
+banner() {
+  echo ""
+  echo -e "${CYAN}================================================================================${NC}"
+  echo -e "${CYAN} $*${NC}"
+  echo -e "${CYAN}================================================================================${NC}"
+  echo ""
+}
+
 if [[ ! -f .env ]]; then
-  echo "Missing .env — copy from .env.example and fill in values."
+  err "Missing .env — copy from .env.example and fill in values."
   exit 1
 fi
 
@@ -34,7 +53,7 @@ CERT_PATH="/etc/letsencrypt/live/${SARAL_DOMAIN}/fullchain.pem"
 HOST_NGINX_SITE="/etc/nginx/sites-available/${SARAL_DOMAIN}"
 
 if [[ -z "$SARAL_DOMAIN" ]]; then
-  echo "SARAL_DOMAIN is required in .env (e.g. saral.thatinsaneguy.com)."
+  err "SARAL_DOMAIN is required in .env (e.g. saral.thatinsaneguy.com)."
   exit 1
 fi
 
@@ -57,11 +76,11 @@ docker_cert_exists() {
 
 render_nginx_config() {
   if [[ ! -f "$NGINX_TEMPLATE" ]]; then
-    echo "Missing nginx template: $NGINX_TEMPLATE"
+    err "Missing nginx template: $NGINX_TEMPLATE"
     exit 1
   fi
   if ! command -v envsubst >/dev/null 2>&1; then
-    echo "envsubst not found. Install gettext (e.g. pacman -S gettext)."
+    err "envsubst not found. Install gettext (e.g. pacman -S gettext)."
     exit 1
   fi
   export SARAL_DOMAIN
@@ -70,19 +89,19 @@ render_nginx_config() {
 
 require_root_for_host_nginx() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    echo "Port 80 is in use by host nginx. Re-run with sudo so deploy can install the vhost and run certbot:"
-    echo "  sudo ./deploy.sh"
+    err "Port 80 is in use by host nginx. Re-run with sudo:"
+    err "  sudo ./deploy.sh"
     exit 1
   fi
 }
 
 install_host_nginx_vhost() {
   if [[ ! -f "$HOST_NGINX_TEMPLATE" ]]; then
-    echo "Missing host nginx template: $HOST_NGINX_TEMPLATE"
+    err "Missing host nginx template: $HOST_NGINX_TEMPLATE"
     exit 1
   fi
   if [[ -f "$HOST_NGINX_SITE" ]] && grep -q 'ssl_certificate' "$HOST_NGINX_SITE" 2>/dev/null; then
-    echo "==> Host nginx vhost already has TLS: ${HOST_NGINX_SITE}"
+    info "Host nginx vhost already has TLS: ${HOST_NGINX_SITE}"
     return 0
   fi
 
@@ -99,34 +118,34 @@ install_host_nginx_vhost() {
     cp "$tmp" "/etc/nginx/conf.d/${SARAL_DOMAIN}.conf"
   else
     rm -f "$tmp"
-    echo "Could not find /etc/nginx/sites-available or /etc/nginx/conf.d"
+    err "Could not find /etc/nginx/sites-available or /etc/nginx/conf.d"
     exit 1
   fi
   rm -f "$tmp"
 
-  echo "==> Installed host nginx vhost for ${SARAL_DOMAIN}"
+  info "Installed host nginx vhost for ${SARAL_DOMAIN}"
   nginx -t
   systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || nginx -s reload
 }
 
 ensure_host_ssl_cert() {
   if host_cert_exists; then
-    echo "==> SSL certificate already present on host for ${SARAL_DOMAIN}"
+    info "SSL certificate already present on host for ${SARAL_DOMAIN}"
     return 0
   fi
 
   if [[ -z "$SARAL_SSL_EMAIL" ]]; then
-    echo "SARAL_SSL_EMAIL is required in .env to obtain a Let's Encrypt certificate."
+    err "SARAL_SSL_EMAIL is required in .env to obtain a Let's Encrypt certificate."
     exit 1
   fi
 
   if ! command -v certbot >/dev/null 2>&1; then
-    echo "certbot not found. Install it (e.g. pacman -S certbot certbot-nginx) and re-run deploy."
+    err "certbot not found. Install it (e.g. pacman -S certbot certbot-nginx) and re-run deploy."
     exit 1
   fi
 
-  echo "==> Obtaining Let's Encrypt certificate via host certbot (nginx plugin)..."
-  echo "    (DNS must resolve to this server; host nginx serves ${SARAL_DOMAIN} on port 80.)"
+  step "Obtaining Let's Encrypt certificate via host certbot (nginx plugin)…"
+  info "DNS must resolve to this server; host nginx serves ${SARAL_DOMAIN} on port 80."
 
   if certbot --nginx -d "$SARAL_DOMAIN" \
     --email "$SARAL_SSL_EMAIL" \
@@ -135,27 +154,27 @@ ensure_host_ssl_cert() {
     :
   else
     printf '\nA\n1\n' | certbot --nginx -d "$SARAL_DOMAIN" --redirect || {
-      echo "certbot failed — ensure DNS for ${SARAL_DOMAIN} points here and port 80 is reachable."
+      err "certbot failed — ensure DNS for ${SARAL_DOMAIN} points here and port 80 is reachable."
       exit 1
     }
   fi
 
-  echo "==> Certificate issued for ${SARAL_DOMAIN}"
+  info "Certificate issued for ${SARAL_DOMAIN}"
 }
 
 ensure_docker_ssl_cert() {
   if docker_cert_exists; then
-    echo "==> SSL certificate already present for ${SARAL_DOMAIN}"
+    info "SSL certificate already present for ${SARAL_DOMAIN}"
     return 0
   fi
 
   if [[ -z "$SARAL_SSL_EMAIL" ]]; then
-    echo "SARAL_SSL_EMAIL is required in .env to obtain a Let's Encrypt certificate."
+    err "SARAL_SSL_EMAIL is required in .env to obtain a Let's Encrypt certificate."
     exit 1
   fi
 
-  echo "==> Obtaining Let's Encrypt certificate for ${SARAL_DOMAIN}..."
-  echo "    (DNS must resolve to this server; port 80 must be free for certbot standalone.)"
+  step "Obtaining Let's Encrypt certificate for ${SARAL_DOMAIN}…"
+  info "DNS must resolve to this server; port 80 must be free for certbot standalone."
 
   docker compose run --rm \
     -p 80:80 \
@@ -167,7 +186,7 @@ ensure_docker_ssl_cert() {
     --agree-tos --no-eff-email \
     --non-interactive
 
-  echo "==> Certificate issued for ${SARAL_DOMAIN}"
+  info "Certificate issued for ${SARAL_DOMAIN}"
 }
 
 USE_HOST_NGINX=0
@@ -175,42 +194,57 @@ if port_80_in_use; then
   USE_HOST_NGINX=1
 fi
 
-echo "==> Deploying https://${SARAL_DOMAIN}"
+START_TS=$(date +%s)
+banner "Saral Job Viewer deploy"
+info "Domain: https://${SARAL_DOMAIN}"
 if [[ "$USE_HOST_NGINX" -eq 1 ]]; then
-  echo "==> Host port 80 in use — using system nginx + certbot (not Docker nginx on :80)"
+  info "Host port 80 in use — using system nginx + certbot"
   require_root_for_host_nginx
 fi
 
-echo "==> Building images..."
+banner "Docker build"
+step "Building images…"
 docker compose build
 docker build -f docker/Dockerfile.validation -t saral-dvalidate:latest .
 
-echo "==> Starting Redis, API, and frontend..."
+banner "Docker services"
+step "Starting Redis, API, and frontend…"
 docker compose up -d sjv-redis api frontend
 
 if [[ "$USE_HOST_NGINX" -eq 1 ]]; then
+  banner "Nginx + SSL (host)"
   install_host_nginx_vhost
   ensure_host_ssl_cert
   nginx -t
   systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null || nginx -s reload
 else
   if ! docker_cert_exists; then
+    banner "SSL (Docker certbot)"
     ensure_docker_ssl_cert
   fi
   render_nginx_config
+  step "Starting nginx + certbot containers…"
   docker compose up -d nginx certbot
 fi
 
-echo ""
-echo "Stack is up:"
-echo "  Site:       https://${SARAL_DOMAIN}"
-echo "  API:        https://${SARAL_DOMAIN}/api/"
+ELAPSED=$(( $(date +%s) - START_TS ))
+banner "Deploy summary (${ELAPSED}s)"
+info "Stack is up."
+
+cat <<EOF
+
+Live URLs:
+  Site:  https://${SARAL_DOMAIN}
+  API:   https://${SARAL_DOMAIN}/api/
+EOF
 if [[ "$USE_HOST_NGINX" -eq 1 ]]; then
-  echo "  TLS:        host certbot (system timer renews certs)"
+  echo "  TLS:   host certbot (system timer renews certs)"
 else
-  echo "  Cert renew: saral-certbot container (checks every 12h)"
+  echo "  TLS:   saral-certbot container (checks every 12h)"
 fi
-echo ""
-echo "Validation image ready (not started): saral-dvalidate:latest"
-echo "  Trigger from Admin UI, or manually:"
-echo "  docker run --rm --network saral-job-viewer_sjv-net --env-file .env saral-dvalidate:latest -1"
+cat <<'EOF'
+
+Validation image ready (not started): saral-dvalidate:latest
+  Trigger from Admin UI, or manually:
+  docker run --rm --network saral-job-viewer_sjv-net --env-file .env saral-dvalidate:latest -1
+EOF
