@@ -30,5 +30,5 @@ mkdir -p "${repoRoot}/zata/cron"
 logFile="${repoRoot}/zata/cron/scrapingCron-$(date +%Y-%m-%d).log"
 echo "======== $(date -Is) scheduleMidhScraping start pid=$$ repo=${repoRoot} ========" >>"${logFile}"
 exec >>"${logFile}" 2>&1
-exec "${venvPython}" "${repoRoot}/midhScraping.py" "$@"
+exec "${venvPython}" "${repoRoot}/midhScraping.py" "${@:-0}"
 

@@ -383,18 +383,44 @@ def firstTextWithAny(texts: list[str], needles: tuple[str, ...]) -> str | None:
     return None
 
 
-def getCardElementsOnPage(driver: webdriver.Chrome) -> list:
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "section.job_results_two_pane"))
-    )
-    section = driver.find_element(By.CSS_SELECTOR, "section.job_results_two_pane")
-    allCards = section.find_elements(By.CSS_SELECTOR, 'article[id^="job-card-"]')
-    uniqueById: dict[str, object] = {}
-    for card in allCards:
-        cardId = (card.get_attribute("id") or "").strip()
-        if cardId and cardId not in uniqueById:
-            uniqueById[cardId] = card
-    return list(uniqueById.values())
+def getCardElementsOnPage(
+    driver: webdriver.Chrome,
+    log: ScraperRunLog | None = None,
+) -> list:
+    """Return job cards on the current results page; empty list if layout never loads."""
+    for attempt in range(2):
+        try:
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "section.job_results_two_pane"))
+            )
+            section = driver.find_element(By.CSS_SELECTOR, "section.job_results_two_pane")
+            allCards = section.find_elements(By.CSS_SELECTOR, 'article[id^="job-card-"]')
+            uniqueById: dict[str, object] = {}
+            for card in allCards:
+                cardId = (card.get_attribute("id") or "").strip()
+                if cardId and cardId not in uniqueById:
+                    uniqueById[cardId] = card
+            return list(uniqueById.values())
+        except TimeoutException:
+            pageHint = (driver.current_url or "")[:100]
+            if log and attempt == 0:
+                log.warning(
+                    f"job list section timeout (attempt 1/2) at {pageHint}…; refreshing page",
+                )
+                try:
+                    driver.refresh()
+                except TimeoutException:
+                    pass
+                time.sleep(1.5)
+                dismissLoginPopupIfPresent(driver)
+                continue
+            if log:
+                log.warning(
+                    f"job list section missing after wait at {pageHint}… "
+                    "(empty results, rate limit, or layout change); skipping this page",
+                )
+            return []
+    return []
 
 
 def clickCardById(driver: webdriver.Chrome, cardId: str) -> bool:
@@ -537,12 +563,18 @@ def scrapeCurrentPageJobs(
     outputPath: Path,
     *,
     phaseLabel: str = "",
-) -> tuple[int, int, int]:
+) -> tuple[int, int, int, bool]:
+    """Returns (added, skippedMerge, skippedKnown, pageLoadFailed)."""
     log.bindPhase(phaseLabel)
     addedCount = 0
     skippedMerge = 0
     skippedKnown = 0
-    cards = getCardElementsOnPage(driver)
+    cards = getCardElementsOnPage(driver, log=log)
+    if not cards:
+        log.warning(
+            f"Page {pageNumber}: no job cards loaded; stopping pagination for this search phase",
+        )
+        return 0, 0, 0, True
     hostedOnPage = hostedApplyLabelsOnPage(driver)
     n = len(cards)
     log.info(
@@ -661,7 +693,7 @@ def scrapeCurrentPageJobs(
         log.info(
             f"Page {pageNumber}: skipped {skippedKnown} list card(s) already known on disk.",
         )
-    return addedCount, skippedMerge, skippedKnown
+    return addedCount, skippedMerge, skippedKnown, False
 
 
 def goToNextResultsPage(driver: webdriver.Chrome) -> bool:
@@ -672,7 +704,12 @@ def goToNextResultsPage(driver: webdriver.Chrome) -> bool:
     if not href:
         return False
     nextUrl = urljoin("https://www.ziprecruiter.com", href)
-    driver.get(nextUrl)
+    try:
+        driver.get(nextUrl)
+    except TimeoutException:
+        return False
+    dismissLoginPopupIfPresent(driver)
+    time.sleep(0.75)
     return True
 
 
@@ -724,7 +761,7 @@ def scrapeAllResultPages(
     totalSkippedKnownCards = 0
     pageNumber = 1
     while True:
-        added, skippedMerge, skippedKnown = scrapeCurrentPageJobs(
+        added, skippedMerge, skippedKnown, pageLoadFailed = scrapeCurrentPageJobs(
             driver,
             log,
             seenIds,
@@ -743,6 +780,9 @@ def scrapeAllResultPages(
                 skippedMerge,
                 extra="(duplicate jobId or invalid row)",
             )
+
+        if pageLoadFailed:
+            break
 
         if not goToNextResultsPage(driver):
             break
@@ -784,6 +824,7 @@ def main() -> int:
         runLog.error(str(exc))
         return 1
 
+    phaseErrors = 0
     try:
         driver.set_page_load_timeout(120)
         totalAdded = 0
@@ -797,19 +838,38 @@ def main() -> int:
                 phaseLabel,
                 "all pages for this search",
             )
-            added, skippedMerge, skippedKnown = scrapeAllResultPages(
-                driver,
-                runLog,
-                startUrl,
-                outputPath,
-                phaseLabel=phaseLabel,
-            )
+            try:
+                added, skippedMerge, skippedKnown = scrapeAllResultPages(
+                    driver,
+                    runLog,
+                    startUrl,
+                    outputPath,
+                    phaseLabel=phaseLabel,
+                )
+            except TimeoutException as exc:
+                phaseErrors += 1
+                runLog.error(
+                    f"phase {phaseLabel!r} timed out ({exc!r}); "
+                    "continuing with next keyword if any",
+                )
+                continue
+            except Exception as exc:
+                phaseErrors += 1
+                runLog.error(
+                    f"phase {phaseLabel!r} failed ({exc!r}); "
+                    "continuing with next keyword if any",
+                )
+                continue
             totalAdded += added
             totalSkippedMerge += skippedMerge
             totalSkippedKnown += skippedKnown
             runLog.phaseDone(
                 phaseLabel,
                 f"+{added} new row(s); {skippedKnown} list card(s) skipped as already known",
+            )
+        if phaseErrors:
+            runLog.warning(
+                f"{phaseErrors} search phase(s) had errors; partial ZipRecruiter data was saved",
             )
         runLog.runDone(
             f"+{totalAdded} new row(s); {totalSkippedMerge} merge skip(s); "
@@ -820,7 +880,7 @@ def main() -> int:
     finally:
         driver.quit()
 
-    return 0
+    return 1 if phaseErrors else 0
 
 
 if __name__ == "__main__":

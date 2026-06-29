@@ -66,6 +66,69 @@ APPLY_STATUS_EXISTING = "EXISTING"
 KEEP_STATUS = "APPLY"
 STATUS_APPLIED = "APPLIED"
 STATUS_REDO = "REDO"
+DEFAULT_CONSECUTIVE_CHECK_ABORT = 3
+EXIT_CONSECUTIVE_CHECK_ABORT = 3
+
+
+class ConsecutiveCheckFailureAbort(Exception):
+    """Raised when the same check API failure repeats enough times to stop the batch."""
+
+    def __init__(self, message: str, *, count: int, limit: int):
+        super().__init__(message)
+        self.count = count
+        self.limit = limit
+
+
+def _consecutiveCheckAbortLimit() -> int:
+    raw = os.getenv("MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS")
+    if not raw:
+        return DEFAULT_CONSECUTIVE_CHECK_ABORT
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_CONSECUTIVE_CHECK_ABORT
+
+
+def extractCheckFailureMessage(parsed: object, checkResp) -> str:
+    """Stable error text for logging and consecutive-failure matching."""
+    if isinstance(parsed, dict):
+        errs = parsed.get("errors")
+        if isinstance(errs, dict) and errs:
+            return json.dumps(errs, ensure_ascii=False, sort_keys=True)
+        detail = parsed.get("detail") or parsed.get("message") or parsed.get("error")
+        if detail is not None:
+            text = str(detail).strip()
+            if text:
+                return text
+    raw = (checkResp.text or "").strip().replace("\n", " ")[:200]
+    if raw:
+        return f"HTTP {checkResp.status_code}: {raw}"
+    return f"HTTP {checkResp.status_code} non-JSON or empty body"
+
+
+class _ConsecutiveFailureTracker:
+    def __init__(self, limit: int):
+        self.limit = limit
+        self._last: str | None = None
+        self._count = 0
+
+    def reset(self) -> None:
+        self._last = None
+        self._count = 0
+
+    def record(self, message: str) -> None:
+        if message == self._last:
+            self._count += 1
+        else:
+            self._last = message
+            self._count = 1
+        if self._count >= self.limit:
+            raise ConsecutiveCheckFailureAbort(
+                f"Aborting after {self._count} consecutive identical check failure(s): "
+                f"{message!r}",
+                count=self._count,
+                limit=self.limit,
+            )
 
 
 def maybePersistClassifierApplyStatus(
@@ -159,6 +222,8 @@ def syncEmptyApplyStatuses() -> None:
     """
     FIFO (oldest timestamp first): every job in jobData with applyStatus IS NULL,
     all platforms. Optional delay between requests: MIDHTECH_SYNC_DELAY_SEC in .env.
+    Aborts early when the same /check/ failure repeats
+    MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS times (default 3).
     """
     log = ScraperRunLog(PLATFORM_MIDHTECH, "validate", mirrorToScrapeLog=False)
     delaySec = _parseDelay(os.getenv("MIDHTECH_SYNC_DELAY_SEC"))
@@ -175,71 +240,91 @@ def syncEmptyApplyStatuses() -> None:
 
     written = 0
     rejectedPrecheck = 0
-    for i, job in enumerate(pending):
-        jid = str(job.get("jobId") or "")
-        plat = (str(job.get("platform") or "") or "?").strip()
-        head = f"[{i + 1}/{total}] {plat} {_displayJobId(jid)}"
-        try:
-            preTags = findRestrictionTagsForJob(job)
-            if preTags:
-                if updateApplyStatusByJobId(jid, "REJECTED"):
-                    rejectedPrecheck += 1
-                    log.warning(
-                        f"{head} → {formatApplyStatusBadge('REJECTED')} local pre-check: "
-                        f"{', '.join(preTags)}"
-                    )
-                else:
-                    log.warning(f"{head} → pre-check matched but no DB row updated for jobId={jid!r}")
-                continue
-
-            checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
-            if not isinstance(parsed, dict):
-                snippet = (checkResp.text or "").strip().replace("\n", " ")[:120]
-                extra = f" — {snippet}" if snippet else ""
-                log.warning(f"{head} → non-JSON HTTP {checkResp.status_code}{extra}")
-                continue
-            if not bool(parsed.get("ok")):
-                ex_ok, ex_st = maybePersistExistingFromMaasErrors(job, parsed, quiet=True)
-                if ex_ok:
-                    written += 1
-                    badge = formatApplyStatusBadge(ex_st or APPLY_STATUS_EXISTING)
-                    log.info(f"{head} → {badge}")
-                    continue
-                errs = parsed.get("errors")
-                if isinstance(errs, dict) and errs:
-                    err_blob = json.dumps(errs, ensure_ascii=False)
-                    if len(err_blob) > 160:
-                        err_blob = err_blob[:157] + "…"
-                    log.warning(f"{head} → check ok=false {err_blob}")
-                else:
-                    detail = parsed.get("detail") or parsed.get("message") or parsed.get("error")
-                    if detail:
-                        log.warning(f"{head} → check ok=false: {detail!r}")
-                    else:
-                        raw = (checkResp.text or "").strip().replace("\n", " ")[:160]
+    processed = 0
+    failureTracker = _ConsecutiveFailureTracker(_consecutiveCheckAbortLimit())
+    try:
+        for i, job in enumerate(pending):
+            processed = i + 1
+            jid = str(job.get("jobId") or "")
+            plat = (str(job.get("platform") or "") or "?").strip()
+            head = f"[{i + 1}/{total}] {plat} {_displayJobId(jid)}"
+            try:
+                preTags = findRestrictionTagsForJob(job)
+                if preTags:
+                    failureTracker.reset()
+                    if updateApplyStatusByJobId(jid, "REJECTED"):
+                        rejectedPrecheck += 1
                         log.warning(
-                            f"{head} → check ok=false HTTP {checkResp.status_code}"
-                            + (f" — {raw}" if raw else "")
+                            f"{head} → {formatApplyStatusBadge('REJECTED')} local pre-check: "
+                            f"{', '.join(preTags)}"
                         )
-                continue
-            cl_ok, cl_st = maybePersistClassifierApplyStatus(job, parsed, quiet=True)
-            if cl_ok:
-                written += 1
-                badge = formatApplyStatusBadge(cl_st or "")
-                log.info(f"{head} → {badge}")
-            else:
-                log.warning(f"{head} → ok response but no applyStatus written (no decision?)")
-        except KeyboardInterrupt:
-            raise
-        except Exception:
-            log.error(f"{head} → exception (traceback below)")
-            traceback.print_exc()
-        if delaySec > 0:
-            time.sleep(delaySec)
+                    else:
+                        log.warning(f"{head} → pre-check matched but no DB row updated for jobId={jid!r}")
+                    continue
+
+                checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
+                if not isinstance(parsed, dict):
+                    failMsg = extractCheckFailureMessage(parsed, checkResp)
+                    log.warning(f"{head} → non-JSON HTTP {checkResp.status_code} — {failMsg}")
+                    failureTracker.record(failMsg)
+                    continue
+                if not bool(parsed.get("ok")):
+                    ex_ok, ex_st = maybePersistExistingFromMaasErrors(job, parsed, quiet=True)
+                    if ex_ok:
+                        failureTracker.reset()
+                        written += 1
+                        badge = formatApplyStatusBadge(ex_st or APPLY_STATUS_EXISTING)
+                        log.info(f"{head} → {badge}")
+                        continue
+                    failMsg = extractCheckFailureMessage(parsed, checkResp)
+                    err_blob = failMsg if len(failMsg) <= 160 else failMsg[:157] + "…"
+                    log.warning(f"{head} → check ok=false: {err_blob!r}")
+                    failureTracker.record(failMsg)
+                    continue
+                cl_ok, cl_st = maybePersistClassifierApplyStatus(job, parsed, quiet=True)
+                if cl_ok:
+                    failureTracker.reset()
+                    written += 1
+                    badge = formatApplyStatusBadge(cl_st or "")
+                    log.info(f"{head} → {badge}")
+                else:
+                    failMsg = "ok response but no applyStatus written (no decision?)"
+                    log.warning(f"{head} → {failMsg}")
+                    failureTracker.record(failMsg)
+            except ConsecutiveCheckFailureAbort:
+                raise
+            except KeyboardInterrupt:
+                raise
+            except Exception:
+                log.error(f"{head} → exception (traceback below)")
+                traceback.print_exc()
+            if delaySec > 0:
+                time.sleep(delaySec)
+    except ConsecutiveCheckFailureAbort as exc:
+        _logConsecutiveCheckAbort(
+            log,
+            exc,
+            written=written,
+            rejectedPrecheck=rejectedPrecheck,
+            processed=processed,
+            total=total,
+        )
+        raise
 
     log.info(
         f"Done. Wrote applyStatus from classifier/MAAS for {written} job(s); "
         f"REJECTED from local pre-check (restrictions / 6+ years experience): {rejectedPrecheck}."
+    )
+
+
+def _logConsecutiveCheckAbort(log: ScraperRunLog, exc: ConsecutiveCheckFailureAbort, *, written: int, rejectedPrecheck: int, processed: int, total: int) -> None:
+    remaining = max(0, total - processed)
+    log.error(str(exc))
+    log.error(
+        f"Stopped validation early ({processed}/{total} processed, {remaining} skipped). "
+        f"Classifier writes={written}; local REJECTED={rejectedPrecheck}. "
+        f"Fix the Midhtech check API or set MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS "
+        f"to change the abort threshold (current limit={exc.limit})."
     )
 
 
@@ -362,7 +447,9 @@ def _parseCliChoice(argv: list[str]) -> str | None:
             "  -2  Push all APPLY jobs to suggest API\n\n"
             "  -3  Cleanup: Delete Unwanted + NULL (keep APPLY only) and "
             "delete pastData older than 48h\n\n"
-            "With no arguments, an interactive menu is shown."
+            "With no arguments, an interactive menu is shown.\n\n"
+            "Exit code 3: validation (-1) aborted after consecutive identical check failures "
+            "(see MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS)."
         )
         raise SystemExit(0)
     mapping = {
@@ -390,12 +477,16 @@ def main() -> int:
     if choice is None:
         print("Cancelled.")
         return 0
-    if choice == "1":
-        syncEmptyApplyStatuses()
-    elif choice == "2":
-        pushApplyJobsAfterValidate()
-    else:
-        cleanupDeleteUnwantedPlusNullAndPastData(pastHours=48)
+    try:
+        if choice == "1":
+            syncEmptyApplyStatuses()
+        elif choice == "2":
+            pushApplyJobsAfterValidate()
+        else:
+            cleanupDeleteUnwantedPlusNullAndPastData(pastHours=48)
+    except ConsecutiveCheckFailureAbort as exc:
+        print(str(exc), file=sys.stderr)
+        return EXIT_CONSECUTIVE_CHECK_ABORT
     return 0
 
 
