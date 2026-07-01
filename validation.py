@@ -2,7 +2,8 @@ import json
 import os
 import sys
 import time
-import traceback
+
+import requests
 
 from utils.dataManager import (
     deleteJobsKeepingOnlyApply,
@@ -295,9 +296,10 @@ def syncEmptyApplyStatuses() -> None:
                 raise
             except KeyboardInterrupt:
                 raise
-            except Exception:
-                log.error(f"{head} → exception (traceback below)")
-                traceback.print_exc()
+            except requests.RequestException as exc:
+                log.error(f"{head} → network error: {exc}")
+            except Exception as exc:
+                log.error(f"{head} → exception: {exc}")
             if delaySec > 0:
                 time.sleep(delaySec)
     except ConsecutiveCheckFailureAbort as exc:
