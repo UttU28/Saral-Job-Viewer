@@ -549,6 +549,8 @@ def errorsIndicateMaasExistingOrDuplicate(errs: object) -> bool:
         "duplicate suggestion detected",
         "this job url was already suggested",
         "this job url already exists",
+        "already promoted to an inactive maas job",
+        "already promoted to a maas job",
     )
     for msg in flattenDrfErrors(errs):
         low = msg.lower()

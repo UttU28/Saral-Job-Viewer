@@ -24,6 +24,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from utils.scraperTerminalLog import PLATFORM_GLASSDOOR, ScraperRunLog
 from utils.startChrome import (
+    ChromeStartupError,
     createScrapingChromeDriver,
     envBool,
 )
@@ -1180,7 +1181,7 @@ def main() -> None:
 
     try:
         driver = createScrapingChromeDriver(headless=headless, quiet=True)
-    except ValueError as exc:
+    except (ValueError, ChromeStartupError) as exc:
         runLog.error(str(exc))
         raise SystemExit(1) from exc
 

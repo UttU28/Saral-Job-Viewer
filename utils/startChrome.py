@@ -1,13 +1,20 @@
 import os
 import random
+import re
+import subprocess
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 from selenium import webdriver
+from selenium.common.exceptions import SessionNotCreatedException, WebDriverException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
+
+
+class ChromeStartupError(RuntimeError):
+    """Chrome or ChromeDriver failed to start (version mismatch, missing binary, etc.)."""
 
 
 def envBool(name: str, *, default: bool = False) -> bool:
@@ -51,6 +58,62 @@ def resolveChromeDriverExecutable() -> str:
     return ChromeDriverManager().install()
 
 
+def detectChromeMajorVersion(chromeAppPath: str) -> int | None:
+    """Return major version from `chrome --version`, or None if it cannot be read."""
+    try:
+        proc = subprocess.run(
+            [chromeAppPath, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        text = f"{proc.stdout or ''}{proc.stderr or ''}"
+        match = re.search(r"(\d+)\.\d+\.\d+", text)
+        return int(match.group(1)) if match else None
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return None
+
+
+def _isChromeVersionMismatch(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return (
+        "only supports chrome version" in msg
+        or ("current browser version" in msg and "chrome version" in msg)
+        or ("session not created" in msg and "version" in msg)
+    )
+
+
+def _chromeVersionMismatchMessage(chromeAppPath: str, exc: BaseException) -> str:
+    detected = detectChromeMajorVersion(chromeAppPath)
+    if detected is not None:
+        chromeLine = f"  Installed Chrome: {detected}.x ({chromeAppPath})"
+    else:
+        chromeLine = f"  CHROME_APP_PATH: {chromeAppPath}"
+    return (
+        "Chrome failed to start: ChromeDriver does not match your installed Chrome.\n"
+        f"{chromeLine}\n"
+        f"  Details: {exc}\n\n"
+        "Please update Chrome Beta to the latest version, then verify CHROME_APP_PATH in .env "
+        "points at the Chrome Beta executable.\n"
+        "After updating, restart the scraper."
+    )
+
+
+def _raiseChromeStartupError(chromeAppPath: str, exc: BaseException) -> None:
+    if isinstance(exc, ChromeStartupError):
+        raise exc
+    if _isChromeVersionMismatch(exc):
+        raise ChromeStartupError(_chromeVersionMismatchMessage(chromeAppPath, exc)) from exc
+    if isinstance(exc, (SessionNotCreatedException, WebDriverException)):
+        raise ChromeStartupError(
+            f"Chrome failed to start ({exc}).\n"
+            f"  CHROME_APP_PATH: {chromeAppPath}\n"
+            "Check that Chrome Beta is installed and CHROME_APP_PATH in .env is correct."
+        ) from exc
+    raise exc
+
+
 def _createUndetectedChromeDriver(
     *,
     headless: bool,
@@ -90,13 +153,17 @@ def _createUndetectedChromeDriver(
         opts.add_argument("--window-size=1920,1080")
         opts.add_argument("--disable-gpu")
 
-    # user_data_dir as kwarg avoids duplicating --user-data-dir on the command line.
-    driver = uc.Chrome(
-        options=opts,
-        browser_executable_path=chromeAppPath,
-        user_data_dir=chromeDir,
-        version_main=None,
-    )
+    chromeMajor = detectChromeMajorVersion(chromeAppPath)
+    try:
+        # user_data_dir as kwarg avoids duplicating --user-data-dir on the command line.
+        driver = uc.Chrome(
+            options=opts,
+            browser_executable_path=chromeAppPath,
+            user_data_dir=chromeDir,
+            version_main=chromeMajor,
+        )
+    except Exception as exc:
+        _raiseChromeStartupError(chromeAppPath, exc)
 
     if not quiet:
         print("Chrome session started (undetected-chromedriver)", file=sys.stderr)
@@ -154,8 +221,11 @@ def createScrapingChromeDriver(*, headless: bool = True, quiet: bool = True):
         chromeOptions.add_argument("--window-size=1920,1080")
         chromeOptions.add_argument("--disable-gpu")
 
-    chromeService = Service(executable_path=resolveChromeDriverExecutable())
-    chromeDriver = webdriver.Chrome(service=chromeService, options=chromeOptions)
+    try:
+        chromeService = Service(executable_path=resolveChromeDriverExecutable())
+        chromeDriver = webdriver.Chrome(service=chromeService, options=chromeOptions)
+    except Exception as exc:
+        _raiseChromeStartupError(chromeAppPath, exc)
 
     if not quiet:
         print("Chrome session started", file=sys.stderr)

@@ -35,6 +35,7 @@ from utils.fileManagement import (
     saveOutputDocument,
 )
 from utils.startChrome import (
+    ChromeStartupError,
     createScrapingChromeDriver,
     envBool,
     promptBeforeClosingBrowserIfHeaded,
@@ -820,7 +821,7 @@ def main() -> int:
 
     try:
         driver = createScrapingChromeDriver(headless=headless, quiet=True)
-    except ValueError as exc:
+    except (ValueError, ChromeStartupError) as exc:
         runLog.error(str(exc))
         return 1
 

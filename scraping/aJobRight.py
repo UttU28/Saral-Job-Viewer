@@ -28,6 +28,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from utils.dataManager import loadKnownJobIdsByPlatform
 from utils.scraperTerminalLog import PLATFORM_JOBRIGHT, ScraperRunLog
 from utils.startChrome import (
+    ChromeStartupError,
     createScrapingChromeDriver,
     envBool,
     promptBeforeClosingBrowserIfHeaded,
@@ -1306,9 +1307,9 @@ def main() -> None:
             headless=envBool("SCRAPING_HEADLESS", default=True),
             quiet=True,
         )
-    except ValueError as exc:
+    except (ValueError, ChromeStartupError) as exc:
         runLog.error(str(exc))
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     try:
         driver.set_page_load_timeout(120)
