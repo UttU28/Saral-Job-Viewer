@@ -549,8 +549,37 @@ def errorsIndicateMaasExistingOrDuplicate(errs: object) -> bool:
         "duplicate suggestion detected",
         "this job url was already suggested",
         "this job url already exists",
+        # Promoted suggestions (active or inactive) are duplicates, not API failures.
+        "already promoted to an active maas job",
         "already promoted to an inactive maas job",
         "already promoted to a maas job",
+        "open the existing job instead of submitting again",
+    )
+    for msg in flattenDrfErrors(errs):
+        low = msg.lower()
+        if any(n in low for n in needles):
+            return True
+    return False
+
+
+def errorsIndicateStaffWatchlistDoNotApply(errs: object) -> bool:
+    """Midhtech /check/ validation: company is on staff Do Not Apply watchlist."""
+    needles = (
+        "do not apply via staff watchlist",
+        "flagged as do not apply via staff watchlist",
+    )
+    for msg in flattenDrfErrors(errs):
+        low = msg.lower()
+        if any(n in low for n in needles):
+            return True
+    return False
+
+
+def errorsIndicateMaasBusinessRejection(errs: object) -> bool:
+    """Midhtech /check/ validation: known business rules that reject a job (not API errors)."""
+    needles = (
+        "url is too long to save in maas",
+        "not opt-friendly",
     )
     for msg in flattenDrfErrors(errs):
         low = msg.lower()

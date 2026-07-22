@@ -349,7 +349,6 @@ export function JobDetailPane({
 
   const job = detailQuery.data;
   const originalUrl = (job.originalJobPostUrl ?? "").trim();
-  const platformUrl = (job.jobUrl ?? "").trim();
 
   const executeAcceptSubmit = async () => {
     const name = (sessionProfile?.name ?? "").trim();
@@ -757,14 +756,6 @@ export function JobDetailPane({
                 <a href={originalUrl} target="_blank" rel="noreferrer">
                   <ExternalLink className="h-4 w-4" />
                   Original URL
-                </a>
-              </Button>
-            ) : null}
-            {platformUrl ? (
-              <Button size="default" variant="outline" className="w-full sm:w-auto rounded-xl gap-2 h-11 sm:h-10 touch-manipulation border-zinc-400/80 bg-transparent text-zinc-700 hover:bg-zinc-500/[0.12] dark:text-zinc-300" asChild>
-                <a href={platformUrl} target="_blank" rel="noreferrer">
-                  <ExternalLink className="h-4 w-4" />
-                  Platform URL
                 </a>
               </Button>
             ) : null}

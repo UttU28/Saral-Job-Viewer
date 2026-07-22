@@ -19,6 +19,8 @@ from utils.midhtechSuggestApi import (
     buildCheckPayload,
     classifierApplyStatusFromResponse,
     errorsIndicateMaasExistingOrDuplicate,
+    errorsIndicateMaasBusinessRejection,
+    errorsIndicateStaffWatchlistDoNotApply,
     postJobCheck,
     printCheckSummary,
     submitJobSuggestion,
@@ -64,6 +66,7 @@ def normalizeClassifierDecisionForDb(raw: str) -> str:
 
 
 APPLY_STATUS_EXISTING = "EXISTING"
+APPLY_STATUS_DO_NOT_APPLY = "DO_NOT_APPLY"
 KEEP_STATUS = "APPLY"
 STATUS_APPLIED = "APPLIED"
 STATUS_REDO = "REDO"
@@ -182,6 +185,54 @@ def maybePersistExistingFromMaasErrors(
     return False, None
 
 
+def maybePersistDoNotApplyFromStaffWatchlistErrors(
+    job: dict, parsed: dict, *, quiet: bool = False
+) -> tuple[bool, str | None]:
+    """When /check/ returns staff watchlist Do Not Apply, set applyStatus to DO_NOT_APPLY."""
+    if not isinstance(parsed, dict) or bool(parsed.get("ok")):
+        return False, None
+    errs = parsed.get("errors")
+    if not errorsIndicateStaffWatchlistDoNotApply(errs):
+        return False, None
+    jobId = str(job.get("jobId") or "").strip()
+    if not jobId:
+        return False, None
+    if updateApplyStatusByJobId(jobId, APPLY_STATUS_DO_NOT_APPLY):
+        if not quiet:
+            print(
+                f"Updated applyStatus for jobId={jobId!r} -> {APPLY_STATUS_DO_NOT_APPLY!r} "
+                "(staff watchlist Do Not Apply)"
+            )
+        return True, APPLY_STATUS_DO_NOT_APPLY
+    if not quiet:
+        print(f"No DB row updated for jobId={jobId!r} (missing job?)")
+    return False, None
+
+
+def maybePersistRejectedFromMaasErrors(
+    job: dict, parsed: dict, *, quiet: bool = False
+) -> tuple[bool, str | None]:
+    """When /check/ returns known MAAS business rejections, set applyStatus to REJECTED."""
+    if not isinstance(parsed, dict) or bool(parsed.get("ok")):
+        return False, None
+    errs = parsed.get("errors")
+    if not errorsIndicateMaasBusinessRejection(errs):
+        return False, None
+    jobId = str(job.get("jobId") or "").strip()
+    if not jobId:
+        return False, None
+    if updateApplyStatusByJobId(jobId, "REJECTED"):
+        if not quiet:
+            print(
+                f"Updated applyStatus for jobId={jobId!r} -> 'REJECTED' "
+                "(MAAS business rule)"
+            )
+        return True, "REJECTED"
+    if not quiet:
+        print(f"No DB row updated for jobId={jobId!r} (missing job?)")
+    return False, None
+
+
 def loginAndCheck(jobIndex: int = 0) -> None:
     """Log in, POST one job (FIFO index in jobData), print summary, persist applyStatus if ok."""
     session, _baseUrl, suggestUrl, checkUrl, csrfToken = authenticateMidhtechSession()
@@ -217,6 +268,8 @@ def loginAndCheck(jobIndex: int = 0) -> None:
     if isinstance(parsed, dict):
         maybePersistClassifierApplyStatus(job, parsed, quiet=False)
         maybePersistExistingFromMaasErrors(job, parsed, quiet=False)
+        maybePersistDoNotApplyFromStaffWatchlistErrors(job, parsed, quiet=False)
+        maybePersistRejectedFromMaasErrors(job, parsed, quiet=False)
 
 
 def syncEmptyApplyStatuses() -> None:
@@ -276,6 +329,22 @@ def syncEmptyApplyStatuses() -> None:
                         written += 1
                         badge = formatApplyStatusBadge(ex_st or APPLY_STATUS_EXISTING)
                         log.info(f"{head} → {badge}")
+                        continue
+                    dna_ok, dna_st = maybePersistDoNotApplyFromStaffWatchlistErrors(
+                        job, parsed, quiet=True
+                    )
+                    if dna_ok:
+                        failureTracker.reset()
+                        written += 1
+                        badge = formatApplyStatusBadge(dna_st or APPLY_STATUS_DO_NOT_APPLY)
+                        log.info(f"{head} → {badge} staff watchlist")
+                        continue
+                    rej_ok, rej_st = maybePersistRejectedFromMaasErrors(job, parsed, quiet=True)
+                    if rej_ok:
+                        failureTracker.reset()
+                        written += 1
+                        badge = formatApplyStatusBadge(rej_st or "REJECTED")
+                        log.info(f"{head} → {badge} MAAS business rule")
                         continue
                     failMsg = extractCheckFailureMessage(parsed, checkResp)
                     err_blob = failMsg if len(failMsg) <= 160 else failMsg[:157] + "…"
