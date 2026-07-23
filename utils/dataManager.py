@@ -25,6 +25,7 @@ class MongoUnavailableError(RuntimeError):
 JOB_DATA_COLLECTION = "jobData"
 PAST_DATA_COLLECTION = "pastData"
 SCRAPER_SETTINGS_COLLECTION = "scraperSettings"
+PLACETRACK_WORKSPACE_COLLECTION = "placetrackWorkspace"
 SCRAPER_KEYWORDS_DOCUMENT_ID = "searchKeywords"
 
 _mongo_client: Any = None
@@ -106,15 +107,15 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
                 db[PAST_DATA_COLLECTION].drop()
             if SCRAPER_SETTINGS_COLLECTION in names:
                 db[SCRAPER_SETTINGS_COLLECTION].drop()
+            if PLACETRACK_WORKSPACE_COLLECTION in names:
+                db[PLACETRACK_WORKSPACE_COLLECTION].drop()
         job_col = db[JOB_DATA_COLLECTION]
         past_col = db[PAST_DATA_COLLECTION]
-        settings_col = db[SCRAPER_SETTINGS_COLLECTION]
         job_col.create_index("jobId", unique=True)
         past_col.create_index("jobId", unique=True)
         job_col.create_index("platform")
         job_col.create_index("category")
         past_col.create_index("platform")
-        settings_col.create_index("_id", unique=True)
     except (MongoUnavailableError, PyMongoError) as exc:
         appendScrapeLog(
             f"Mongo index ensure skipped due to transient error: {type(exc).__name__}: {exc}",

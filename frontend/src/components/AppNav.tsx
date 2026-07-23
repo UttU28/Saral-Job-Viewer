@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Briefcase, Flame, Home, LogOut, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound } from "lucide-react";
+import { Briefcase, Flame, Home, LogOut, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound, Workflow } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -13,12 +13,16 @@ function NavLink({
   href,
   icon: Icon,
   children,
+  matchPrefix,
 }: Readonly<{
   href: string;
   icon: typeof Home;
   children: ReactNode;
+  matchPrefix?: boolean;
 }>) {
-  const [isActive] = useRoute(href);
+  const [location] = useLocation();
+  const [isExactActive] = useRoute(href);
+  const isActive = matchPrefix ? location.startsWith(href) : isExactActive;
   return (
     <Button
       variant={isActive ? "secondary" : "ghost"}
@@ -193,6 +197,9 @@ export function AppNav() {
               <NavLink href="/interview" icon={MessageCircleQuestion}>
                 Interview
               </NavLink>
+              <NavLink href="/placetrack" icon={Workflow} matchPrefix>
+                PlaceTrack
+              </NavLink>
               {user?.isAdmin ? (
                 <NavLink href="/admin" icon={Shield}>
                   Admin
@@ -259,6 +266,7 @@ export function AppNav() {
                     label="Interview prep"
                     onNavigate={closeMobile}
                   />
+                  <MobileNavRow href="/placetrack" icon={Workflow} label="PlaceTrack" onNavigate={closeMobile} />
                   {user?.isAdmin ? (
                     <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
                   ) : null}

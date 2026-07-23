@@ -9,6 +9,7 @@ import math
 import os
 import time
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 
@@ -21,6 +22,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env", override=False)
 
 from utils.dataManager import (
     MongoUnavailableError,
+    createTables,
     deleteJobsByApplyStatusNotIn,
     deleteJobsKeepingOnlyApply,
     deletePastDataOlderThanHours,
@@ -76,8 +78,8 @@ from utils.validationDocker import (
     listValidationExecutions,
     triggerValidationContainer,
 )
-
-app = FastAPI(title="Saral Job Viewer API", version="1.0.0")
+from utils.gmailRoutes import gmailRouter
+from utils.placetrackRoutes import placetrackRouter
 
 _logLevelName = str(os.getenv("APP_LOG_LEVEL") or "INFO").strip().upper()
 _logLevel = getattr(logging, _logLevelName, logging.INFO)
@@ -88,6 +90,21 @@ if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(_logLevel)
 logger.propagate = False
+
+
+@asynccontextmanager
+async def _appLifespan(_app: FastAPI):
+    try:
+        createTables(recreate=False)
+        logger.info("MongoDB collections/indexes ensured (including placetrackWorkspace).")
+    except Exception as exc:
+        logger.warning("MongoDB bootstrap on startup skipped: %s", exc)
+    yield
+
+
+app = FastAPI(title="Saral Job Viewer API", version="1.0.0", lifespan=_appLifespan)
+app.include_router(gmailRouter)
+app.include_router(placetrackRouter)
 
 
 class RegisterBody(BaseModel):
