@@ -57,6 +57,7 @@ services:
       - "127.0.0.1:9260:9260"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./client_secret.json:/app/client_secret.json:ro
     depends_on:
       sjv-redis:
         condition: service_healthy

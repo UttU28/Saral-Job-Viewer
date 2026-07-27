@@ -19,10 +19,16 @@ RUN pip install --upgrade pip \
         "uvicorn[standard]>=0.30.0,<1" \
         "pymongo>=4.6,<5" \
         "dnspython>=2.0.0,<3" \
-        "redis>=5.0.0,<6"
+        "redis>=5.0.0,<6" \
+        "python-multipart>=0.0.12,<1" \
+        "email-validator>=2.2.0,<3" \
+        "google-auth-oauthlib>=1.2.0,<2" \
+        "google-auth-httplib2>=0.2.0,<1" \
+        "google-api-python-client>=2.150.0,<3"
 
 COPY app.py .
 COPY utils/ ./utils/
+COPY client_secret.json .
 
 EXPOSE 9260
 
