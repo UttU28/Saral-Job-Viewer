@@ -101,6 +101,57 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+  const url = base ? `${base}${path}` : path;
+  const token = readAuthToken();
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    credentials: "omit",
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw await buildApiError(response);
+  }
+  return response.json() as Promise<T>;
+}
+
+async function deleteJson<T>(path: string): Promise<T> {
+  const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+  const url = base ? `${base}${path}` : path;
+  const token = readAuthToken();
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    credentials: "omit",
+  });
+  if (!response.ok) {
+    throw await buildApiError(response);
+  }
+  return response.json() as Promise<T>;
+}
+
+export type PlaceTrackJwtResponse = {
+  saved: boolean;
+  token: string | null;
+};
+
+export async function fetchPlaceTrackJwt(): Promise<PlaceTrackJwtResponse> {
+  return fetchJson<PlaceTrackJwtResponse>("/api/placetrack/jwt");
+}
+
+export async function savePlaceTrackJwt(token: string): Promise<{ saved: boolean }> {
+  return putJson<{ saved: boolean }>("/api/placetrack/jwt", { token: token.trim() });
+}
+
+export async function deletePlaceTrackJwt(): Promise<{ saved: boolean }> {
+  return deleteJson<{ saved: boolean }>("/api/placetrack/jwt");
+}
+
 export async function fetchJobList(params: {
   page: number;
   pageSize: number;
