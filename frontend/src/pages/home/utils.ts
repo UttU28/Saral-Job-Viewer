@@ -88,9 +88,15 @@ export function jobMetaHighlights(job: JobRow): string[] {
 
 export function formatApiDecisionError(res: JobDecisionResponse): string {
   const parts: string[] = [];
-  if (res.error?.trim()) parts.push(res.error.trim());
+  const error = res.error?.trim();
+  if (error) parts.push(error);
   for (const st of res.steps ?? []) {
-    if (!st.ok) parts.push(`${st.phase}: ${st.message}`);
+    if (!st.ok) {
+      const message = st.message.trim();
+      if (!message) continue;
+      if (error && (message === error || error.includes(message))) continue;
+      parts.push(`${st.phase}: ${st.message}`);
+    }
   }
   const out = parts.filter(Boolean).join("\n");
   return out || "Something went wrong.";

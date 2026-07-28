@@ -430,7 +430,7 @@ def pushApplyJobsAfterValidate() -> int:
             )
             continue
         try:
-            success, info = submitJobSuggestion(
+            success, info, auto_apply_status = submitJobSuggestion(
                 session=session,
                 suggestUrl=suggestUrl,
                 csrfToken=csrfToken,
@@ -439,6 +439,7 @@ def pushApplyJobsAfterValidate() -> int:
         except Exception as exc:
             success = False
             info = f"exception: {exc}"
+            auto_apply_status = None
 
         suffix = formatPushResultSuffix(info)
         if success:
@@ -446,6 +447,11 @@ def pushApplyJobsAfterValidate() -> int:
             applied += 1
             badge = formatApplyStatusBadge(STATUS_APPLIED)
             log.info(f"{head} → {badge} {suffix}")
+        elif auto_apply_status:
+            updateApplyStatusByJobId(jobId, auto_apply_status)
+            rejected += 1
+            badge = formatApplyStatusBadge(auto_apply_status)
+            log.warning(f"{head} → {badge} known rejection {suffix}")
         else:
             updateApplyStatusByJobId(jobId, STATUS_REDO)
             redo += 1

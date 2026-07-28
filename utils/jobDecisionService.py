@@ -17,6 +17,7 @@ from typing import Any, Final, Literal
 from utils.dataManager import (
     claimApplyingFromApply,
     finalizeAppliedFromApplying,
+    finalizeApplyStatusFromApplying,
     getApplyStatusUpperByJobId,
     revertApplyingToApply,
     updateApplyStatusByJobId,
@@ -195,6 +196,23 @@ def buildStep(phase: str, ok: bool, message: str) -> dict[str, Any]:
     return {"phase": phase, "ok": ok, "message": message}
 
 
+def _persistKnownSubmitFailureStatus(
+    job_id_str: str,
+    auto_apply_status: str,
+    steps: list[dict[str, Any]],
+) -> str:
+    label = auto_apply_status.replace("_", " ")
+    steps.append(buildStep("database", False, f"Saving {label}…"))
+    if finalizeApplyStatusFromApplying(job_id_str, auto_apply_status):
+        steps[-1] = buildStep("database", True, f"{label} saved")
+        return auto_apply_status
+    if updateApplyStatusByJobId(job_id_str, auto_apply_status):
+        steps[-1] = buildStep("database", True, f"{label} saved (fallback)")
+        return auto_apply_status
+    steps[-1] = buildStep("database", False, "Failed to update apply status in database")
+    return getApplyStatusUpperByJobId(job_id_str) or auto_apply_status
+
+
 def _base_response(
     *,
     ok: bool,
@@ -226,7 +244,9 @@ def executeJobUiDecision(
 ) -> dict[str, Any]:
     """
     reject -> Mongo applyStatus REJECTED (blocked if APPLIED or APPLYING).
-    accept  -> requires APPLY in DB; APPLY -> APPLYING (atomic), then Midhtech flow, then APPLIED; revert to APPLY on failure.
+    accept  -> requires APPLY in DB; APPLY -> APPLYING (atomic), then Midhtech flow, then APPLIED;
+    on Midhtech failure reverts APPLYING->APPLY unless the error is a known business rejection
+    (duplicate/existing, watchlist, other defined rules) in which case the job is saved accordingly.
     Every response includes dbApplyStatus (and skippedReason when the action did not proceed).
     """
     steps: list[dict[str, Any]] = []
@@ -433,10 +453,33 @@ def executeJobUiDecision(
     print("[accept] Phase 2: submitJobSuggestion (full payload from viewer)", flush=True)
     steps.append(buildStep("submit", False, "Posting job to /jobs/suggest/…"))
     try:
-        submit_ok, detail = submitJobSuggestion(session, suggest_url, csrf_token, job)
+        submit_ok, detail, auto_apply_status = submitJobSuggestion(
+            session, suggest_url, csrf_token, job
+        )
         if not submit_ok:
             steps[-1] = buildStep("submit", False, detail)
             print(f"[accept] Phase 2 FAILED: {detail}", flush=True)
+            if auto_apply_status:
+                db_status = _persistKnownSubmitFailureStatus(
+                    job_id_str, auto_apply_status, steps
+                )
+                error = (
+                    f"{detail}\n\nJob marked as {auto_apply_status.replace('_', ' ')} "
+                    "in the database."
+                )
+                print(
+                    f"[accept] Known Midhtech rejection -> {auto_apply_status}",
+                    flush=True,
+                )
+                return _base_response(
+                    ok=False,
+                    decision=decision,
+                    steps=steps,
+                    apply_status_updated=auto_apply_status,
+                    error=error,
+                    db_apply_status=db_status,
+                    skipped_reason=None,
+                )
             revertApplyingToApply(job_id_str)
             st = getApplyStatusUpperByJobId(job_id_str)
             return _base_response(

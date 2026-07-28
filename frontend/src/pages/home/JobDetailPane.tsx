@@ -553,6 +553,11 @@ export function JobDetailPane({
                   <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden />
                   Accept complete
                 </>
+              ) : acceptProgressResult?.applyStatusUpdated ? (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden />
+                  Marked as {acceptProgressResult.applyStatusUpdated.replaceAll("_", " ")}
+                </>
               ) : acceptProgressResult?.skippedReason ? (
                 <>
                   <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" aria-hidden />
@@ -599,14 +604,36 @@ export function JobDetailPane({
                             {acceptProgressResult.error}
                           </p>
                         ) : acceptProgressResult.error ? (
-                          <p className="text-destructive font-medium whitespace-pre-wrap break-words">
+                          <p
+                            className={
+                              acceptProgressResult.applyStatusUpdated
+                                ? "text-amber-800 dark:text-amber-100/90 font-medium whitespace-pre-wrap break-words"
+                                : "text-destructive font-medium whitespace-pre-wrap break-words"
+                            }
+                          >
                             {acceptProgressResult.error}
                           </p>
                         ) : null}
-                        {acceptProgressResult.steps?.some((s) => !s.ok) ? (
+                        {acceptProgressResult.steps?.some(
+                          (s) =>
+                            !s.ok &&
+                            !(
+                              acceptProgressResult.error &&
+                              (s.message.trim() === acceptProgressResult.error.trim() ||
+                                acceptProgressResult.error.includes(s.message.trim()))
+                            ),
+                        ) ? (
                           <ol className="list-decimal pl-5 space-y-1 text-foreground/85">
                             {acceptProgressResult.steps
-                              .filter((s) => !s.ok)
+                              .filter(
+                                (s) =>
+                                  !s.ok &&
+                                  !(
+                                    acceptProgressResult.error &&
+                                    (s.message.trim() === acceptProgressResult.error.trim() ||
+                                      acceptProgressResult.error.includes(s.message.trim()))
+                                  ),
+                              )
                               .map((st, stepIndex) => (
                                 <li key={`${st.phase}-${stepIndex}`}>
                                   <span className="font-medium capitalize">{st.phase}:</span> {st.message}

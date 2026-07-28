@@ -5,6 +5,7 @@ Naming in this module uses camelCase for functions and locals per project conven
 
 from __future__ import annotations
 
+import html as html_module
 import json
 import logging
 import os
@@ -352,30 +353,133 @@ def responseLooksSuccessful(resp: requests.Response) -> bool:
     return "/login" not in (resp.url or "")
 
 
-def _submitFailureReasonFromBody(response: requests.Response) -> str | None:
-    """
-    Detect common "HTTP 200 but form failed" outcomes from suggest page HTML/text.
-    """
-    body = (response.text or "").strip()
+_SUBMIT_FAILURE_MARKERS: tuple[str, ...] = (
+    "errorlist",
+    "this field is required",
+    "already exists in maas",
+    "duplicate suggestion detected",
+    "job already exists for this company and title",
+    "this job url was already suggested",
+    "this job url already exists",
+    "please correct the errors below",
+    "invalid csrf token",
+    "csrf verification failed",
+)
+
+
+def _stripHtmlTags(text: str) -> str:
+    withoutTags = re.sub(r"<[^>]+>", " ", text or "")
+    return html_module.unescape(withoutTags)
+
+
+def _normalizeVisibleText(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
+def extractDjangoFormErrorMessages(body: str) -> list[str]:
+    """Pull user-visible validation messages from a Django suggest-page HTML body."""
     if not body:
-        return None
+        return []
+
+    messages: list[str] = []
+    seen: set[str] = set()
+
+    def add(raw: str) -> None:
+        cleaned = _normalizeVisibleText(_stripHtmlTags(raw))
+        if not cleaned or len(cleaned) < 2:
+            return
+        key = cleaned.casefold()
+        if key in seen:
+            return
+        seen.add(key)
+        messages.append(cleaned)
+
+    for block in re.finditer(
+        r'<ul[^>]*class=["\'][^"\']*errorlist[^"\']*["\'][^>]*>(.*?)</ul>',
+        body,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        for li in re.finditer(
+            r"<li[^>]*>(.*?)</li>",
+            block.group(1),
+            flags=re.IGNORECASE | re.DOTALL,
+        ):
+            add(li.group(1))
+
+    for block in re.finditer(
+        r'<div[^>]*class=["\'][^"\']*invalid-feedback[^"\']*["\'][^>]*>(.*?)</div>',
+        body,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        add(block.group(1))
+
+    for block in re.finditer(
+        r'<div[^>]*class=["\'][^"\']*alert[^"\']*alert-danger[^"\']*["\'][^>]*>(.*?)</div>',
+        body,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        add(block.group(1))
+
+    return messages
+
+
+def _humanizeSubmitFailureMarker(marker: str) -> str:
+    if marker == "errorlist":
+        return "The suggest form returned validation errors."
+    text = marker.strip()
+    if not text:
+        return "The suggest form rejected this submission."
+    return text[0].upper() + text[1:]
+
+
+def _parseSubmitFailure(body: str) -> tuple[str | None, list[str]]:
+    """
+    Detect suggest-page failures and return (marker, parsed_messages).
+    marker is kept for logging; messages are shown to the user.
+    """
+    if not body:
+        return None, []
     low = body.lower()
-    markers: tuple[str, ...] = (
-        "errorlist",
-        "this field is required",
-        "already exists in maas",
-        "duplicate suggestion detected",
-        "job already exists for this company and title",
-        "this job url was already suggested",
-        "this job url already exists",
-        "please correct the errors below",
-        "invalid csrf token",
-        "csrf verification failed",
-    )
-    for marker in markers:
-        if marker in low:
-            return marker
-    return None
+    marker: str | None = None
+    for candidate in _SUBMIT_FAILURE_MARKERS:
+        if candidate in low:
+            marker = candidate
+            break
+    if marker is None:
+        return None, []
+
+    messages = extractDjangoFormErrorMessages(body)
+    if not messages:
+        for candidate in _SUBMIT_FAILURE_MARKERS:
+            if candidate in low and candidate != "errorlist":
+                messages.append(_humanizeSubmitFailureMarker(candidate))
+                break
+        if not messages:
+            messages.append(_humanizeSubmitFailureMarker(marker))
+    return marker, messages
+
+
+def formatSubmitFailureDetail(
+    *,
+    response: requests.Response,
+    marker: str | None,
+    messages: list[str],
+    body: str,
+) -> str:
+    if messages:
+        if len(messages) == 1:
+            return f"Midhtech rejected this job: {messages[0]}"
+        return "Midhtech rejected this job:\n" + "\n".join(f"• {msg}" for msg in messages)
+    if marker:
+        return f"Midhtech rejected this job: {_humanizeSubmitFailureMarker(marker)}"
+    preview = _responsePreview(body)
+    return f"HTTP {response.status_code} at {response.url} :: {preview}"
+
+
+def _submitFailureReasonFromBody(response: requests.Response) -> str | None:
+    """Detect common "HTTP 200 but form failed" outcomes from suggest page HTML/text."""
+    marker, _messages = _parseSubmitFailure((response.text or "").strip())
+    return marker
 
 
 def _responsePreview(body: str, limit: int = 300) -> str:
@@ -392,6 +496,7 @@ def _logSubmitResult(
     response: requests.Response,
     ok: bool,
     failureMarker: str | None,
+    failureMessages: list[str] | None = None,
     body: str,
 ) -> None:
     jobId = str(job.get("jobId") or "").strip()
@@ -409,6 +514,7 @@ def _logSubmitResult(
         "responseUrl": str(response.url or ""),
         "submitOk": bool(ok),
         "failureMarker": failureMarker or "",
+        "validationErrors": list(failureMessages or []),
         "responsePreview": preview,
     }
     if ok:
@@ -422,7 +528,14 @@ def submitJobSuggestion(
     suggestUrl: str,
     csrfToken: str,
     job: dict,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, str | None]:
+    """
+    Submit a job suggestion to Midhtech.
+
+    Returns (ok, detail, autoApplyStatus).
+    autoApplyStatus is set for known business rejections (EXISTING, DO_NOT_APPLY, REJECTED);
+    None means the job should stay APPLY for retry (network/auth/unknown errors).
+    """
     payload = buildCheckPayload(job)
     payload["csrfmiddlewaretoken"] = csrfToken
     headers = {
@@ -447,21 +560,39 @@ def submitJobSuggestion(
             body=body,
         )
         preview = _responsePreview(body)
-        return False, f"HTTP {response.status_code} at {response.url} :: {preview}"
-    failureMarker = _submitFailureReasonFromBody(response)
+        if "/login" in (response.url or ""):
+            return (
+                False,
+                "Midhtech login expired or failed — you were redirected to the login page.",
+                None,
+            )
+        return (
+            False,
+            f"Midhtech request failed (HTTP {response.status_code}): {preview}",
+            None,
+        )
+    failureMarker, failureMessages = _parseSubmitFailure(body)
     if failureMarker:
+        detail = formatSubmitFailureDetail(
+            response=response,
+            marker=failureMarker,
+            messages=failureMessages,
+            body=body,
+        )
+        autoApplyStatus = classifySubmitFailureApplyStatus(
+            failureMarker=failureMarker,
+            failureMessages=failureMessages,
+            transportFailure=False,
+        )
         _logSubmitResult(
             job=job,
             response=response,
             ok=False,
             failureMarker=failureMarker,
+            failureMessages=failureMessages,
             body=body,
         )
-        preview = _responsePreview(body)
-        return (
-            False,
-            f"HTTP {response.status_code} at {response.url} :: submit validation/error marker={failureMarker!r} :: {preview}",
-        )
+        return False, detail, autoApplyStatus
     _logSubmitResult(
         job=job,
         response=response,
@@ -469,7 +600,7 @@ def submitJobSuggestion(
         failureMarker=None,
         body=body,
     )
-    return True, f"HTTP {response.status_code}"
+    return True, f"HTTP {response.status_code}", None
 
 
 def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
@@ -522,6 +653,85 @@ def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
     )
 
 
+MAAS_EXISTING_OR_DUPLICATE_NEEDLES: tuple[str, ...] = (
+    "already exists in maas",
+    "job already exists for this company and title",
+    "duplicate suggestion detected",
+    "this job url was already suggested",
+    "this job url already exists",
+    "already promoted to an active maas job",
+    "already promoted to an inactive maas job",
+    "already promoted to a maas job",
+    "open the existing job instead of submitting again",
+)
+
+STAFF_WATCHLIST_NEEDLES: tuple[str, ...] = (
+    "do not apply via staff watchlist",
+    "flagged as do not apply via staff watchlist",
+    "staff watchlist",
+    "blacklist",
+    "blocklist",
+)
+
+MAAS_BUSINESS_REJECTION_NEEDLES: tuple[str, ...] = (
+    "url is too long to save in maas",
+    "not opt-friendly",
+    "not opt friendly",
+    "does not meet intake criteria",
+    "intake criteria",
+    "role is not eligible",
+    "company is not eligible",
+    "cannot submit this job",
+    "cannot accept this job",
+)
+
+
+def _failureTextBlob(failureMessages: list[str], failureMarker: str | None) -> str:
+    parts = [msg.strip() for msg in failureMessages if msg and str(msg).strip()]
+    if failureMarker:
+        parts.append(str(failureMarker).strip())
+    return " ".join(parts).casefold()
+
+
+def _failureTextMatchesNeedles(
+    failureMessages: list[str],
+    failureMarker: str | None,
+    needles: tuple[str, ...],
+) -> bool:
+    blob = _failureTextBlob(failureMessages, failureMarker)
+    if not blob:
+        return False
+    return any(needle in blob for needle in needles)
+
+
+def classifySubmitFailureApplyStatus(
+    *,
+    failureMarker: str | None,
+    failureMessages: list[str],
+    transportFailure: bool,
+) -> str | None:
+    """
+    Map a known Midhtech submit rejection to a DB applyStatus, or None to keep APPLY for retry.
+    Network/auth/unknown validation failures return None.
+    """
+    if transportFailure:
+        return None
+    if not failureMarker and not failureMessages:
+        return None
+
+    if _failureTextMatchesNeedles(
+        failureMessages, failureMarker, MAAS_EXISTING_OR_DUPLICATE_NEEDLES
+    ):
+        return "EXISTING"
+    if _failureTextMatchesNeedles(failureMessages, failureMarker, STAFF_WATCHLIST_NEEDLES):
+        return "DO_NOT_APPLY"
+    if _failureTextMatchesNeedles(
+        failureMessages, failureMarker, MAAS_BUSINESS_REJECTION_NEEDLES
+    ):
+        return "REJECTED"
+    return None
+
+
 def flattenDrfErrors(errs: object) -> list[str]:
     if not isinstance(errs, dict):
         return []
@@ -543,47 +753,27 @@ def flattenDrfErrors(errs: object) -> list[str]:
 
 def errorsIndicateMaasExistingOrDuplicate(errs: object) -> bool:
     """MAAS /check/ validation: job or suggestion already exists."""
-    needles = (
-        "already exists in maas",
-        "job already exists for this company and title",
-        "duplicate suggestion detected",
-        "this job url was already suggested",
-        "this job url already exists",
-        # Promoted suggestions (active or inactive) are duplicates, not API failures.
-        "already promoted to an active maas job",
-        "already promoted to an inactive maas job",
-        "already promoted to a maas job",
-        "open the existing job instead of submitting again",
-    )
     for msg in flattenDrfErrors(errs):
         low = msg.lower()
-        if any(n in low for n in needles):
+        if any(n in low for n in MAAS_EXISTING_OR_DUPLICATE_NEEDLES):
             return True
     return False
 
 
 def errorsIndicateStaffWatchlistDoNotApply(errs: object) -> bool:
     """Midhtech /check/ validation: company is on staff Do Not Apply watchlist."""
-    needles = (
-        "do not apply via staff watchlist",
-        "flagged as do not apply via staff watchlist",
-    )
     for msg in flattenDrfErrors(errs):
         low = msg.lower()
-        if any(n in low for n in needles):
+        if any(n in low for n in STAFF_WATCHLIST_NEEDLES):
             return True
     return False
 
 
 def errorsIndicateMaasBusinessRejection(errs: object) -> bool:
     """Midhtech /check/ validation: known business rules that reject a job (not API errors)."""
-    needles = (
-        "url is too long to save in maas",
-        "not opt-friendly",
-    )
     for msg in flattenDrfErrors(errs):
         low = msg.lower()
-        if any(n in low for n in needles):
+        if any(n in low for n in MAAS_BUSINESS_REJECTION_NEEDLES):
             return True
     return False
 

@@ -184,6 +184,29 @@ export default function Home() {
         return;
       }
 
+      if (!result.ok && result.applyStatusUpdated?.trim()) {
+        void queryClient.invalidateQueries({ queryKey: ["jobDetail", actingJobId] });
+        void queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
+        void queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
+        const statusLabel = result.applyStatusUpdated.replaceAll("_", " ");
+        const detail = formatApiDecisionError(result);
+        setJobCardDecisionState({
+          jobId: actingJobId,
+          loading: false,
+          flash: {
+            variant: "warning",
+            message: `Known Midhtech rejection — marked as ${statusLabel}`,
+            detail,
+            applyStatus: result.applyStatusUpdated,
+          },
+        });
+        toast({
+          title: `Marked as ${statusLabel}`,
+          description: detail.length > 280 ? `${detail.slice(0, 280)}…` : detail,
+        });
+        return;
+      }
+
       const detail = formatApiDecisionError(result);
       const title = result.decision === "accept" ? "Accept failed" : "Reject failed";
       setJobCardDecisionState({

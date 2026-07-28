@@ -365,13 +365,19 @@ def claimApplyingFromApply(jobId: str) -> tuple[str, str | None]:
 
 
 def finalizeAppliedFromApplying(jobId: str) -> bool:
+    return finalizeApplyStatusFromApplying(jobId, "APPLIED")
+
+
+def finalizeApplyStatusFromApplying(jobId: str, applyStatus: str) -> bool:
+    """After Midhtech outcome: APPLYING -> target applyStatus (APPLIED, REJECTED, EXISTING, …)."""
     jid = str(jobId or "").strip()
-    if not jid:
+    status = str(applyStatus or "").strip().upper()
+    if not jid or not status:
         return False
     createTables(recreate=False)
     res = _getMongoDb()[JOB_DATA_COLLECTION].update_one(
         {"jobId": jid, "applyStatus": "APPLYING"},
-        {"$set": {"applyStatus": "APPLIED"}},
+        {"$set": {"applyStatus": status}},
     )
     return res.matched_count > 0
 
