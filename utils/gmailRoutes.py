@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 
 from utils.gmailAuth import (
     clearCredentials,
@@ -24,7 +24,7 @@ from utils.gmailConfig import (
     gmailOAuthRedirectUri,
     gmailOAuthReturnPath,
 )
-from utils.gmailResumeStore import deleteResume, getResumeInfo, loadResumeAttachment, saveResume
+from utils.gmailResumeStore import deleteResume, getResumeInfo, loadResumeAttachment, loadResumeDownload, saveResume
 from utils.gmailSentRecipients import fetchSentRecipientEmails
 from utils.gmailService import AttachmentInput, MailPayload, createDraft, sendMessage
 
@@ -149,6 +149,20 @@ def disconnectGmail() -> dict:
 @gmailRouter.get("/api/gmail/resume")
 def getGmailResumeStatus() -> dict:
     return getResumeInfo()
+
+
+@gmailRouter.get("/api/gmail/resume/download")
+def downloadGmailResume() -> Response:
+    result = loadResumeDownload()
+    if not result:
+        raise HTTPException(status_code=404, detail="No resume saved.")
+
+    pdfBytes, filename, contentType = result
+    return Response(
+        content=pdfBytes,
+        media_type=contentType,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @gmailRouter.post("/api/gmail/resume")

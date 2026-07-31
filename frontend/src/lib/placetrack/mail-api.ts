@@ -159,6 +159,25 @@ export async function deleteResume(): Promise<void> {
   }
 }
 
+export async function downloadResume(fallbackFilename = "Resume.pdf"): Promise<void> {
+  const response = await fetch(apiUrl("/api/gmail/resume/download"));
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? fallbackFilename;
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 async function postMail(
   endpoint: "/api/gmail/draft" | "/api/gmail/send",
   payload: MailApiPayload,

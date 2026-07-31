@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 DEFAULT_MAIL_TEMPLATES_CONFIG: dict[str, Any] = {
+    "version": 3,
     "categories": [
         {
             "id": "vendor-outreach",
@@ -18,30 +19,30 @@ DEFAULT_MAIL_TEMPLATES_CONFIG: dict[str, Any] = {
             "name": "Classic",
             "style": "classic",
             "description": "Warm, detailed introduction with full skills list",
-            "subject": "DevOps Engineer - Open to C2C & W2 Opportunities",
+            "subject": "Senior DevOps Engineer - Open to C2C & W2 Opportunities",
             "body": (
                 "Hi [Recipient Name],\n\n"
                 "I hope this message finds you well.\n\n"
-                "My name is Utsav Chaudhary, and I'm a DevOps Engineer with around 5 years of experience "
-                "specializing in cloud infrastructure design and management (AWS & Azure), CI/CD pipelines, "
-                "Kubernetes (EKS/AKS), and infrastructure automation.\n\n"
-                "I am currently open to exploring C2C and W2 opportunities. If you come across any roles "
-                "suited to my background, I'd greatly appreciate your consideration.\n\n"
+                "My name is Utsav Chaudhary, and I'm a Senior DevOps Engineer with 5+ years of experience "
+                "supporting production AWS and Azure infrastructure in regulated and enterprise environments. "
+                "Most of my work is around Kubernetes (EKS/AKS), GitOps with Argo CD, CI/CD pipelines, "
+                "and infrastructure automation with Terraform and Ansible.\n\n"
+                "I'm currently open to C2C and W2 opportunities. If you come across any roles that fit my "
+                "background, I'd really appreciate you keeping me in mind.\n\n"
                 "Key Skills:\n"
-                "• AWS, Azure, Kubernetes (EKS/AKS)\n"
-                "• Terraform, Ansible, Docker, Helm\n"
+                "• AWS, Azure, Kubernetes (EKS/AKS), ECS, Fargate\n"
+                "• Terraform, Ansible, Docker, Helm, Argo CD, Rancher\n"
                 "• CI/CD (GitHub Actions, Jenkins, Azure DevOps, Bitbucket Pipelines)\n"
-                "• Python, Bash, FastAPI\n"
+                "• Python, Bash, FastAPI, PowerShell\n"
                 "• Linux Administration\n"
-                "• Monitoring: Prometheus, Grafana, ELK, CloudWatch\n\n"
+                "• Monitoring: Prometheus, Grafana, ELK, CloudWatch, Datadog, Application Insights\n\n"
                 "Portfolio: https://thatinsaneguy.com\n"
                 "LinkedIn: https://www.linkedin.com/in/utsavmaan28/\n"
                 "GitHub: https://github.com/UttU28/\n"
                 "Email: utsavmaan28@gmail.com\n"
                 "Phone: (607) 296-9583\n\n"
-                "If you have or anticipate any opportunities that align with my experience, I would welcome "
-                "the chance to discuss further.\n\n"
-                "Thank you for your time and consideration!\n\n"
+                "If you have anything coming up that might be a fit, I'd be happy to chat.\n\n"
+                "Thank you for your time!\n\n"
                 "Thanks & Regards,\n"
                 "Utsav Chaudhary"
             ),
@@ -54,27 +55,28 @@ DEFAULT_MAIL_TEMPLATES_CONFIG: dict[str, Any] = {
             "name": "Classy",
             "style": "classy",
             "description": "Concise, polished tone for senior contacts",
-            "subject": "DevOps Engineer - C2C & W2 Availability",
+            "subject": "Senior DevOps Engineer - C2C & W2 Availability",
             "body": (
                 "Dear [Recipient Name],\n\n"
                 "I hope you're doing well.\n\n"
-                "I'm Utsav Chaudhary, a DevOps Engineer with five years of experience building and operating "
-                "cloud platforms on AWS and Azure, from Kubernetes (EKS/AKS) and Terraform to CI/CD pipelines "
-                "and production observability.\n\n"
-                "I'm presently exploring C2C and W2 opportunities and would value the chance to be considered "
+                "I'm Utsav Chaudhary, a Senior DevOps Engineer with 5+ years of experience building and "
+                "operating production cloud platforms on AWS and Azure. I spend most of my time on "
+                "Kubernetes (EKS/AKS), GitOps with Argo CD, Terraform, CI/CD pipelines, and observability "
+                "in regulated enterprise environments.\n\n"
+                "I'm looking at C2C and W2 opportunities right now and would appreciate being considered "
                 "for any roles that match my background.\n\n"
                 "Highlights:\n"
-                "• Cloud & IaC: AWS, Azure, Terraform, Ansible\n"
-                "• Containers: Kubernetes, Docker, Helm\n"
+                "• Cloud & IaC: AWS, Azure, Terraform, Ansible, ECS, Fargate\n"
+                "• Containers & GitOps: Kubernetes, Docker, Helm, Argo CD, Rancher\n"
                 "• Delivery: GitHub Actions, Jenkins, Azure DevOps, Bitbucket\n"
-                "• Scripting & ops: Python, Bash, Linux, Prometheus, Grafana, ELK\n\n"
+                "• Scripting & ops: Python, Bash, PowerShell, Linux, Prometheus, Grafana, ELK, Datadog\n\n"
                 "You can review my work here:\n"
                 "https://thatinsaneguy.com\n"
                 "https://www.linkedin.com/in/utsavmaan28/\n"
                 "https://github.com/UttU28/\n\n"
                 "Email: utsavmaan28@gmail.com\n"
                 "Phone: (607) 296-9583\n\n"
-                "I'd welcome a brief conversation if anything on your desk might be a fit.\n\n"
+                "Happy to connect if anything on your desk looks like a fit.\n\n"
                 "Warm regards,\n"
                 "Utsav Chaudhary"
             ),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
+  Download,
   FileText,
   Link2,
   Loader2,
@@ -29,6 +30,7 @@ import {
   createGmailDraft,
   deleteResume,
   disconnectGmail,
+  downloadResume,
   fetchGmailStatus,
   fetchResumeInfo,
   MailApiError,
@@ -86,6 +88,7 @@ export function PlaceTrackMailPanel({ active = true, registerToolbar }: PlaceTra
   const [resumeInfo, setResumeInfo] = useState<ResumeInfo | null>(null);
   const [resumeLoading, setResumeLoading] = useState(true);
   const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeDownloading, setResumeDownloading] = useState(false);
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [draftLoading, setDraftLoading] = useState(false);
@@ -368,6 +371,19 @@ export function PlaceTrackMailPanel({ active = true, registerToolbar }: PlaceTra
     resumeInputRef.current?.click();
   };
 
+  const handleResumeDownload = async () => {
+    setResumeDownloading(true);
+    try {
+      await downloadResume(resumeInfo?.filename ?? "Resume.pdf");
+      toast({ title: "Download started", description: resumeInfo?.filename ?? "Resume.pdf" });
+    } catch (error) {
+      const message = error instanceof MailApiError ? error.message : "Could not download resume.";
+      toast({ title: "Download failed", description: message, variant: "destructive" });
+    } finally {
+      setResumeDownloading(false);
+    }
+  };
+
   const handleSelectTemplate = (nextTemplateId: string) => {
     if (nextTemplateId === templateId) return;
     if (templateDirty) {
@@ -600,13 +616,27 @@ export function PlaceTrackMailPanel({ active = true, registerToolbar }: PlaceTra
                           />
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1.5 text-xs"
+                            onClick={() => void handleResumeDownload()}
+                            disabled={resumeUploading || resumeDownloading}
+                          >
+                            {resumeDownloading ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Download className="h-3.5 w-3.5" />
+                            )}
+                            Download
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1.5 text-xs"
                             onClick={openResumePicker}
-                            disabled={resumeUploading}
+                            disabled={resumeUploading || resumeDownloading}
                           >
                             {resumeUploading ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -620,7 +650,7 @@ export function PlaceTrackMailPanel({ active = true, registerToolbar }: PlaceTra
                             size="sm"
                             className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={handleResumeRemove}
-                            disabled={resumeUploading}
+                            disabled={resumeUploading || resumeDownloading}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                             Remove

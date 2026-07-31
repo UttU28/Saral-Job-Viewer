@@ -380,11 +380,15 @@ def _normalizeMailTemplatesConfig(raw: dict[str, Any] | None) -> dict[str, Any] 
     categories.sort(key=lambda item: (item["sortOrder"], item["name"]))
     templates.sort(key=lambda item: (item["sortOrder"], item["name"]))
 
-    return {
+    result: dict[str, Any] = {
         "categories": categories,
         "templates": templates,
         "defaultTemplateId": defaultTemplateId.strip(),
     }
+    version = raw.get("version")
+    if isinstance(version, int):
+        result["version"] = version
+    return result
 
 
 def getDefaultMailTemplatesConfig() -> dict[str, Any]:
@@ -393,10 +397,17 @@ def getDefaultMailTemplatesConfig() -> dict[str, Any]:
     normalized = _normalizeMailTemplatesConfig(DEFAULT_MAIL_TEMPLATES_CONFIG)
     if not normalized:
         raise ValueError("Built-in mail templates are invalid.")
+    version = DEFAULT_MAIL_TEMPLATES_CONFIG.get("version")
+    if isinstance(version, int):
+        normalized["version"] = version
     return normalized
 
 
 def getMailTemplatesConfig(*, seedIfMissing: bool = True) -> dict[str, Any]:
+    from utils.mailTemplatesDefaults import DEFAULT_MAIL_TEMPLATES_CONFIG
+
+    currentVersion = DEFAULT_MAIL_TEMPLATES_CONFIG.get("version")
+
     try:
         raw = _getWorkspaceDoc().get("gmailMailTemplates")
     except MongoUnavailableError:
@@ -404,6 +415,11 @@ def getMailTemplatesConfig(*, seedIfMissing: bool = True) -> dict[str, Any]:
 
     normalized = _normalizeMailTemplatesConfig(raw if isinstance(raw, dict) else None)
     if normalized:
+        storedVersion = raw.get("version") if isinstance(raw, dict) else None
+        if isinstance(currentVersion, int) and storedVersion != currentVersion and seedIfMissing:
+            defaults = getDefaultMailTemplatesConfig()
+            saveMailTemplatesConfig(defaults)
+            return defaults
         return normalized
     if seedIfMissing:
         defaults = getDefaultMailTemplatesConfig()

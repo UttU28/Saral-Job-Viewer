@@ -1,6 +1,6 @@
 export const MAIL_SENDER = {
   name: "Utsav Chaudhary",
-  title: "DevOps Engineer",
+  title: "Senior DevOps Engineer",
   email: "utsavmaan28@gmail.com",
   phone: "(607) 296-9583",
   portfolio: "https://thatinsaneguy.com",
@@ -9,7 +9,7 @@ export const MAIL_SENDER = {
 };
 
 export const DEFAULT_SUBJECT =
-  "DevOps Engineer - Open to C2C & W2 Opportunities";
+  "Senior DevOps Engineer - Open to C2C & W2 Opportunities";
 
 export const DEFAULT_RECIPIENT = {
   email: "aa@gmail.com",

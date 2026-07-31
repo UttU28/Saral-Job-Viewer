@@ -46,6 +46,21 @@ def deleteResume() -> None:
     deleteResumeFromStore()
 
 
+def loadResumeDownload() -> tuple[bytes, str, str] | None:
+    meta = getResumeMeta()
+    pdfBytes = getResumePdfBytes()
+    if not pdfBytes:
+        return None
+
+    contentType = "application/pdf"
+    filename = _attachmentFilename()
+    if isinstance(meta, dict):
+        contentType = meta.get("contentType") or contentType
+        filename = meta.get("attachmentName") or filename
+
+    return pdfBytes, filename, contentType
+
+
 def loadResumeAttachment() -> AttachmentInput | None:
     meta = getResumeMeta()
     pdfBytes = getResumePdfBytes()
