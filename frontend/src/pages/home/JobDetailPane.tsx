@@ -51,7 +51,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { pastelMetaLineClasses } from "./constants";
-import { formatApiDecisionError, isRejectedStatus, jobMetaHighlights, showAcceptForStatus, showRejectForStatus } from "./utils";
+import { formatApiDecisionError, isAutoResolvedMidhtechDecision, isRejectedStatus, jobMetaHighlights, showAcceptForStatus, showRejectForStatus } from "./utils";
 
 /** Smooth deceleration — slides in comfortably with no overshoot or wobble at the end. */
 function easeOutCubic(t: number): number {
@@ -176,6 +176,19 @@ export function JobDetailPane({
     setAcceptProgressResult(null);
     setAcceptProgressNetworkError(null);
   }, [jobId]);
+
+  useEffect(() => {
+    if (!acceptProgressOpen || acceptProgressLoading || !acceptProgressResult) return;
+    const shouldAutoClose =
+      acceptProgressResult.ok || isAutoResolvedMidhtechDecision(acceptProgressResult);
+    if (!shouldAutoClose) return;
+    const timer = window.setTimeout(() => {
+      setAcceptProgressOpen(false);
+      setAcceptProgressResult(null);
+      setAcceptProgressNetworkError(null);
+    }, acceptProgressResult.ok ? 700 : 500);
+    return () => window.clearTimeout(timer);
+  }, [acceptProgressOpen, acceptProgressLoading, acceptProgressResult]);
 
   useEffect(() => {
     return () => {

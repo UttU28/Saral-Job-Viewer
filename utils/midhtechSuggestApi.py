@@ -358,12 +358,61 @@ _SUBMIT_FAILURE_MARKERS: tuple[str, ...] = (
     "this field is required",
     "already exists in maas",
     "duplicate suggestion detected",
+    "duplicate suggestion already exists",
     "job already exists for this company and title",
     "this job url was already suggested",
     "this job url already exists",
+    "already promoted to an active maas job",
+    "already promoted to an inactive maas job",
+    "already promoted to a maas job",
+    "this suggestion was already promoted",
+    "open the existing suggestion instead",
+    "open the existing job instead of submitting again",
     "please correct the errors below",
     "invalid csrf token",
     "csrf verification failed",
+)
+
+# Secondary Midhtech form noise when a primary business rule already failed.
+_SUBMIT_NOISE_MESSAGE_NEEDLES: tuple[str, ...] = (
+    "classifier check failed",
+    "please retry.",
+    "please correct the errors below",
+)
+
+MAAS_EXISTING_OR_DUPLICATE_NEEDLES: tuple[str, ...] = (
+    "already exists in maas",
+    "job already exists for this company and title",
+    "duplicate suggestion detected",
+    "duplicate suggestion already exists",
+    "this job url was already suggested",
+    "this job url already exists",
+    "already promoted to an active maas job",
+    "already promoted to an inactive maas job",
+    "already promoted to a maas job",
+    "this suggestion was already promoted",
+    "open the existing job instead of submitting again",
+    "open the existing suggestion instead",
+)
+
+STAFF_WATCHLIST_NEEDLES: tuple[str, ...] = (
+    "do not apply via staff watchlist",
+    "flagged as do not apply via staff watchlist",
+    "staff watchlist",
+    "blacklist",
+    "blocklist",
+)
+
+MAAS_BUSINESS_REJECTION_NEEDLES: tuple[str, ...] = (
+    "url is too long to save in maas",
+    "not opt-friendly",
+    "not opt friendly",
+    "does not meet intake criteria",
+    "intake criteria",
+    "role is not eligible",
+    "company is not eligible",
+    "cannot submit this job",
+    "cannot accept this job",
 )
 
 
@@ -423,6 +472,66 @@ def extractDjangoFormErrorMessages(body: str) -> list[str]:
     return messages
 
 
+def normalizeSubmitFailureMessages(messages: list[str]) -> list[str]:
+    """Drop duplicate/noisy Midhtech lines; keep the actionable validation text."""
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in messages:
+        text = _normalizeVisibleText(str(raw or ""))
+        if not text:
+            continue
+        low = text.casefold()
+        if any(needle in low for needle in _SUBMIT_NOISE_MESSAGE_NEEDLES):
+            continue
+        if low in seen:
+            continue
+        seen.add(low)
+        cleaned.append(text)
+    return cleaned
+
+
+def summarizeSubmitFailureReason(
+    messages: list[str],
+    *,
+    autoApplyStatus: str | None = None,
+) -> str:
+    """One-line reason for logs and batch output."""
+    normalized = normalizeSubmitFailureMessages(messages)
+    blob = " ".join(normalized).casefold()
+
+    if autoApplyStatus == "EXISTING" or any(
+        needle in blob for needle in MAAS_EXISTING_OR_DUPLICATE_NEEDLES
+    ):
+        for msg in normalized:
+            match = re.search(r"Suggestion #(\d+)", msg, flags=re.IGNORECASE)
+            if match:
+                return f"duplicate suggestion (#{match.group(1)})"
+        if "already promoted" in blob:
+            return "already promoted to MAAS job"
+        if "duplicate suggestion" in blob or "duplicate" in blob:
+            return "duplicate company and title"
+        if "job url" in blob and "already" in blob:
+            return "job URL already suggested"
+        if "open the existing job" in blob or "open the existing suggestion" in blob:
+            return "job already exists in Midhtech"
+        return "already exists in Midhtech"
+
+    if autoApplyStatus == "DO_NOT_APPLY" or any(
+        needle in blob for needle in STAFF_WATCHLIST_NEEDLES
+    ):
+        return "staff watchlist — do not apply"
+
+    if autoApplyStatus == "REJECTED" or any(
+        needle in blob for needle in MAAS_BUSINESS_REJECTION_NEEDLES
+    ):
+        return normalized[0] if normalized else "business rule rejection"
+
+    if normalized:
+        primary = normalized[0]
+        return primary if len(primary) <= 160 else f"{primary[:157]}…"
+    return "validation failed"
+
+
 def _humanizeSubmitFailureMarker(marker: str) -> str:
     if marker == "errorlist":
         return "The suggest form returned validation errors."
@@ -465,11 +574,23 @@ def formatSubmitFailureDetail(
     marker: str | None,
     messages: list[str],
     body: str,
+    autoApplyStatus: str | None = None,
 ) -> str:
-    if messages:
-        if len(messages) == 1:
-            return f"Midhtech rejected this job: {messages[0]}"
-        return "Midhtech rejected this job:\n" + "\n".join(f"• {msg}" for msg in messages)
+    normalized = normalizeSubmitFailureMessages(messages)
+    if autoApplyStatus == "EXISTING":
+        return f"Already in Midhtech — {summarizeSubmitFailureReason(normalized, autoApplyStatus='EXISTING')}"
+    if autoApplyStatus == "DO_NOT_APPLY":
+        return f"Do not apply — {summarizeSubmitFailureReason(normalized, autoApplyStatus='DO_NOT_APPLY')}"
+    if autoApplyStatus == "REJECTED":
+        return f"Rejected by Midhtech — {summarizeSubmitFailureReason(normalized, autoApplyStatus='REJECTED')}"
+    if normalized:
+        if len(normalized) == 1:
+            return f"Midhtech rejected this job: {normalized[0]}"
+        summary = summarizeSubmitFailureReason(normalized)
+        extras = [msg for msg in normalized if msg != summary]
+        if not extras:
+            return f"Midhtech rejected this job: {summary}"
+        return f"Midhtech rejected this job: {summary}"
     if marker:
         return f"Midhtech rejected this job: {_humanizeSubmitFailureMarker(marker)}"
     preview = _responsePreview(body)
@@ -497,13 +618,39 @@ def _logSubmitResult(
     ok: bool,
     failureMarker: str | None,
     failureMessages: list[str] | None = None,
+    autoApplyStatus: str | None = None,
     body: str,
 ) -> None:
     jobId = str(job.get("jobId") or "").strip()
     title = str(job.get("title") or "").strip()
     companyName = str(job.get("companyName") or "").strip()
     payloadUrl = str(job.get("originalJobPostUrl") or job.get("jobUrl") or "").strip()
-    preview = _responsePreview(body)
+    normalizedMessages = normalizeSubmitFailureMessages(list(failureMessages or []))
+
+    if ok:
+        logger.info(
+            "[MIDHTECH_SUBMIT] jobId=%s company=%r title=%r ok=true status=%s",
+            jobId,
+            companyName,
+            title,
+            int(response.status_code),
+        )
+        return
+
+    reason = summarizeSubmitFailureReason(
+        normalizedMessages or list(failureMessages or []),
+        autoApplyStatus=autoApplyStatus,
+    )
+    if autoApplyStatus:
+        logger.info(
+            "[MIDHTECH_SUBMIT] jobId=%s company=%r title=%r ok=false applyStatus=%s reason=%s",
+            jobId,
+            companyName,
+            title,
+            autoApplyStatus,
+            reason,
+        )
+        return
 
     logPayload = {
         "jobId": jobId,
@@ -512,15 +659,12 @@ def _logSubmitResult(
         "payloadUrl": payloadUrl,
         "responseStatus": int(response.status_code),
         "responseUrl": str(response.url or ""),
-        "submitOk": bool(ok),
+        "submitOk": False,
         "failureMarker": failureMarker or "",
-        "validationErrors": list(failureMessages or []),
-        "responsePreview": preview,
+        "reason": reason,
+        "validationErrors": normalizedMessages or list(failureMessages or []),
     }
-    if ok:
-        logger.info("[MIDHTECH_SUBMIT] %s", json.dumps(logPayload, ensure_ascii=False))
-    else:
-        logger.warning("[MIDHTECH_SUBMIT] %s", json.dumps(logPayload, ensure_ascii=False))
+    logger.warning("[MIDHTECH_SUBMIT] %s", json.dumps(logPayload, ensure_ascii=False))
 
 
 def submitJobSuggestion(
@@ -573,16 +717,17 @@ def submitJobSuggestion(
         )
     failureMarker, failureMessages = _parseSubmitFailure(body)
     if failureMarker:
+        autoApplyStatus = classifySubmitFailureApplyStatus(
+            failureMarker=failureMarker,
+            failureMessages=failureMessages,
+            transportFailure=False,
+        )
         detail = formatSubmitFailureDetail(
             response=response,
             marker=failureMarker,
             messages=failureMessages,
             body=body,
-        )
-        autoApplyStatus = classifySubmitFailureApplyStatus(
-            failureMarker=failureMarker,
-            failureMessages=failureMessages,
-            transportFailure=False,
+            autoApplyStatus=autoApplyStatus,
         )
         _logSubmitResult(
             job=job,
@@ -590,6 +735,7 @@ def submitJobSuggestion(
             ok=False,
             failureMarker=failureMarker,
             failureMessages=failureMessages,
+            autoApplyStatus=autoApplyStatus,
             body=body,
         )
         return False, detail, autoApplyStatus
@@ -651,39 +797,6 @@ def printCheckSummary(checkResp: requests.Response, parsed: object) -> None:
             ensure_ascii=False,
         )
     )
-
-
-MAAS_EXISTING_OR_DUPLICATE_NEEDLES: tuple[str, ...] = (
-    "already exists in maas",
-    "job already exists for this company and title",
-    "duplicate suggestion detected",
-    "this job url was already suggested",
-    "this job url already exists",
-    "already promoted to an active maas job",
-    "already promoted to an inactive maas job",
-    "already promoted to a maas job",
-    "open the existing job instead of submitting again",
-)
-
-STAFF_WATCHLIST_NEEDLES: tuple[str, ...] = (
-    "do not apply via staff watchlist",
-    "flagged as do not apply via staff watchlist",
-    "staff watchlist",
-    "blacklist",
-    "blocklist",
-)
-
-MAAS_BUSINESS_REJECTION_NEEDLES: tuple[str, ...] = (
-    "url is too long to save in maas",
-    "not opt-friendly",
-    "not opt friendly",
-    "does not meet intake criteria",
-    "intake criteria",
-    "role is not eligible",
-    "company is not eligible",
-    "cannot submit this job",
-    "cannot accept this job",
-)
 
 
 def _failureTextBlob(failureMessages: list[str], failureMarker: str | None) -> str:

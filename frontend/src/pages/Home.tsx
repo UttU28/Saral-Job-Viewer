@@ -12,7 +12,7 @@ import { HomeJobsToolbar } from "./home/HomeJobsToolbar";
 import { JobDetailPane } from "./home/JobDetailPane";
 import { JobListCard } from "./home/JobListCard";
 import type { JobCardDecisionState, JobListCardDecisionUi } from "./home/types";
-import { formatApiDecisionError } from "./home/utils";
+import { formatApiDecisionError, advancePastJobInList } from "./home/utils";
 
 export default function Home() {
   const [platformFilter, setPlatformFilter] = useState<string>(ALL_VALUE);
@@ -51,6 +51,11 @@ export default function Home() {
     () => flatItems.map((j) => j.jobId ?? "").join("\0"),
     [flatItems],
   );
+
+  const flatItemsRef = useRef(flatItems);
+  flatItemsRef.current = flatItems;
+  const applyFilterRef = useRef(applyFilter);
+  applyFilterRef.current = applyFilter;
 
   const lastDecisionKindRef = useRef<JobDecision | null>(null);
 
@@ -167,6 +172,15 @@ export default function Home() {
           description: shortMessage,
         });
 
+        advancePastJobInList(
+          queryClient,
+          flatItemsRef.current,
+          actingJobId,
+          result.applyStatusUpdated,
+          applyFilterRef.current,
+          setSelectedJobId,
+        );
+
         successFlashClearRef.current = setTimeout(() => {
           successFlashClearRef.current = null;
           setJobCardDecisionState((prev) => {
@@ -190,16 +204,15 @@ export default function Home() {
         void queryClient.invalidateQueries({ queryKey: ["jobSummary"] });
         const statusLabel = result.applyStatusUpdated.replaceAll("_", " ");
         const detail = formatApiDecisionError(result);
-        setJobCardDecisionState({
-          jobId: actingJobId,
-          loading: false,
-          flash: {
-            variant: "warning",
-            message: `Known Midhtech rejection — marked as ${statusLabel}`,
-            detail,
-            applyStatus: result.applyStatusUpdated,
-          },
-        });
+        advancePastJobInList(
+          queryClient,
+          flatItemsRef.current,
+          actingJobId,
+          result.applyStatusUpdated,
+          applyFilterRef.current,
+          setSelectedJobId,
+        );
+        setJobCardDecisionState(null);
         toast({
           title: `Marked as ${statusLabel}`,
           description: detail.length > 280 ? `${detail.slice(0, 280)}…` : detail,

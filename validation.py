@@ -413,6 +413,7 @@ def pushApplyJobsAfterValidate() -> int:
     applied = 0
     redo = 0
     rejected = 0
+    existing = 0
     total = len(applyJobs)
     for i, job in enumerate(applyJobs, start=1):
         jobId = str(job.get("jobId") or "").strip()
@@ -449,9 +450,13 @@ def pushApplyJobsAfterValidate() -> int:
             log.info(f"{head} → {badge} {suffix}")
         elif auto_apply_status:
             updateApplyStatusByJobId(jobId, auto_apply_status)
-            rejected += 1
             badge = formatApplyStatusBadge(auto_apply_status)
-            log.warning(f"{head} → {badge} known rejection {suffix}")
+            if auto_apply_status == "EXISTING":
+                existing += 1
+                log.info(f"{head} → {badge} — {info}")
+            else:
+                rejected += 1
+                log.info(f"{head} → {badge} — {info}")
         else:
             updateApplyStatusByJobId(jobId, STATUS_REDO)
             redo += 1
@@ -462,6 +467,7 @@ def pushApplyJobsAfterValidate() -> int:
     log.info(
         f"  total: {total}  "
         f"{formatApplyStatusBadge(STATUS_APPLIED)}: {applied}  "
+        f"{formatApplyStatusBadge('EXISTING')}: {existing}  "
         f"{formatApplyStatusBadge(STATUS_REDO)}: {redo}  "
         f"{formatApplyStatusBadge('REJECTED')}: {rejected}"
     )

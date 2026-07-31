@@ -1,5 +1,7 @@
 import type { JobDecisionResponse } from "@/lib/api";
-import type { JobRow } from "@/lib/types";
+import type { JobListResponse, JobRow } from "@/lib/types";
+import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import { ALL_VALUE, DEFAULT_APPLY_FILTER } from "./constants";
 
 export function normalizedApplyStatus(raw: string | null | undefined): string {
   return (raw ?? "").trim().toUpperCase();
@@ -100,4 +102,63 @@ export function formatApiDecisionError(res: JobDecisionResponse): string {
   }
   const out = parts.filter(Boolean).join("\n");
   return out || "Something went wrong.";
+}
+
+export function isAutoResolvedMidhtechDecision(res: JobDecisionResponse): boolean {
+  return !res.ok && Boolean(res.applyStatusUpdated?.trim());
+}
+
+export function selectNextJobId(
+  items: ReadonlyArray<{ jobId?: string | null }>,
+  currentJobId: string,
+): string | null {
+  const ids = items.map((job) => (job.jobId ?? "").trim()).filter(Boolean);
+  const idx = ids.indexOf(currentJobId);
+  if (ids.length === 0) return null;
+  if (idx === -1) return ids[0] ?? null;
+  if (ids.length === 1) return null;
+  return ids[idx + 1] ?? ids[idx - 1] ?? null;
+}
+
+export function jobShouldLeaveFilteredList(
+  applyFilter: string,
+  updatedStatus: string | null | undefined,
+): boolean {
+  const status = normalizedApplyStatus(updatedStatus);
+  if (!status) return false;
+  if (applyFilter === ALL_VALUE || applyFilter === "pending") return false;
+  if (applyFilter === DEFAULT_APPLY_FILTER) return status !== "APPLY";
+  return applyFilter.toUpperCase() !== status;
+}
+
+export function removeJobFromJobListInfiniteCache(queryClient: QueryClient, jobId: string): void {
+  queryClient.setQueriesData<InfiniteData<JobListResponse>>(
+    { queryKey: ["jobListInfinite"] },
+    (old) => {
+      if (!old) return old;
+      const pages = old.pages.map((page) => {
+        const before = page.items.length;
+        const items = page.items.filter((job) => job.jobId !== jobId);
+        const removed = before - items.length;
+        return removed
+          ? { ...page, items, total: Math.max(0, page.total - removed) }
+          : page;
+      });
+      return { ...old, pages };
+    },
+  );
+}
+
+export function advancePastJobInList(
+  queryClient: QueryClient,
+  items: ReadonlyArray<{ jobId?: string | null }>,
+  actingJobId: string,
+  updatedStatus: string | null | undefined,
+  applyFilter: string,
+  setSelectedJobId: (value: string | null | ((prev: string | null) => string | null)) => void,
+): void {
+  if (!jobShouldLeaveFilteredList(applyFilter, updatedStatus)) return;
+  const nextId = selectNextJobId(items, actingJobId);
+  removeJobFromJobListInfiniteCache(queryClient, actingJobId);
+  setSelectedJobId((prev) => (prev === actingJobId ? nextId : prev));
 }
