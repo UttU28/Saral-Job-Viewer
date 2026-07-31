@@ -22,6 +22,7 @@ from utils.gmailConfig import (
     DEFAULT_SENT_SINCE,
     gmailFrontendUrl,
     gmailOAuthRedirectUri,
+    gmailOAuthReturnPath,
 )
 from utils.gmailResumeStore import deleteResume, getResumeInfo, loadResumeAttachment, saveResume
 from utils.gmailSentRecipients import fetchSentRecipientEmails
@@ -88,14 +89,18 @@ def getGmailStatus() -> dict:
 
 
 @gmailRouter.get("/api/gmail/auth/start")
-def startGmailAuth(returnTo: str = "/"):
+def startGmailAuth(returnTo: str | None = None):
     if not credentialsConfigured():
         raise HTTPException(
             status_code=503,
             detail="Missing client_secret.json. Set GMAIL_CREDENTIALS_FILE or place client_secret.json in the project root.",
         )
 
-    safeReturn = returnTo if returnTo.startswith("/") else "/"
+    safeReturn = (
+        returnTo
+        if isinstance(returnTo, str) and returnTo.startswith("/")
+        else gmailOAuthReturnPath()
+    )
     redirectUri = gmailOAuthRedirectUri()
     flow = createOAuthFlow(redirectUri)
     authorizationUrl, state = flow.authorization_url(
@@ -128,9 +133,9 @@ def gmailAuthCallback(code: str, state: str):
     saveCredentials(flow.credentials)
     clearOAuthSession()
 
-    returnTo = session.get("returnTo") or session.get("return_to") or "/"
+    returnTo = session.get("returnTo") or session.get("return_to") or gmailOAuthReturnPath()
     if not isinstance(returnTo, str) or not returnTo.startswith("/"):
-        returnTo = "/"
+        returnTo = gmailOAuthReturnPath()
 
     return RedirectResponse(f"{gmailFrontendUrl()}{returnTo}?gmail=connected")
 

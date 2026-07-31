@@ -20,6 +20,7 @@ GMAIL_SCOPES = [
 
 DEFAULT_SENT_SINCE = os.getenv("GMAIL_SENT_SINCE") or "2026-07-20"
 GMAIL_CALLBACK_PATH = "/api/gmail/auth/callback"
+GMAIL_DEFAULT_RETURN_PATH = "/placetrack"
 
 
 def gmailCredentialsPath() -> Path:
@@ -44,25 +45,41 @@ def apiPort() -> int:
     return int((os.getenv("API_PORT") or "9260").strip())
 
 
+def _publicSiteUrl() -> str | None:
+    for key in ("GMAIL_OAUTH_BASE_URL", "SARAL_API_BASE_URL", "VITE_API_URL", "FRONTEND_URL"):
+        value = (os.getenv(key) or "").strip().rstrip("/")
+        if value:
+            return value
+
+    domain = (os.getenv("SARAL_DOMAIN") or "").strip()
+    if domain:
+        return f"https://{domain}"
+    return None
+
+
 def gmailOAuthBaseUrl() -> str:
-    base = (
-        os.getenv("GMAIL_OAUTH_BASE_URL")
-        or os.getenv("SARAL_API_BASE_URL")
-        or f"http://localhost:{apiPort()}"
-    )
-    return base.rstrip("/")
+    return (_publicSiteUrl() or f"http://localhost:{apiPort()}").rstrip("/")
 
 
 def gmailFrontendUrl() -> str:
-    return (
+    explicit = (
         os.getenv("GMAIL_FRONTEND_URL")
         or os.getenv("FRONTEND_URL")
-        or "http://localhost:5173"
-    ).rstrip("/")
+        or os.getenv("VITE_API_URL")
+        or ""
+    ).strip().rstrip("/")
+    if explicit:
+        return explicit
+    return (_publicSiteUrl() or "http://localhost:5173").rstrip("/")
 
 
 def gmailOAuthRedirectUri() -> str:
     return f"{gmailOAuthBaseUrl()}{GMAIL_CALLBACK_PATH}"
+
+
+def gmailOAuthReturnPath() -> str:
+    raw = (os.getenv("GMAIL_OAUTH_RETURN_PATH") or GMAIL_DEFAULT_RETURN_PATH).strip()
+    return raw if raw.startswith("/") else GMAIL_DEFAULT_RETURN_PATH
 
 
 def defaultSenderName() -> str:
