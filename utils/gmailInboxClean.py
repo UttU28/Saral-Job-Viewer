@@ -842,7 +842,7 @@ def cleanUnreadPrimaryInbox(
     """
     gmail = getGmailService()
     labels = resolveCleanLabels(createMissing=True)
-    messageIds = _listUnreadPrimaryIds(gmail, maxResults=max(1, min(maxResults, 200)))
+    messageIds = _listUnreadPrimaryIds(gmail, maxResults=max(1, min(maxResults, 1000)))
 
     loaded: list[dict] = []
     results: list[dict] = []

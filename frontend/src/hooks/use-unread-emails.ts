@@ -75,7 +75,7 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
         return;
       }
 
-      const inbox = await fetchUnreadPrimaryEmails({ maxResults: 100 });
+      const inbox = await fetchUnreadPrimaryEmails({ maxResults: 1000 });
       setRows(inbox.emails.map(toReviewRow));
       setFetchedAt(inbox.fetchedAt ?? null);
     } catch (err) {
@@ -215,7 +215,7 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       // Soft refresh remaining unread (none should stay; applied should be gone from Primary)
       if (appliedIds.size > 0 || errorIds.size === 0) {
         try {
-          const inbox = await fetchUnreadPrimaryEmails({ maxResults: 100 });
+          const inbox = await fetchUnreadPrimaryEmails({ maxResults: 1000 });
           const remainingById = new Map(inbox.emails.map((email) => [email.id, email]));
           setRows((prev) => {
             // Prefer keeping local none/error rows; drop anything Gmail no longer returns as unread primary

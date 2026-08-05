@@ -251,11 +251,11 @@ def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = Fals
 
 
 @gmailRouter.get("/api/gmail/inbox/unread")
-def getGmailUnreadPrimary(maxResults: int = 100) -> dict:
+def getGmailUnreadPrimary(maxResults: int = 1000) -> dict:
     _requireConnectedStatus()
 
-    if maxResults < 1 or maxResults > 200:
-        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 200")
+    if maxResults < 1 or maxResults > 1000:
+        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 1000")
 
     try:
         return fetchUnreadPrimaryEmails(maxResults=maxResults)
@@ -293,8 +293,8 @@ def postGmailInboxClean(
     """
     _requireConnectedStatus()
 
-    if maxResults < 1 or maxResults > 200:
-        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 200")
+    if maxResults < 1 or maxResults > 1000:
+        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 1000")
 
     try:
         return cleanUnreadPrimaryInbox(

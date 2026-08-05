@@ -65,10 +65,10 @@ def _listUnreadMessageIds(gmail, *, maxResults: int = 100) -> list[str]:
     return messageIds
 
 
-def fetchUnreadPrimaryEmails(*, maxResults: int = 100) -> dict:
+def fetchUnreadPrimaryEmails(*, maxResults: int = 1000) -> dict:
     """List unread Primary inbox messages (metadata only — no LLM)."""
     gmail = getGmailService()
-    messageIds = _listUnreadMessageIds(gmail, maxResults=max(1, min(maxResults, 200)))
+    messageIds = _listUnreadMessageIds(gmail, maxResults=max(1, min(maxResults, 1000)))
     emails: list[dict] = []
 
     for msgId in messageIds:
