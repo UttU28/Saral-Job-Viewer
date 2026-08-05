@@ -12,10 +12,16 @@ GMAIL_UPLOADS_DIR = Path(
 GMAIL_DATA_DIR.mkdir(parents=True, exist_ok=True)
 GMAIL_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
+GMAIL_SCOPE_COMPOSE = "https://www.googleapis.com/auth/gmail.compose"
+GMAIL_SCOPE_SEND = "https://www.googleapis.com/auth/gmail.send"
+GMAIL_SCOPE_READONLY = "https://www.googleapis.com/auth/gmail.readonly"
+GMAIL_SCOPE_MODIFY = "https://www.googleapis.com/auth/gmail.modify"
+
+# Requested on new OAuth connects (modify supersedes readonly for reading + labels).
 GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
+    GMAIL_SCOPE_COMPOSE,
+    GMAIL_SCOPE_SEND,
+    GMAIL_SCOPE_MODIFY,
 ]
 
 DEFAULT_SENT_SINCE = os.getenv("GMAIL_SENT_SINCE") or "2026-07-20"

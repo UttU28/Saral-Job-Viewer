@@ -1,8 +1,25 @@
 export const PLACETRACK_PIPELINE_PATH = "/placetrack";
 export const PLACETRACK_MAIL_PATH = "/placetrack/mail";
+export const PLACETRACK_EMAILS_PATH = "/placetrack/emails";
+
+export type PlaceTrackTab = "pipeline" | "mail" | "emails";
+
+export function getPlaceTrackTab(location: string): PlaceTrackTab {
+  if (location.startsWith("/mail") || location.startsWith("/placetrack/mail")) {
+    return "mail";
+  }
+  if (location.startsWith("/emails") || location.startsWith("/placetrack/emails")) {
+    return "emails";
+  }
+  return "pipeline";
+}
 
 export function isPlaceTrackMailLocation(location: string): boolean {
-  return location.startsWith("/mail") || location.startsWith("/placetrack/mail");
+  return getPlaceTrackTab(location) === "mail";
+}
+
+export function isPlaceTrackEmailsLocation(location: string): boolean {
+  return getPlaceTrackTab(location) === "emails";
 }
 
 export function mailBuilderLocation(email: string, name?: string): string {

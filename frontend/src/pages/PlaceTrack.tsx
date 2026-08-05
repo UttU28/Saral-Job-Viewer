@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { PlaceTrackHeader } from "@/components/placetrack/PlaceTrackHeader";
 import { PlaceTrackMailPanel } from "@/components/placetrack/PlaceTrackMailPanel";
+import { PlaceTrackEmailsPanel } from "@/components/placetrack/PlaceTrackEmailsPanel";
 import { JwtAuthForm } from "@/components/placetrack/JwtAuthForm";
 import { PipelineView } from "@/components/placetrack/PipelineView";
 import { GmailConnectCard } from "@/components/placetrack/GmailConnectCard";
@@ -13,6 +14,7 @@ import { usePlaceTrackGmailAuth } from "@/hooks/use-placetrack-gmail";
 import { useMailTemplates } from "@/hooks/use-mail-templates";
 import { usePlaceTrackPipeline } from "@/hooks/use-placetrack-pipeline";
 import { usePlaceTrackSentRecipients } from "@/hooks/use-placetrack-sent-recipients";
+import { useUnreadPrimaryEmails } from "@/hooks/use-unread-emails";
 import type { MailBuilderToolbar } from "@/lib/placetrack/mail-builder-toolbar";
 import {
   filterPipelineItems,
@@ -23,7 +25,7 @@ import {
   type PipelineFilters,
 } from "@/lib/placetrack/pipeline-filters";
 import { normalizePipelineData } from "@/lib/placetrack/pipeline-types";
-import { isPlaceTrackMailLocation } from "@/lib/placetrack/routing";
+import { getPlaceTrackTab } from "@/lib/placetrack/routing";
 import { cn } from "@/lib/utils";
 
 function PipelineSkeleton() {
@@ -32,7 +34,10 @@ function PipelineSkeleton() {
 
 export default function PlaceTrackShell() {
   const [location] = useLocation();
-  const isMailTab = isPlaceTrackMailLocation(location);
+  const tab = getPlaceTrackTab(location);
+  const isMailTab = tab === "mail";
+  const isEmailsTab = tab === "emails";
+  const isPipelineTab = tab === "pipeline";
   useMailTemplates();
 
   const {
@@ -58,10 +63,11 @@ export default function PlaceTrackShell() {
     needsConnect: needsGmailConnect,
     check: checkGmail,
     connect: connectGmail,
-  } = usePlaceTrackGmailAuth(pipelineLoaded && !isMailTab, true, "/placetrack");
+  } = usePlaceTrackGmailAuth(pipelineLoaded && isPipelineTab, true, "/placetrack");
   const { sentRecipients, refresh: refreshSentRecipients } = usePlaceTrackSentRecipients(
     pipelineLoaded && !needsGmailConnect,
   );
+  const unreadInbox = useUnreadPrimaryEmails(isEmailsTab && !needsAuth);
 
   const items = useMemo(() => (data ? normalizePipelineData(data) : []), [data]);
   const statusOptions = useMemo(() => getStatusOptions(items), [items]);
@@ -98,7 +104,7 @@ export default function PlaceTrackShell() {
             : undefined
         }
         filterBar={
-          !isMailTab && data && !needsAuth
+          isPipelineTab && data && !needsAuth
             ? {
                 filters,
                 onChange: setFilters,
@@ -108,10 +114,19 @@ export default function PlaceTrackShell() {
             : undefined
         }
         mailBuilder={isMailTab ? (mailToolbar ?? undefined) : undefined}
+        emails={
+          isEmailsTab
+            ? {
+                isLoading: unreadInbox.isLoading || unreadInbox.isCategorizing || unreadInbox.isSubmitting,
+                count: unreadInbox.gmailStatus?.connected ? unreadInbox.rows.length : undefined,
+                onRefresh: () => void unreadInbox.refresh(),
+              }
+            : undefined
+        }
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
-        <div className={cn(!isMailTab ? "block" : "hidden")}>
+        <div className={cn(isPipelineTab ? "block" : "hidden")}>
           <div className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-6 sm:py-4">
             {isLoading && !data ? (
               <PipelineSkeleton />
@@ -146,10 +161,27 @@ export default function PlaceTrackShell() {
           <PlaceTrackMailPanel active={isMailTab} registerToolbar={setMailToolbar} />
         </div>
 
+        <PlaceTrackEmailsPanel
+          active={isEmailsTab}
+          gmailStatus={unreadInbox.gmailStatus}
+          rows={unreadInbox.rows}
+          fetchedAt={unreadInbox.fetchedAt}
+          isLoading={unreadInbox.isLoading}
+          isCategorizing={unreadInbox.isCategorizing}
+          isSubmitting={unreadInbox.isSubmitting}
+          categorizeProgress={unreadInbox.categorizeProgress}
+          error={unreadInbox.error}
+          lastApply={unreadInbox.lastApply}
+          onRefresh={() => void unreadInbox.refresh()}
+          onCategorize={() => unreadInbox.categorizeAll()}
+          onSetCategory={unreadInbox.setRowCategory}
+          onSubmit={() => unreadInbox.submitLabels()}
+        />
+
         <Footer />
       </div>
 
-      {!isMailTab && needsGmailConnect ? (
+      {isPipelineTab && needsGmailConnect ? (
         <div className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 p-4 pt-[max(1rem,10vh)] backdrop-blur-sm sm:items-center sm:pt-4">
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.98 }}

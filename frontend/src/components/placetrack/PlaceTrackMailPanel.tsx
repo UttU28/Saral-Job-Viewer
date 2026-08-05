@@ -616,44 +616,44 @@ export function PlaceTrackMailPanel({ active = true, registerToolbar }: PlaceTra
                           />
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="flex justify-end gap-1">
                           <Button
                             variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs"
+                            size="icon"
+                            className="h-8 w-8"
                             onClick={() => void handleResumeDownload()}
                             disabled={resumeUploading || resumeDownloading}
+                            aria-label="Download resume"
                           >
                             {resumeDownloading ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <Download className="h-3.5 w-3.5" />
                             )}
-                            Download
                           </Button>
                           <Button
                             variant="outline"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs"
+                            size="icon"
+                            className="h-8 w-8"
                             onClick={openResumePicker}
                             disabled={resumeUploading || resumeDownloading}
+                            aria-label="Replace resume"
                           >
                             {resumeUploading ? (
                               <Loader2 className="h-3.5 w-3.5 animate-spin" />
                             ) : (
                               <RefreshCw className="h-3.5 w-3.5" />
                             )}
-                            Replace
                           </Button>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
                             onClick={handleResumeRemove}
                             disabled={resumeUploading || resumeDownloading}
+                            aria-label="Remove resume"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
-                            Remove
                           </Button>
                         </div>
                       </>

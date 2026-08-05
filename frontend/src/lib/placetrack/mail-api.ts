@@ -2,6 +2,7 @@ export type GmailStatus = {
   configured: boolean;
   connected: boolean;
   email: string | null;
+  canModify?: boolean;
   needsReauth?: boolean;
   reason?: string | null;
   missingScopes?: string[];
@@ -48,6 +49,66 @@ export type SentRecipientsResult = {
   recipients: string[];
 };
 
+export type UnreadEmail = {
+  id: string;
+  threadId?: string | null;
+  fromName?: string | null;
+  fromEmail?: string | null;
+  subject: string;
+  snippet: string;
+  date?: string | null;
+  internalDate?: string | null;
+  labelIds?: string[];
+};
+
+export type EmailCategory = "baharMil" | "oneSided" | "none";
+
+export type ClassifyOneResult = {
+  id: string;
+  threadId?: string | null;
+  fromName?: string | null;
+  fromEmail?: string | null;
+  subject: string;
+  snippet: string;
+  category: EmailCategory;
+  labelName?: string | null;
+  reason?: string | null;
+  source?: string | null;
+};
+
+export type ApplyLabelsResult = {
+  archive: boolean;
+  markRead: boolean;
+  fetchedAt?: string;
+  counts: {
+    requested: number;
+    baharMil: number;
+    oneSided: number;
+    skipped: number;
+    applied: number;
+    errors: number;
+  };
+  results: Array<Record<string, unknown>>;
+};
+
+export type UnreadInboxResult = {
+  query: string;
+  fetchedAt?: string;
+  count: number;
+  emails: UnreadEmail[];
+};
+
+export type GmailLabel = {
+  id: string;
+  name: string;
+  type?: string | null;
+};
+
+export type GmailLabelsResult = {
+  count: number;
+  labels: GmailLabel[];
+};
+
 function apiUrl(path: string): string {
   const base = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ?? "";
   return base ? `${base}${path}` : path;
@@ -81,6 +142,7 @@ function normalizeGmailStatus(raw: Record<string, unknown>): GmailStatus {
     configured: Boolean(raw.configured),
     connected: Boolean(raw.connected),
     email: typeof raw.email === "string" ? raw.email : null,
+    canModify: raw.canModify == null && raw.can_modify == null ? undefined : Boolean(raw.canModify ?? raw.can_modify),
     needsReauth: Boolean(raw.needsReauth ?? raw.needs_reauth),
     reason: typeof raw.reason === "string" ? raw.reason : null,
     missingScopes: (raw.missingScopes ?? raw.missing_scopes) as string[] | undefined,
@@ -104,6 +166,57 @@ function normalizeSentRecipients(raw: Record<string, unknown>): SentRecipientsRe
     messageCount: (raw.messageCount ?? raw.message_count) as number | undefined,
     recipientCount: (raw.recipientCount ?? raw.recipient_count) as number | undefined,
     recipients: Array.isArray(raw.recipients) ? (raw.recipients as string[]) : [],
+  };
+}
+
+function normalizeUnreadEmail(raw: Record<string, unknown>): UnreadEmail {
+  return {
+    id: String(raw.id ?? ""),
+    threadId: (raw.threadId ?? raw.thread_id) as string | null | undefined,
+    fromName: (raw.fromName ?? raw.from_name) as string | null | undefined,
+    fromEmail: (raw.fromEmail ?? raw.from_email) as string | null | undefined,
+    subject: typeof raw.subject === "string" ? raw.subject : "(no subject)",
+    snippet: typeof raw.snippet === "string" ? raw.snippet : "",
+    date: (raw.date as string | null | undefined) ?? null,
+    internalDate: (raw.internalDate ?? raw.internal_date) as string | null | undefined,
+    labelIds: Array.isArray(raw.labelIds ?? raw.label_ids)
+      ? ((raw.labelIds ?? raw.label_ids) as string[])
+      : [],
+  };
+}
+
+function normalizeCategory(value: unknown): EmailCategory {
+  if (value === "baharMil" || value === "oneSided") return value;
+  return "none";
+}
+
+function normalizeClassifyOne(raw: Record<string, unknown>): ClassifyOneResult {
+  return {
+    id: String(raw.id ?? ""),
+    threadId: (raw.threadId ?? raw.thread_id) as string | null | undefined,
+    fromName: (raw.fromName ?? raw.from_name) as string | null | undefined,
+    fromEmail: (raw.fromEmail ?? raw.from_email) as string | null | undefined,
+    subject: typeof raw.subject === "string" ? raw.subject : "(no subject)",
+    snippet: typeof raw.snippet === "string" ? raw.snippet : "",
+    category: normalizeCategory(raw.category),
+    labelName: (raw.labelName ?? raw.label_name) as string | null | undefined,
+    reason: typeof raw.reason === "string" ? raw.reason : null,
+    source: typeof raw.source === "string" ? raw.source : null,
+  };
+}
+
+function normalizeUnreadInbox(raw: Record<string, unknown>): UnreadInboxResult {
+  const emailsRaw = Array.isArray(raw.emails) ? raw.emails : [];
+  const emails = emailsRaw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map(normalizeUnreadEmail)
+    .filter((email) => email.id);
+
+  return {
+    query: typeof raw.query === "string" ? raw.query : "",
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    count: typeof raw.count === "number" ? raw.count : emails.length,
+    emails,
   };
 }
 
@@ -225,4 +338,113 @@ export async function fetchSentRecipients(options?: {
   }
 
   return normalizeSentRecipients((await response.json()) as Record<string, unknown>);
+}
+
+export async function fetchUnreadPrimaryEmails(options?: {
+  maxResults?: number;
+}): Promise<UnreadInboxResult> {
+  const params = new URLSearchParams();
+  if (options?.maxResults != null) params.set("maxResults", String(options.maxResults));
+
+  const query = params.toString();
+  const response = await fetch(apiUrl(`/api/gmail/inbox/unread${query ? `?${query}` : ""}`));
+
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+
+  return normalizeUnreadInbox((await response.json()) as Record<string, unknown>);
+}
+
+export async function fetchGmailLabels(): Promise<GmailLabelsResult> {
+  const response = await fetch(apiUrl("/api/gmail/labels"));
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const labelsRaw = Array.isArray(raw.labels) ? raw.labels : [];
+  const labels = labelsRaw
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      id: String(item.id ?? ""),
+      name: String(item.name ?? ""),
+      type: typeof item.type === "string" ? item.type : null,
+    }))
+    .filter((label) => label.id && label.name);
+
+  return {
+    count: typeof raw.count === "number" ? raw.count : labels.length,
+    labels,
+  };
+}
+
+export async function classifyOneEmail(messageId: string, useLlm = true): Promise<ClassifyOneResult> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/classify-one"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messageId, useLlm }),
+  });
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  return normalizeClassifyOne((await response.json()) as Record<string, unknown>);
+}
+
+export async function classifyEmailBatch(
+  messageIds: string[],
+  useLlm = true,
+): Promise<ClassifyOneResult[]> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/classify-batch"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messageIds, useLlm }),
+  });
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const rows = Array.isArray(raw.results) ? raw.results : [];
+  return rows
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map(normalizeClassifyOne)
+    .filter((item) => item.id);
+}
+
+export async function applyEmailLabels(options: {
+  items: Array<{ messageId: string; category: EmailCategory }>;
+  archive?: boolean;
+  markRead?: boolean;
+}): Promise<ApplyLabelsResult> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/apply-labels"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      items: options.items.map((item) => ({
+        messageId: item.messageId,
+        category: item.category === "none" ? null : item.category,
+      })),
+      archive: options.archive ?? true,
+      markRead: options.markRead ?? true,
+    }),
+  });
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+
+  const raw = (await response.json()) as Record<string, unknown>;
+  const countsRaw = (raw.counts ?? {}) as Record<string, unknown>;
+  return {
+    archive: Boolean(raw.archive),
+    markRead: Boolean(raw.markRead ?? raw.mark_read),
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    counts: {
+      requested: Number(countsRaw.requested ?? 0),
+      baharMil: Number(countsRaw.baharMil ?? 0),
+      oneSided: Number(countsRaw.oneSided ?? 0),
+      skipped: Number(countsRaw.skipped ?? 0),
+      applied: Number(countsRaw.applied ?? 0),
+      errors: Number(countsRaw.errors ?? 0),
+    },
+    results: Array.isArray(raw.results) ? (raw.results as Array<Record<string, unknown>>) : [],
+  };
 }

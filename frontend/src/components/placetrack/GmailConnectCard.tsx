@@ -14,7 +14,7 @@ function reasonMessage(status: GmailStatus | null): string {
     return "Gmail OAuth is not configured on the backend (missing client_secret.json).";
   }
   if (status.reason === "missingScopes") {
-    return "Your Gmail token is missing sent-mail access. Reconnect to enable green vendor highlights.";
+    return "Gmail needs re-authorization for label changes (gmail.modify). Disconnect/reconnect Gmail to apply BaharMil and oneSided.";
   }
   if (status.reason === "refreshFailed" || status.reason === "noToken") {
     return "Your Gmail token expired or is invalid. Connect again to continue.";
