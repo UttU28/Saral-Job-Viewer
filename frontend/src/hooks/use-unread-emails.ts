@@ -168,12 +168,16 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
 
   const submitLabels = useCallback(async (): Promise<ApplyLabelsResult | null> => {
     const toApply = rows.filter(
-      (row) => row.category === "baharMil" || row.category === "oneSided" || row.category === "jobAds",
+      (row) =>
+        row.category === "baharMil" ||
+        row.category === "oneSided" ||
+        row.category === "jobAds" ||
+        row.category === "pendingJobs",
     );
     const items = toApply.map((row) => ({ messageId: row.id, category: row.category }));
 
     if (!items.length) {
-      setError("Nothing to submit — set at least one email to BaharMil, oneSided, or jobAds.");
+      setError("Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, or pendingJobs.");
       return null;
     }
 

@@ -10,6 +10,7 @@ from utils.gmailLabels import (
     CLEAN_LABEL_BAHARMIL,
     CLEAN_LABEL_JOBADS,
     CLEAN_LABEL_ONESIDED,
+    CLEAN_LABEL_PENDINGJOBS,
     resolveCleanLabels,
 )
 from utils.localLlm import (
@@ -208,12 +209,68 @@ JOBADS_PATTERNS = [
         r"tealhq\.com",
         r"optimhire",
         r"are\s+you\s+interested\??",
-        r"exciting\s+opportunity\s+with\s+our\s+client",
-        r"please\s+share\s+(me\s+)?your\s+latest\s+resume",
+        r"exciting\s+(job\s+)?opportunity",
+        r"exciting\s+opportunity\s+with\s+(our\s+)?(client|one\s+of)",
+        r"please\s+(share|send|forward)\s+(me\s+)?your\s+(latest\s+|updated\s+)?resume",
+        r"send\s+(your\s+)?(updated\s+)?resume",
         r"open\s+for\s+c2c",
         r"job\s+title:\s*",
+        r"title:\s*.+\s+location:\s*",
         r"we\s+have\s+a\s+.+\s+role\s+at",
         r"based\s+on\s+your\s+profile,?\s+we\s+have",
+        # Recruiter / staffing cold outreach
+        r"role\s+is\s+shared\s+with\s+you",
+        r"(job|role)\s+.+\s+is\s+shared\s+with\s+you",
+        r"urgent\s+hiring",
+        r"immediate\s+(need|opening|requirement|hiring)",
+        r"hot\s+(requirement|need|opening)",
+        r"staffing\s+specialist",
+        r"talent\s+(acquisition|recruiter|partner)",
+        r"i\s+am\s+reaching\s+out\s+to\s+you\s+on\s+an?\s+exciting",
+        r"reaching\s+out\s+.+\s+(job|role|opportunity)",
+        r"contract\s+to\s+hire",
+        r"\bw2\s*/\s*1099\b",
+        r"\bw2\b.+\b(usc|gc|ead)\b",
+        r"visa:\s*(gc|usc|h1b|ead)",
+        r"position\s+description\s+required\s+skills",
+        r"duration:\s*\d+\s+months?",
+        r"role\s*[:-]\s*",
+        r"req(uest)?\s*id\s*[:-]",
+        r"share\s+a\s+great\s+job\s+opportunity",
+        r"job\s+opportunity[—\-–].*resume",
+        r"hiring\s+for\s+(a\s+)?(senior|junior|lead|staff)?\s*.+\s+(engineer|developer|architect)",
+        r"\|\|\s*.+\s+(engineer|developer|architect)\s*\|\|",
+    )
+]
+
+PENDINGJOBS_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"sign[- ]?in\s+link",
+        r"sign[- ]?in\s+(to|for)\s+(your\s+)?(application|account|candidate)",
+        r"log\s*in\s+(to\s+)?(complete|continue|finish|view|edit)",
+        r"click\s+here\s+to\s+log",
+        r"additional\s+information\s+needed",
+        r"profile\s+is\s+incomplete",
+        r"complete\s+(your\s+)?(profile|application|account)",
+        r"verify\s+your\s+(candidate\s+)?(account|email)",
+        r"confirm\s+your\s+email",
+        r"email\s+address\s+and\s+creating\s+your\s+account",
+        r"security\s+code\s+for\s+your\s+application",
+        r"security\s+code\s+field",
+        r"one[- ]?time\s+(pass(word|code)|code|otp)",
+        r"\botp\b",
+        r"verification\s+code",
+        r"activate\s+your\s+(candidate\s+)?account",
+        r"complete\s+setup\s+for\s+your\s+candidate\s+account",
+        r"resubmit\s+your\s+application",
+        r"action\s+required",
+        r"please\s+verify",
+        r"confirm\s+your\s+(candidate\s+)?account",
+        r"finish\s+(setting\s+up|creating)\s+your\s+account",
+        r"magic\s+link",
+        r"view/?edit\s+application",
+        r"you\s+requested\s+a\s+sign[- ]?in\s+link",
     )
 ]
 
@@ -222,17 +279,24 @@ Return ONLY valid JSON.
 
 Labels (choose exactly one per email):
 - "baharMil": company rejection / not selected / not moving forward / other candidates chosen.
-- "oneSided": automated application acknowledgment or receipt (thanks for applying, application received, resume received, started application confirmation, under review auto-reply). No human reply needed.
-- "jobAds": job ads / alerts / marketing for openings — e.g. "we have a job for you", "N jobs based on your profile", LinkedIn job digests, "your X applications are ready", Career.io matches, recruiter cold pitches ("are you interested?", share resume, C2C role blasts), staffing mass outreach, job-alert newsletters.
-- "none": everything else — banking, payments, credit alerts, unrelated newsletters, interview scheduling that needs a reply, account-created portal welcomes without an application decision, personal mail.
+- "oneSided": automated application acknowledgment or receipt (thanks for applying, application received, resume received, started application confirmation, under review auto-reply). No human reply needed — nothing pending from you.
+- "pendingJobs": action still needed from you on an application/portal — sign-in / magic links, login to continue, verify email / candidate account, OTP / security codes, additional information needed, incomplete profile, signup/activate account, finish application setup.
+- "jobAds": job ads / alerts / marketing / recruiter staffing blasts for openings. Includes:
+  • digests ("jobs for you", "N jobs based on your profile", LinkedIn job alerts, "your X applications are ready")
+  • cold recruiter outreach: "Urgent Hiring", "Immediate Need", "role is shared with you", staffing specialist pitches, "exciting job opportunity with our client"
+  • job posting dumps (Title:/Location:/Duration:/Visa:/Required Skills), W2/1099/C2C role shares
+  • "please send/share your updated/latest resume", Request ID / req id role blasts
+- "none": everything else — banking, payments, credit alerts, unrelated newsletters (e.g. Binance KYC, tax FBAR), interview scheduling that needs a personal reply, personal mail.
 
 Rules:
 1. Prefer baharMil when both thanks-for-applying AND rejection language appear.
-2. oneSided is only for application receipt / auto-ack for a job YOU already applied to.
-3. Recruiter cold outreach / job blasts / "jobs for you" / LinkedIn job mails are jobAds (not none).
-4. Payment/credit/newsletter mail is none even if it says "received".
-5. If unsure between jobAds and none, prefer jobAds when the email is clearly about promoting job openings.
-6. If unsure otherwise, use none.
+2. oneSided is only for application receipt / auto-ack with nothing left for you to do.
+3. Sign-in links, verification, OTP/security codes, incomplete profile, "additional information needed", account activate/confirm are pendingJobs (not none, not oneSided).
+4. Recruiter/staffing cold outreach and job role shares are ALWAYS jobAds — even if from a person at a staffing firm (not none).
+5. Payment/credit/tax/crypto newsletter mail is none even if it says "received" or "update required".
+6. If unsure between jobAds and none, prefer jobAds when the email is clearly about promoting a job opening or asking for a resume for a role.
+7. If unsure between pendingJobs and none for ATS/career-portal action mail, prefer pendingJobs.
+8. If unsure otherwise, use none.
 """
 
 
@@ -338,6 +402,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_ONESIDED
     if category == "jobAds":
         return CLEAN_LABEL_JOBADS
+    if category == "pendingJobs":
+        return CLEAN_LABEL_PENDINGJOBS
     return None
 
 
@@ -358,7 +424,12 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
     ats = isAtsSender(fromEmail)
     jobRelated = ats or hasJobSignals(haystack) or any(
         pattern.search(haystack)
-        for pattern in (*REJECTION_PATTERNS, *ONESIDED_PATTERNS, *JOBADS_PATTERNS)
+        for pattern in (
+            *REJECTION_PATTERNS,
+            *ONESIDED_PATTERNS,
+            *PENDINGJOBS_PATTERNS,
+            *JOBADS_PATTERNS,
+        )
     )
 
     if not company or not jobRelated:
@@ -387,6 +458,17 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
             return _result(
                 "oneSided",
                 f"ack:{match.group(0)}",
+                isCompany=True,
+                isJobRelated=True,
+                source="regex",
+            )
+
+    for pattern in PENDINGJOBS_PATTERNS:
+        match = pattern.search(haystack)
+        if match:
+            return _result(
+                "pendingJobs",
+                f"pending:{match.group(0)}",
                 isCompany=True,
                 isJobRelated=True,
                 source="regex",
@@ -427,7 +509,7 @@ def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
         return True
     if regexResult.get("isJobRelated"):
         return True
-    if regexResult.get("category") in {"baharMil", "oneSided", "jobAds"}:
+    if regexResult.get("category") in {"baharMil", "oneSided", "jobAds", "pendingJobs"}:
         return True
     return hasJobSignals(text)
 
@@ -436,15 +518,71 @@ def _normalizeLlmCategory(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     normalized = value.strip().lower().replace(" ", "").replace("_", "").replace("-", "")
-    if normalized in {"baharmil", "bahar", "rejection", "reject"}:
+    if normalized in {"baharmil", "bahar", "rejection", "reject", "notselected", "declined"}:
         return "baharMil"
-    if normalized in {"onesided", "ack", "acknowledgement", "acknowledgment", "received"}:
+    if normalized in {
+        "onesided",
+        "ack",
+        "acknowledgement",
+        "acknowledgment",
+        "received",
+        "applicationreceived",
+        "thanksforapplying",
+    }:
         return "oneSided"
-    if normalized in {"jobads", "jobad", "jobalert", "jobalerts", "ads", "marketingjobs"}:
+    if normalized in {
+        "pendingjobs",
+        "pendingjob",
+        "pending",
+        "actionrequired",
+        "verify",
+        "verification",
+        "otp",
+        "signin",
+        "login",
+        "magiclink",
+        "securitycode",
+        "incompleteprofile",
+        "additionalinfo",
+        "additionalinformation",
+    }:
+        return "pendingJobs"
+    if normalized in {
+        "jobads",
+        "jobad",
+        "jobalert",
+        "jobalerts",
+        "ads",
+        "marketingjobs",
+        "recruiter",
+        "staffing",
+        "hiring",
+        "coldoutreach",
+        "roleblast",
+        "jobopportunity",
+    }:
         return "jobAds"
-    if normalized in {"none", "skip", "other", "ignore", "untouched"}:
+    if normalized in {"none", "skip", "other", "ignore", "untouched", "unrelated"}:
         return None
     return None
+
+
+def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
+    """
+    Prefer LLM when it picks a real label. If LLM says none/skip but regex already
+    matched baharMil/oneSided/jobAds/pendingJobs, keep the regex label so recruiter
+    blasts and rejections are not wiped by a timid model answer.
+    """
+    llmCategory = llmResult.get("category")
+    regexCategory = regexResult.get("category")
+    if llmCategory is None and regexCategory in {"baharMil", "oneSided", "jobAds", "pendingJobs"}:
+        kept = dict(regexResult)
+        kept["reason"] = (
+            f"{regexResult.get('reason') or 'regex'}"
+            f"|llmSaidNone:{llmResult.get('reason') or 'none'}"
+        )
+        return kept
+    return llmResult
 
 
 def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
@@ -465,8 +603,17 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
         )
 
     userPrompt = (
-        "Classify each email. Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|jobAds|none","reason":"short"}]}\n\n'
+        "Classify EACH email into exactly one label:\n"
+        "- baharMil — rejection / not selected / other candidates chosen\n"
+        "- oneSided — application received / thanks for applying (no action left for you)\n"
+        "- pendingJobs — sign-in link, verify account, OTP/security code, incomplete profile, "
+        "additional information needed, login to continue application\n"
+        "- jobAds — recruiter/staffing cold outreach (Urgent Hiring, Immediate Need, role shared with you, "
+        "exciting job opportunity, Title/Location/Visa dumps, please send resume for a role, LinkedIn/job digests)\n"
+        "- none — unrelated (banking, crypto KYC, tax, personal, non-job mail)\n\n"
+        "Important: staffing specialist / W2 role blasts / \"role is shared with you\" = jobAds, not none.\n"
+        "Respond with JSON only:\n"
+        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -476,7 +623,7 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
             {"role": "user", "content": userPrompt},
         ],
         temperature=0.0,
-        maxTokens=min(1200, 80 * len(items) + 200),
+        maxTokens=min(1600, 120 * len(items) + 300),
     )
     parsed = extractJsonObject(raw)
     rows = parsed.get("results") if isinstance(parsed, dict) else parsed
@@ -496,7 +643,7 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
             category,
             f"llm:{reason}",
             isCompany=True,
-            isJobRelated=category is not None,
+            isJobRelated=category is not None or bool(row.get("isJobRelated")),
             source="llm",
         )
     return byId
@@ -525,7 +672,10 @@ def classifyJobApplicationText(text: str, *, fromEmail: str = "", useLlm: bool =
                 }
             ]
         )
-        return batch.get("single") or regexResult
+        llmResult = batch.get("single")
+        if llmResult is None:
+            return regexResult
+        return _mergeLlmWithRegex(regexResult, llmResult)
     except Exception as exc:
         fallback = dict(regexResult)
         fallback["reason"] = f"{regexResult.get('reason')}|llmFailed:{exc}"
@@ -570,8 +720,13 @@ def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> l
                 ]
             )
             for item in loaded:
-                if item["id"] in llmResults:
-                    item["classification"] = llmResults[item["id"]]
+                llmResult = llmResults.get(item["id"])
+                if llmResult is None:
+                    continue
+                item["classification"] = _mergeLlmWithRegex(
+                    item.get("classification") or {},
+                    llmResult,
+                )
         except Exception as exc:
             for item in loaded:
                 current = dict(item.get("classification") or {})
@@ -609,7 +764,7 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - baharMil / oneSided / jobAds: add that label, mark read, remove from Inbox (leaves Primary)
+    - baharMil / oneSided / jobAds / pendingJobs: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
     labels = resolveCleanLabels(createMissing=True)
@@ -619,6 +774,7 @@ def applyEmailLabelActions(
         "baharMil": 0,
         "oneSided": 0,
         "jobAds": 0,
+        "pendingJobs": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -634,14 +790,14 @@ def applyEmailLabelActions(
             category = category.strip()
         if category in ("", "none", None):
             category = None
-        elif category not in ("baharMil", "oneSided", "jobAds"):
+        elif category not in ("baharMil", "oneSided", "jobAds", "pendingJobs"):
             counts["errors"] += 1
             results.append(
                 {
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, jobAds, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, or none",
                 }
             )
             continue
@@ -690,8 +846,10 @@ def applyEmailLabelActions(
                 counts["baharMil"] += 1
             elif category == "oneSided":
                 counts["oneSided"] += 1
-            else:
+            elif category == "jobAds":
                 counts["jobAds"] += 1
+            else:
+                counts["pendingJobs"] += 1
             counts["applied"] += 1
             results.append(
                 {
@@ -824,7 +982,10 @@ def _classifyLoadedMessages(items: list[dict], *, forceLlm: bool = True) -> None
         for msgId, classification in llmResults.items():
             target = byId.get(msgId)
             if target is not None:
-                target["classification"] = classification
+                target["classification"] = _mergeLlmWithRegex(
+                    target.get("classification") or {},
+                    classification,
+                )
 
 
 def cleanUnreadPrimaryInbox(
@@ -837,7 +998,7 @@ def cleanUnreadPrimaryInbox(
 ) -> dict:
     """
     Scan unread Primary mail, label rejections as BaharMil, application
-    acknowledgments as oneSided, and job ads/alerts as jobAds (LLM + regex),
+    acknowledgments as oneSided, pending action mail as pendingJobs, and job ads/alerts as jobAds (LLM + regex),
     then optionally archive + mark read.
     """
     gmail = getGmailService()
@@ -851,6 +1012,7 @@ def cleanUnreadPrimaryInbox(
         "baharMil": 0,
         "oneSided": 0,
         "jobAds": 0,
+        "pendingJobs": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -899,6 +1061,8 @@ def cleanUnreadPrimaryInbox(
             counts["oneSided"] += 1
         elif classification.get("category") == "jobAds":
             counts["jobAds"] += 1
+        elif classification.get("category") == "pendingJobs":
+            counts["pendingJobs"] += 1
 
         labelMeta = labels[labelName]
         entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}
