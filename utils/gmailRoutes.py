@@ -290,6 +290,7 @@ def postGmailInboxClean(
     - rejection / regret to inform → BaharMil
     - job ads / alerts / LinkedIn digests / recruiter blasts → jobAds
     - sign-in / verify / OTP / incomplete profile / action needed → pendingJobs
+    - retail orders / shipping / receipts / bookings → shopping
     Then optionally archive + mark read to clean the inbox.
     """
     _requireConnectedStatus()
@@ -344,7 +345,7 @@ def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
 
 @gmailRouter.post("/api/gmail/inbox/apply-labels")
 def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
-    """Apply confirmed BaharMil / oneSided / jobAds / pendingJobs labels after UI review."""
+    """Apply confirmed BaharMil / oneSided / jobAds / pendingJobs / shopping labels after UI review."""
     _requireConnectedStatus(needModify=True)
     if not body.items:
         raise HTTPException(status_code=422, detail="items required")

@@ -61,7 +61,7 @@ export type UnreadEmail = {
   labelIds?: string[];
 };
 
-export type EmailCategory = "baharMil" | "oneSided" | "jobAds" | "pendingJobs" | "none";
+export type EmailCategory = "baharMil" | "oneSided" | "jobAds" | "pendingJobs" | "shopping" | "none";
 
 export type ClassifyOneResult = {
   id: string;
@@ -86,6 +86,7 @@ export type ApplyLabelsResult = {
     oneSided: number;
     jobAds: number;
     pendingJobs: number;
+    shopping: number;
     skipped: number;
     applied: number;
     errors: number;
@@ -188,7 +189,13 @@ function normalizeUnreadEmail(raw: Record<string, unknown>): UnreadEmail {
 }
 
 function normalizeCategory(value: unknown): EmailCategory {
-  if (value === "baharMil" || value === "oneSided" || value === "jobAds" || value === "pendingJobs") {
+  if (
+    value === "baharMil" ||
+    value === "oneSided" ||
+    value === "jobAds" ||
+    value === "pendingJobs" ||
+    value === "shopping"
+  ) {
     return value;
   }
   return "none";
@@ -414,7 +421,9 @@ export async function classifyEmailBatch(
     .filter((item) => item.id);
 }
 
-export async function applyEmailLabels(options: {
+const APPLY_LABELS_BATCH_SIZE = 200;
+
+async function applyEmailLabelsOnce(options: {
   items: Array<{ messageId: string; category: EmailCategory }>;
   archive?: boolean;
   markRead?: boolean;
@@ -447,10 +456,78 @@ export async function applyEmailLabels(options: {
       oneSided: Number(countsRaw.oneSided ?? 0),
       jobAds: Number(countsRaw.jobAds ?? 0),
       pendingJobs: Number(countsRaw.pendingJobs ?? 0),
+      shopping: Number(countsRaw.shopping ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
       errors: Number(countsRaw.errors ?? 0),
     },
     results: Array.isArray(raw.results) ? (raw.results as Array<Record<string, unknown>>) : [],
   };
+}
+
+export async function applyEmailLabels(options: {
+  items: Array<{ messageId: string; category: EmailCategory }>;
+  archive?: boolean;
+  markRead?: boolean;
+}): Promise<ApplyLabelsResult> {
+  const items = options.items;
+  if (!items.length) {
+    return {
+      archive: options.archive ?? true,
+      markRead: options.markRead ?? true,
+      counts: {
+        requested: 0,
+        baharMil: 0,
+        oneSided: 0,
+        jobAds: 0,
+        pendingJobs: 0,
+        shopping: 0,
+        skipped: 0,
+        applied: 0,
+        errors: 0,
+      },
+      results: [],
+    };
+  }
+
+  const merged: ApplyLabelsResult = {
+    archive: options.archive ?? true,
+    markRead: options.markRead ?? true,
+    counts: {
+      requested: 0,
+      baharMil: 0,
+      oneSided: 0,
+      jobAds: 0,
+      pendingJobs: 0,
+      shopping: 0,
+      skipped: 0,
+      applied: 0,
+      errors: 0,
+    },
+    results: [],
+  };
+
+  for (let start = 0; start < items.length; start += APPLY_LABELS_BATCH_SIZE) {
+    const chunk = items.slice(start, start + APPLY_LABELS_BATCH_SIZE);
+    const batch = await applyEmailLabelsOnce({
+      items: chunk,
+      archive: options.archive,
+      markRead: options.markRead,
+    });
+    merged.fetchedAt = batch.fetchedAt ?? merged.fetchedAt;
+    merged.archive = batch.archive;
+    merged.markRead = batch.markRead;
+    merged.counts.requested += batch.counts.requested;
+    merged.counts.baharMil += batch.counts.baharMil;
+    merged.counts.oneSided += batch.counts.oneSided;
+    merged.counts.jobAds += batch.counts.jobAds;
+    merged.counts.pendingJobs += batch.counts.pendingJobs;
+    merged.counts.shopping += batch.counts.shopping;
+    merged.counts.skipped += batch.counts.skipped;
+    merged.counts.applied += batch.counts.applied;
+    merged.counts.errors += batch.counts.errors;
+    merged.results.push(...batch.results);
+  }
+
+  return merged;
 }
