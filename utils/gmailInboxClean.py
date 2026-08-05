@@ -8,6 +8,7 @@ from email.utils import parseaddr
 from utils.gmailAuth import getGmailService
 from utils.gmailLabels import (
     CLEAN_LABEL_BAHARMIL,
+    CLEAN_LABEL_FINTAX,
     CLEAN_LABEL_JOBADS,
     CLEAN_LABEL_ONESIDED,
     CLEAN_LABEL_PENDINGJOBS,
@@ -342,7 +343,6 @@ SHOPPING_PATTERNS = [
         r"banggood",
         r"best\s*buy",
         r"uber\s+eats",
-        r"amazon\s+store\s+card",
         r"epic\s+games\s+receipt",
         r"thank\s+you\s+for\s+your\s+purchase",
         r"amc\s+order",
@@ -355,26 +355,79 @@ SHOPPING_PATTERNS = [
     )
 ]
 
+FINTAX_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        # Tax
+        r"\bfbar\b",
+        r"\bitr\b",
+        r"file\s+your\s+itr",
+        r"income\s+tax\s+return",
+        r"e-?verif(?:y|ication)\s+of\s+income\s+tax",
+        r"tax\s+return\s+accepted",
+        r"tax\s+(estimates?|filing|return|payment)",
+        r"consent\s+to\s+e-?\s*file\s+your\s+taxes",
+        r"individual\s+tax\s+filing",
+        r"pay1040",
+        r"irs\s+eft",
+        r"irs\s+has\s+accepted\s+your\s+tax\s+payment",
+        r"incometax\.gov\.in",
+        r"shoonyatax|saadvitax|icontaxfilers|drake\s*software",
+        r"assessment\s+year|ay\s*20\d{2}",
+        r"ty\s*20\d{2}",
+        # Banking / statements / credit
+        r"account\s+statement",
+        r"statement\s+of\s+your\s+account",
+        r"credit\s+report",
+        r"credit\s+score",
+        r"bankbazaar|bank\s+of\s+baroda|capital\s+one|american\s+express|synchrony",
+        r"visions\s+federal\s+credit\s+union|visionsfcu",
+        r"overdraft\s+coverage",
+        r"demat\s+account",
+        r"nj\s+india\s*(invest|demat)",
+        r"update\s+your\s+kyc",
+        r"\bkyc\s+information\b",
+        r"binance",
+        r"your\s+card\s+is\s+ready\s+to\s+ship",
+        r"card\s+approved",
+        r"account\s+ending\s*:",
+        r"don'?t\s+live\s+life\s+without\s+it",
+        r"americanexpress|member\.americanexpress",
+        r"resy\s+profile",
+        r"card\s+membership",
+        r"payment\s+confirmation",
+        r"your\s+payment\s+has\s+been\s+received",
+        r"paymentus\.com",
+        r"city\s+of\s+.+\s+utilities",
+        r"zelle",
+        r"estatement@",
+        r"online\s+registration.*store\s+card|store\s+card.*registration",
+        r"amazon\s+store\s+card",
+    )
+]
+
 LLM_SYSTEM_PROMPT = """You classify inbound emails for a job seeker inbox cleaner.
 Return ONLY valid JSON.
 
 Labels (choose exactly one per email):
 - "baharMil": company rejection / not selected / not moving forward / other candidates chosen.
-- "oneSided": automated JOB APPLICATION acknowledgment or receipt — thanks for applying, "we've received your application", Indeed/LinkedIn application digests. Not retail orders.
+- "oneSided": automated JOB APPLICATION acknowledgment or receipt — thanks for applying, "we've received your application", Indeed/LinkedIn application digests. Not retail orders. Not bank/tax mail.
 - "pendingJobs": action still needed on a job application/portal — sign-in, verify account, OTP, incomplete profile, additional info needed.
-- "jobAds": recruiter/staffing job pitches and job digests (Urgent Hiring, C2C/W2 role shares, LinkedIn job alerts). Not shopping.
-- "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / out for delivery / delivered, pickup ready, receipts/invoices (Banggood, Best Buy, Amazon, Uber Eats, Epic Games, AMC, Sam's Club, Home Depot, Shopify stores), booking successful (eDreams/airlines), store-card signup related to a purchase. Even from personal Gmail if it's clearly an order/shipment.
-- "none": banking/Zelle transfers, crypto KYC, tax, pure personal mail, unrelated newsletters.
+- "jobAds": recruiter/staffing job pitches and job digests. Not shopping. Not banking.
+- "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / delivered, pickup, merchant receipts (Banggood, Best Buy, Uber Eats, Epic, AMC, Shopify). Not bank statements or tax.
+- "finTax": banking, credit cards, payments, tax, and finance compliance — bank/credit-union statements, overdraft notices, credit reports/scores, Amex/Capital One/card shipping & card marketing, crypto KYC (Binance), demat/broker statements, IRS/ITR/FBAR/tax preparer mail, tax payment confirmations, utility bill payment confirmations, Zelle. Not job mail. Not merchant product orders (those are shopping).
+- "none": pure personal mail, unrelated newsletters, or anything that is not the above.
 
 Rules:
 1. Prefer baharMil when both thanks-for-applying AND rejection language appear.
-2. oneSided is ONLY for job-application receipts — never for "thanks for your order/purchase".
-3. Shopping orders/shipments/receipts are shopping (not oneSided, not none).
-4. Sign-in / OTP / verify for job portals are pendingJobs.
-5. Recruiter cold outreach is jobAds — including from personal email.
-6. Payment/credit/tax/crypto unrelated to a retail order is none.
-7. If unsure between shopping and none for clear order/receipt/shipping mail, prefer shopping.
-8. If unsure otherwise, use none.
+2. oneSided is ONLY for job-application receipts — never for orders, bank, or tax.
+3. Shopping = merchant orders/shipments/receipts. finTax = banks/cards/tax/KYC/payments/statements.
+4. Amex/Capital One/card/bank/tax/KYC mail is finTax (not none, not shopping).
+5. Sign-in / OTP / verify for job portals are pendingJobs.
+6. Recruiter cold outreach is jobAds.
+7. If unsure between finTax and none for clear bank/tax/payment mail, prefer finTax.
+8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax/KYC = finTax.
+9. If unsure otherwise, use none.
 """
 
 
@@ -484,6 +537,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_PENDINGJOBS
     if category == "shopping":
         return CLEAN_LABEL_SHOPPING
+    if category == "finTax":
+        return CLEAN_LABEL_FINTAX
     return None
 
 
@@ -524,10 +579,16 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
     pendingMatch = _firstMatch(PENDINGJOBS_PATTERNS)
     jobAdsMatch = _firstMatch(JOBADS_PATTERNS)
     shoppingMatch = _firstMatch(SHOPPING_PATTERNS)
+    finTaxMatch = _firstMatch(FINTAX_PATTERNS)
 
-    # Strong category hits can label even when sender is a personal Gmail (recruiter / shop blasts).
+    # Strong category hits can label even when sender is a personal Gmail (recruiter / shop / tax).
     strongHit = bool(
-        rejectionMatch or onesidedMatch or pendingMatch or jobAdsMatch or shoppingMatch
+        rejectionMatch
+        or onesidedMatch
+        or pendingMatch
+        or jobAdsMatch
+        or shoppingMatch
+        or finTaxMatch
     )
     jobRelated = (
         ats
@@ -535,7 +596,7 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
         or hasJobSignals(haystack)
     )
 
-    if not jobRelated and not shoppingMatch:
+    if not jobRelated and not shoppingMatch and not finTaxMatch:
         return _result(
             None,
             "noJobSignals",
@@ -544,7 +605,7 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
             source="regex",
         )
 
-    # Shopping is not "job related" but still a cleanable category.
+    # Shopping / finTax are not job-related but still cleanable categories.
     if not company and not strongHit:
         return _result(
             None,
@@ -599,6 +660,15 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
             source="regex",
         )
 
+    if finTaxMatch:
+        return _result(
+            "finTax",
+            f"finTax:{finTaxMatch.group(0)}",
+            isCompany=company or ats,
+            isJobRelated=False,
+            source="regex",
+        )
+
     return _result(
         None,
         "jobRelatedUnmatched",
@@ -623,7 +693,14 @@ def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
         return True
     if regexResult.get("isJobRelated"):
         return True
-    if regexResult.get("category") in {"baharMil", "oneSided", "jobAds", "pendingJobs", "shopping"}:
+    if regexResult.get("category") in {
+        "baharMil",
+        "oneSided",
+        "jobAds",
+        "pendingJobs",
+        "shopping",
+        "finTax",
+    }:
         return True
     return hasJobSignals(text)
 
@@ -679,7 +756,6 @@ def _normalizeLlmCategory(value: object) -> str | None:
     if normalized in {
         "shopping",
         "shop",
-        "order",
         "orders",
         "purchase",
         "receipt",
@@ -689,6 +765,21 @@ def _normalizeLlmCategory(value: object) -> str | None:
         "retail",
     }:
         return "shopping"
+    if normalized in {
+        "fintax",
+        "finance",
+        "financial",
+        "banking",
+        "bank",
+        "tax",
+        "taxes",
+        "creditcard",
+        "kyc",
+        "statement",
+        "payment",
+        "payments",
+    }:
+        return "finTax"
     if normalized in {"none", "skip", "other", "ignore", "untouched", "unrelated"}:
         return None
     return None
@@ -707,6 +798,7 @@ def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
         "jobAds",
         "pendingJobs",
         "shopping",
+        "finTax",
     }:
         kept = dict(regexResult)
         kept["reason"] = (
@@ -738,15 +830,16 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
         "Classify EACH email into exactly one label:\n"
         "- baharMil — job rejection / not selected\n"
         "- oneSided — job application received / thanks for applying / Indeed-LinkedIn application digests "
-        "(NOT retail orders)\n"
+        "(NOT retail orders, NOT bank/tax)\n"
         "- pendingJobs — job portal sign-in / verify / OTP / incomplete profile\n"
-        "- jobAds — recruiter staffing blasts / job openings (NOT shopping)\n"
-        "- shopping — retail/food/entertainment/travel orders, shipped, delivered, pickup, receipts "
-        "(Banggood, Best Buy, Uber Eats, Amazon, Epic, AMC, Shopify, airline booking)\n"
-        "- none — banking/Zelle, crypto KYC, tax, personal, unrelated\n\n"
-        "Important: \"thanks for your order/purchase\" and shipment tracking = shopping, not oneSided.\n"
+        "- jobAds — recruiter staffing blasts / job openings (NOT shopping/bank)\n"
+        "- shopping — retail/food/entertainment/travel merchant orders, shipped, delivered, pickup, receipts\n"
+        "- finTax — banking, credit cards, credit reports, KYC, demat statements, tax/ITR/FBAR/IRS, "
+        "tax preparer mail, utility/tax payment confirmations, Amex/Capital One card mail\n"
+        "- none — pure personal / unrelated\n\n"
+        "Important: bank statements, Amex, Binance KYC, tax filing = finTax. Merchant product orders = shopping.\n"
         "Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|none","reason":"short"}]}\n\n'
+        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -897,7 +990,7 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - baharMil / oneSided / jobAds / pendingJobs / shopping: add that label, mark read, remove from Inbox (leaves Primary)
+    - baharMil / oneSided / jobAds / pendingJobs / shopping / finTax: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
     labels = resolveCleanLabels(createMissing=True)
@@ -909,6 +1002,7 @@ def applyEmailLabelActions(
         "jobAds": 0,
         "pendingJobs": 0,
         "shopping": 0,
+        "finTax": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -924,14 +1018,14 @@ def applyEmailLabelActions(
             category = category.strip()
         if category in ("", "none", None):
             category = None
-        elif category not in ("baharMil", "oneSided", "jobAds", "pendingJobs", "shopping"):
+        elif category not in ("baharMil", "oneSided", "jobAds", "pendingJobs", "shopping", "finTax"):
             counts["errors"] += 1
             results.append(
                 {
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, or none",
                 }
             )
             continue
@@ -984,8 +1078,10 @@ def applyEmailLabelActions(
                 counts["jobAds"] += 1
             elif category == "pendingJobs":
                 counts["pendingJobs"] += 1
-            else:
+            elif category == "shopping":
                 counts["shopping"] += 1
+            else:
+                counts["finTax"] += 1
             counts["applied"] += 1
             results.append(
                 {
@@ -1135,7 +1231,7 @@ def cleanUnreadPrimaryInbox(
     """
     Scan unread Primary mail, label rejections as BaharMil, application
     acknowledgments as oneSided, pending action mail as pendingJobs, job ads as jobAds,
-    and retail/order mail as shopping (LLM + regex),
+    retail/order mail as shopping, and bank/tax/payment mail as finTax (LLM + regex),
     then optionally archive + mark read.
     """
     gmail = getGmailService()
@@ -1151,6 +1247,7 @@ def cleanUnreadPrimaryInbox(
         "jobAds": 0,
         "pendingJobs": 0,
         "shopping": 0,
+        "finTax": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -1203,6 +1300,8 @@ def cleanUnreadPrimaryInbox(
             counts["pendingJobs"] += 1
         elif classification.get("category") == "shopping":
             counts["shopping"] += 1
+        elif classification.get("category") == "finTax":
+            counts["finTax"] += 1
 
         labelMeta = labels[labelName]
         entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}

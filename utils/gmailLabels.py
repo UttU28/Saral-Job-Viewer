@@ -8,12 +8,14 @@ CLEAN_LABEL_BAHARMIL = "BaharMil"
 CLEAN_LABEL_JOBADS = "jobAds"
 CLEAN_LABEL_PENDINGJOBS = "pendingJobs"
 CLEAN_LABEL_SHOPPING = "shopping"
+CLEAN_LABEL_FINTAX = "finTax"
 CLEAN_LABEL_NAMES = (
     CLEAN_LABEL_ONESIDED,
     CLEAN_LABEL_BAHARMIL,
     CLEAN_LABEL_JOBADS,
     CLEAN_LABEL_PENDINGJOBS,
     CLEAN_LABEL_SHOPPING,
+    CLEAN_LABEL_FINTAX,
 )
 
 
@@ -55,7 +57,7 @@ def findLabelByName(labels: list[dict], name: str) -> dict | None:
 
 def resolveCleanLabels(*, createMissing: bool = True) -> dict[str, dict]:
     """
-    Resolve BaharMil / oneSided / jobAds / pendingJobs / shopping label ids. Creates missing user labels when allowed.
+    Resolve BaharMil / oneSided / jobAds / pendingJobs / shopping / finTax label ids. Creates missing user labels when allowed.
     Returns map of canonical name -> {id, name, created}.
     """
     gmail = getGmailService()

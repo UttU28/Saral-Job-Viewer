@@ -61,7 +61,14 @@ export type UnreadEmail = {
   labelIds?: string[];
 };
 
-export type EmailCategory = "baharMil" | "oneSided" | "jobAds" | "pendingJobs" | "shopping" | "none";
+export type EmailCategory =
+  | "baharMil"
+  | "oneSided"
+  | "jobAds"
+  | "pendingJobs"
+  | "shopping"
+  | "finTax"
+  | "none";
 
 export type ClassifyOneResult = {
   id: string;
@@ -87,6 +94,7 @@ export type ApplyLabelsResult = {
     jobAds: number;
     pendingJobs: number;
     shopping: number;
+    finTax: number;
     skipped: number;
     applied: number;
     errors: number;
@@ -194,7 +202,8 @@ function normalizeCategory(value: unknown): EmailCategory {
     value === "oneSided" ||
     value === "jobAds" ||
     value === "pendingJobs" ||
-    value === "shopping"
+    value === "shopping" ||
+    value === "finTax"
   ) {
     return value;
   }
@@ -457,6 +466,7 @@ async function applyEmailLabelsOnce(options: {
       jobAds: Number(countsRaw.jobAds ?? 0),
       pendingJobs: Number(countsRaw.pendingJobs ?? 0),
       shopping: Number(countsRaw.shopping ?? 0),
+      finTax: Number(countsRaw.finTax ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
       errors: Number(countsRaw.errors ?? 0),
@@ -482,6 +492,7 @@ export async function applyEmailLabels(options: {
         jobAds: 0,
         pendingJobs: 0,
         shopping: 0,
+        finTax: 0,
         skipped: 0,
         applied: 0,
         errors: 0,
@@ -500,6 +511,7 @@ export async function applyEmailLabels(options: {
       jobAds: 0,
       pendingJobs: 0,
       shopping: 0,
+      finTax: 0,
       skipped: 0,
       applied: 0,
       errors: 0,
@@ -523,6 +535,7 @@ export async function applyEmailLabels(options: {
     merged.counts.jobAds += batch.counts.jobAds;
     merged.counts.pendingJobs += batch.counts.pendingJobs;
     merged.counts.shopping += batch.counts.shopping;
+    merged.counts.finTax += batch.counts.finTax;
     merged.counts.skipped += batch.counts.skipped;
     merged.counts.applied += batch.counts.applied;
     merged.counts.errors += batch.counts.errors;
