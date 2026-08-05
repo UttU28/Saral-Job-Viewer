@@ -86,7 +86,9 @@ export function PlaceTrackEmailsPanel({
 
   if (!active) return null;
 
-  const labeledCount = rows.filter((row) => row.category === "baharMil" || row.category === "oneSided").length;
+  const labeledCount = rows.filter(
+    (row) => row.category === "baharMil" || row.category === "oneSided" || row.category === "jobAds",
+  ).length;
   const classifiedCount = rows.filter((row) => row.classifyStatus === "done").length;
 
   const handleSubmit = async () => {
@@ -96,6 +98,7 @@ export function PlaceTrackEmailsPanel({
       `Moved ${result.counts.applied} to labels`,
       `BaharMil ${result.counts.baharMil}`,
       `oneSided ${result.counts.oneSided}`,
+      `jobAds ${result.counts.jobAds}`,
       `left none in Primary`,
     ];
     if (result.counts.errors) parts.push(`errors ${result.counts.errors}`);
@@ -112,7 +115,7 @@ export function PlaceTrackEmailsPanel({
         <div className="min-w-0">
           <h2 className="font-display text-lg font-semibold tracking-tight sm:text-xl">Emails</h2>
           <p className="text-sm text-muted-foreground">
-            Categorize → edit → Submit moves BaharMil / oneSided out of Primary; none stays
+            Categorize → edit → Submit moves BaharMil / oneSided / jobAds out of Primary; none stays
             {gmailStatus?.email ? ` · ${gmailStatus.email}` : ""}
           </p>
         </div>
@@ -176,7 +179,7 @@ export function PlaceTrackEmailsPanel({
       {lastApply ? (
         <div className="mb-4 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
           Last submit: applied {lastApply.counts.applied} · BaharMil {lastApply.counts.baharMil} · oneSided{" "}
-          {lastApply.counts.oneSided}
+          {lastApply.counts.oneSided} · jobAds {lastApply.counts.jobAds}
           {lastApply.counts.errors ? ` · errors ${lastApply.counts.errors}` : ""}
         </div>
       ) : null}
@@ -270,6 +273,7 @@ export function PlaceTrackEmailsPanel({
                     "h-8 rounded-md border border-border/70 bg-background px-2 text-xs",
                     row.category === "baharMil" && "border-rose-500/40 text-rose-400",
                     row.category === "oneSided" && "border-amber-500/40 text-amber-400",
+                    row.category === "jobAds" && "border-sky-500/40 text-sky-400",
                   )}
                   value={row.category}
                   disabled={isCategorizing || isSubmitting || row.classifyStatus === "loading"}
@@ -278,6 +282,7 @@ export function PlaceTrackEmailsPanel({
                   <option value="none">none</option>
                   <option value="oneSided">oneSided</option>
                   <option value="baharMil">BaharMil</option>
+                  <option value="jobAds">jobAds</option>
                 </select>
                 <div className="flex items-center gap-1">
                   {row.classifyStatus === "loading" ? (

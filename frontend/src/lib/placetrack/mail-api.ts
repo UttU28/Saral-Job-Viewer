@@ -61,7 +61,7 @@ export type UnreadEmail = {
   labelIds?: string[];
 };
 
-export type EmailCategory = "baharMil" | "oneSided" | "none";
+export type EmailCategory = "baharMil" | "oneSided" | "jobAds" | "none";
 
 export type ClassifyOneResult = {
   id: string;
@@ -84,6 +84,7 @@ export type ApplyLabelsResult = {
     requested: number;
     baharMil: number;
     oneSided: number;
+    jobAds: number;
     skipped: number;
     applied: number;
     errors: number;
@@ -186,7 +187,7 @@ function normalizeUnreadEmail(raw: Record<string, unknown>): UnreadEmail {
 }
 
 function normalizeCategory(value: unknown): EmailCategory {
-  if (value === "baharMil" || value === "oneSided") return value;
+  if (value === "baharMil" || value === "oneSided" || value === "jobAds") return value;
   return "none";
 }
 
@@ -441,6 +442,7 @@ export async function applyEmailLabels(options: {
       requested: Number(countsRaw.requested ?? 0),
       baharMil: Number(countsRaw.baharMil ?? 0),
       oneSided: Number(countsRaw.oneSided ?? 0),
+      jobAds: Number(countsRaw.jobAds ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
       errors: Number(countsRaw.errors ?? 0),

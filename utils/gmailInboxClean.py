@@ -8,6 +8,7 @@ from email.utils import parseaddr
 from utils.gmailAuth import getGmailService
 from utils.gmailLabels import (
     CLEAN_LABEL_BAHARMIL,
+    CLEAN_LABEL_JOBADS,
     CLEAN_LABEL_ONESIDED,
     resolveCleanLabels,
 )
@@ -180,20 +181,58 @@ ONESIDED_PATTERNS = [
     )
 ]
 
+JOBADS_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"\d+\s+(ready\s+)?(job\s+)?applications?\s+are\s+ready",
+        r"your\s+\d+\s+applications?\s+are\s+ready",
+        r"\d+\s+ready\s+for\s+your\s+approval",
+        r"we\s+(have\s+)?(got|found)\s+a\s+job\s+for\s+you",
+        r"job\s+for\s+you\b",
+        r"jobs?\s+based\s+on\s+your\s+profile",
+        r"\d+\s*[-–—to]+\s*\d+\s+more\s+jobs?",
+        r"\d+\s+more\s+jobs?\b",
+        r"new\s+jobs?\s+posted",
+        r"job\s+alert",
+        r"jobs?\s+matching\s+your",
+        r"recommended\s+jobs?",
+        r"jobs?\s+you\s+may\s+(like|be\s+interested)",
+        r"linkedin\.com/jobs",
+        r"jobs?\s+for\s+you\s+from\s+linkedin",
+        r"ready\s+for\s+a\s+new\s+job",
+        r"matched\s+you\s+and\s+filled\s+out",
+        r"view\s+job\s+matches",
+        r"talent\s+community",
+        r"you\s+joined\s+the\s+.+\s+talent\s+community",
+        r"career\.io",
+        r"tealhq\.com",
+        r"optimhire",
+        r"are\s+you\s+interested\??",
+        r"exciting\s+opportunity\s+with\s+our\s+client",
+        r"please\s+share\s+(me\s+)?your\s+latest\s+resume",
+        r"open\s+for\s+c2c",
+        r"job\s+title:\s*",
+        r"we\s+have\s+a\s+.+\s+role\s+at",
+        r"based\s+on\s+your\s+profile,?\s+we\s+have",
+    )
+]
+
 LLM_SYSTEM_PROMPT = """You classify inbound emails for a job seeker inbox cleaner.
 Return ONLY valid JSON.
 
 Labels (choose exactly one per email):
 - "baharMil": company rejection / not selected / not moving forward / other candidates chosen.
 - "oneSided": automated application acknowledgment or receipt (thanks for applying, application received, resume received, started application confirmation, under review auto-reply). No human reply needed.
-- "none": everything else — recruiter cold outreach, staffing pitches, newsletters, banking, payments, credit alerts, marketing, interview invites that need a reply, account-created portal welcomes without an application decision, job alerts, or unrelated mail.
+- "jobAds": job ads / alerts / marketing for openings — e.g. "we have a job for you", "N jobs based on your profile", LinkedIn job digests, "your X applications are ready", Career.io matches, recruiter cold pitches ("are you interested?", share resume, C2C role blasts), staffing mass outreach, job-alert newsletters.
+- "none": everything else — banking, payments, credit alerts, unrelated newsletters, interview scheduling that needs a reply, account-created portal welcomes without an application decision, personal mail.
 
 Rules:
 1. Prefer baharMil when both thanks-for-applying AND rejection language appear.
-2. oneSided is only for application receipt / auto-ack style messages.
-3. Recruiter "are you interested" / share resume pitches are none.
+2. oneSided is only for application receipt / auto-ack for a job YOU already applied to.
+3. Recruiter cold outreach / job blasts / "jobs for you" / LinkedIn job mails are jobAds (not none).
 4. Payment/credit/newsletter mail is none even if it says "received".
-5. If unsure, use none.
+5. If unsure between jobAds and none, prefer jobAds when the email is clearly about promoting job openings.
+6. If unsure otherwise, use none.
 """
 
 
@@ -297,6 +336,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_BAHARMIL
     if category == "oneSided":
         return CLEAN_LABEL_ONESIDED
+    if category == "jobAds":
+        return CLEAN_LABEL_JOBADS
     return None
 
 
@@ -316,7 +357,8 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
     company = isCompanySender(fromEmail)
     ats = isAtsSender(fromEmail)
     jobRelated = ats or hasJobSignals(haystack) or any(
-        pattern.search(haystack) for pattern in (*REJECTION_PATTERNS, *ONESIDED_PATTERNS)
+        pattern.search(haystack)
+        for pattern in (*REJECTION_PATTERNS, *ONESIDED_PATTERNS, *JOBADS_PATTERNS)
     )
 
     if not company or not jobRelated:
@@ -350,6 +392,17 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
                 source="regex",
             )
 
+    for pattern in JOBADS_PATTERNS:
+        match = pattern.search(haystack)
+        if match:
+            return _result(
+                "jobAds",
+                f"jobAd:{match.group(0)}",
+                isCompany=True,
+                isJobRelated=True,
+                source="regex",
+            )
+
     return _result(
         None,
         "jobRelatedUnmatched",
@@ -374,7 +427,7 @@ def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
         return True
     if regexResult.get("isJobRelated"):
         return True
-    if regexResult.get("category") in {"baharMil", "oneSided"}:
+    if regexResult.get("category") in {"baharMil", "oneSided", "jobAds"}:
         return True
     return hasJobSignals(text)
 
@@ -387,6 +440,8 @@ def _normalizeLlmCategory(value: object) -> str | None:
         return "baharMil"
     if normalized in {"onesided", "ack", "acknowledgement", "acknowledgment", "received"}:
         return "oneSided"
+    if normalized in {"jobads", "jobad", "jobalert", "jobalerts", "ads", "marketingjobs"}:
+        return "jobAds"
     if normalized in {"none", "skip", "other", "ignore", "untouched"}:
         return None
     return None
@@ -411,7 +466,7 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
 
     userPrompt = (
         "Classify each email. Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|none","reason":"short"}]}\n\n'
+        '{"results":[{"id":"...","label":"baharMil|oneSided|jobAds|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -554,7 +609,7 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - baharMil / oneSided: add that label, mark read, remove from Inbox (leaves Primary)
+    - baharMil / oneSided / jobAds: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
     labels = resolveCleanLabels(createMissing=True)
@@ -563,6 +618,7 @@ def applyEmailLabelActions(
         "requested": len(items),
         "baharMil": 0,
         "oneSided": 0,
+        "jobAds": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -578,14 +634,14 @@ def applyEmailLabelActions(
             category = category.strip()
         if category in ("", "none", None):
             category = None
-        elif category not in ("baharMil", "oneSided"):
+        elif category not in ("baharMil", "oneSided", "jobAds"):
             counts["errors"] += 1
             results.append(
                 {
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, or none",
                 }
             )
             continue
@@ -632,8 +688,10 @@ def applyEmailLabelActions(
             ).execute()
             if category == "baharMil":
                 counts["baharMil"] += 1
-            else:
+            elif category == "oneSided":
                 counts["oneSided"] += 1
+            else:
+                counts["jobAds"] += 1
             counts["applied"] += 1
             results.append(
                 {
@@ -778,8 +836,9 @@ def cleanUnreadPrimaryInbox(
     useLlm: bool = True,
 ) -> dict:
     """
-    Scan unread Primary mail, label rejections as BaharMil and application
-    acknowledgments as oneSided (LLM + regex), then optionally archive + mark read.
+    Scan unread Primary mail, label rejections as BaharMil, application
+    acknowledgments as oneSided, and job ads/alerts as jobAds (LLM + regex),
+    then optionally archive + mark read.
     """
     gmail = getGmailService()
     labels = resolveCleanLabels(createMissing=True)
@@ -791,6 +850,7 @@ def cleanUnreadPrimaryInbox(
         "scanned": 0,
         "baharMil": 0,
         "oneSided": 0,
+        "jobAds": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -837,6 +897,8 @@ def cleanUnreadPrimaryInbox(
             counts["baharMil"] += 1
         elif classification.get("category") == "oneSided":
             counts["oneSided"] += 1
+        elif classification.get("category") == "jobAds":
+            counts["jobAds"] += 1
 
         labelMeta = labels[labelName]
         entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}

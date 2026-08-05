@@ -288,6 +288,7 @@ def postGmailInboxClean(
     Categorize unread Primary job-application mail via local LLM (+ regex fallback):
     - application received / thanks for applying → oneSided
     - rejection / regret to inform → BaharMil
+    - job ads / alerts / LinkedIn digests / recruiter blasts → jobAds
     Then optionally archive + mark read to clean the inbox.
     """
     _requireConnectedStatus()
@@ -342,7 +343,7 @@ def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
 
 @gmailRouter.post("/api/gmail/inbox/apply-labels")
 def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
-    """Apply confirmed BaharMil / oneSided labels after UI review."""
+    """Apply confirmed BaharMil / oneSided / jobAds labels after UI review."""
     _requireConnectedStatus(needModify=True)
     if not body.items:
         raise HTTPException(status_code=422, detail="items required")

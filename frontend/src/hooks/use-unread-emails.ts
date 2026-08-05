@@ -167,11 +167,13 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   }, [rows]);
 
   const submitLabels = useCallback(async (): Promise<ApplyLabelsResult | null> => {
-    const toApply = rows.filter((row) => row.category === "baharMil" || row.category === "oneSided");
+    const toApply = rows.filter(
+      (row) => row.category === "baharMil" || row.category === "oneSided" || row.category === "jobAds",
+    );
     const items = toApply.map((row) => ({ messageId: row.id, category: row.category }));
 
     if (!items.length) {
-      setError("Nothing to submit — set at least one email to BaharMil or oneSided.");
+      setError("Nothing to submit — set at least one email to BaharMil, oneSided, or jobAds.");
       return null;
     }
 

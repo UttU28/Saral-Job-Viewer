@@ -5,7 +5,8 @@ from utils.gmailAuth import getGmailService
 # User labels used by inbox cleaning for job-application mail.
 CLEAN_LABEL_ONESIDED = "oneSided"
 CLEAN_LABEL_BAHARMIL = "BaharMil"
-CLEAN_LABEL_NAMES = (CLEAN_LABEL_ONESIDED, CLEAN_LABEL_BAHARMIL)
+CLEAN_LABEL_JOBADS = "jobAds"
+CLEAN_LABEL_NAMES = (CLEAN_LABEL_ONESIDED, CLEAN_LABEL_BAHARMIL, CLEAN_LABEL_JOBADS)
 
 
 def listGmailLabels() -> dict:
@@ -46,7 +47,7 @@ def findLabelByName(labels: list[dict], name: str) -> dict | None:
 
 def resolveCleanLabels(*, createMissing: bool = True) -> dict[str, dict]:
     """
-    Resolve BaharMil / oneSided label ids. Creates missing user labels when allowed.
+    Resolve BaharMil / oneSided / jobAds label ids. Creates missing user labels when allowed.
     Returns map of canonical name -> {id, name, created}.
     """
     gmail = getGmailService()
