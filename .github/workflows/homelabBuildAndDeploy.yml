@@ -3,14 +3,7 @@ name: homelabBuildAndDeploy
 on:
   push:
     branches:
-      - cid
       - main
-    paths:
-      - backend/**
-      - frontend/**
-      - docker/**
-      - docker-compose.yml
-      - .github/workflows/homelabBuildAndDeploy.yml
   workflow_dispatch:
 
 env:

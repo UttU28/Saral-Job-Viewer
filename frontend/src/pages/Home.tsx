@@ -320,7 +320,7 @@ export default function Home() {
               className="flex flex-col items-center justify-center py-20 text-center rounded-2xl border border-dashed border-border bg-muted/25 dark:bg-white/[0.02]"
             >
               <Briefcase className="h-11 w-11 text-muted-foreground mb-3 opacity-80" />
-              <h3 className="text-lg font-semibold font-display">No jobs match</h3>
+              <h3 className="text-lg font-semibold font-display">Scrape Again!!!</h3>
               <p className="text-muted-foreground text-sm max-w-md mt-2">Adjust filters or search.</p>
             </motion.div>
           ) : (
