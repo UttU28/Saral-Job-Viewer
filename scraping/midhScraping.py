@@ -19,12 +19,12 @@ load_dotenv(REPO_ROOT / ".env", override=False)
 
 # 1=JobRight, 2=ZipRecruiter, 3=Glassdoor (disabled), 0=all enabled platforms.
 PLATFORM_CHOICES: list[tuple[int, str, str]] = [
-    (1, "jobright", "scraping/aJobRight.py"),
-    (2, "ziprecruiter", "scraping/cZipRecruiter.py"),
+    (1, "jobright", "aJobRight.py"),
+    (2, "ziprecruiter", "cZipRecruiter.py"),
 ]
 
 # Glassdoor — slot 3, skipped for now (not included in 0 / all).
-# (3, "glassdoor", "scraping/bGlassDoor.py"),
+# (3, "glassdoor", "bGlassDoor.py"),
 GLASSDOOR_CHOICE_NUM = 3
 
 
@@ -250,9 +250,14 @@ def _validationModeArg(mode: str) -> str:
 
 
 def _resolveValidationPython() -> str:
-    venv_python = REPO_ROOT / "venv" / "bin" / "python"
-    if venv_python.is_file() and os.access(venv_python, os.X_OK):
-        return str(venv_python)
+    # Prefer repo-root venv (../venv), then scraping/venv, then current interpreter.
+    candidates = (
+        REPO_ROOT.parent / "venv" / "bin" / "python",
+        REPO_ROOT / "venv" / "bin" / "python",
+    )
+    for venv_python in candidates:
+        if venv_python.is_file() and os.access(venv_python, os.X_OK):
+            return str(venv_python)
     return sys.executable
 
 

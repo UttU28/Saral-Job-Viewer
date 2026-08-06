@@ -1,5 +1,5 @@
 # Build Vite app with VITE_API_URL baked in; serve static files with nginx.
-# Context: repository root (.). Example:
+# Context: monorepo root. Example:
 #   docker build -f docker/Dockerfile.frontend --build-arg VITE_API_URL=https://saral.thatinsaneguy.com -t saral-ui:latest .
 FROM node:20-alpine AS build
 WORKDIR /app

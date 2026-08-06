@@ -7,19 +7,23 @@
 #   crontab -e
 #
 # Give execute permission:
-#   chmod +x /home/midhtechadmin/Desktop/Saral-Job-Viewer/cleanAfterApply.sh
+#   chmod +x /home/midhtechadmin/Desktop/Saral-Job-Viewer/scraping/cleanAfterApply.sh
 #
 # Nightly at 10:00 PM (server local timezone):
-#   0 22 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/cleanAfterApply.sh
+#   0 22 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scraping/cleanAfterApply.sh
 #
 # If your server is not on your timezone, pin timezone in crontab (example: Eastern):
 #   CRON_TZ=America/New_York
-#   0 22 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/cleanAfterApply.sh
+#   0 22 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scraping/cleanAfterApply.sh
 # ---------------------------------------------------
 set -euo pipefail
 
 repoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-venvPython="${repoRoot}/venv/bin/python"
+monorepoRoot="$(cd "${repoRoot}/.." && pwd)"
+venvPython="${monorepoRoot}/venv/bin/python"
+if [[ ! -x "${venvPython}" ]]; then
+  venvPython="${repoRoot}/venv/bin/python"
+fi
 validationPy="${repoRoot}/validation.py"
 
 mkdir -p "${repoRoot}/zata/cron"

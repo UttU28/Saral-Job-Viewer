@@ -1,9 +1,7 @@
-# Saral Job Viewer — single stack. Deploy with: ./deploy.sh
+# Saral Job Viewer — full stack (API + UI + Redis [+ optional nginx/certbot]).
+# Deploy: ./deploy.sh | ./backend/deploy.sh | ./frontend/deploy.sh
 #
-#   https://saral.thatinsaneguy.com       → frontend
-#   https://saral.thatinsaneguy.com/api/* → backend
-#
-# Requires `.env` at repo root (see `.env.example`).
+# Env: backend/.env
 
 name: saral-job-viewer
 
@@ -44,7 +42,7 @@ services:
       - 8.8.8.8
       - 8.8.4.4
     env_file:
-      - .env
+      - ./backend/.env
     environment:
       REDIS_ENABLED: "true"
       REDIS_URL: redis://sjv-redis:9262/0
@@ -57,7 +55,7 @@ services:
       - "127.0.0.1:9260:9260"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./client_secret.json:/app/client_secret.json:ro
+      - ./backend/client_secret.json:/app/client_secret.json:ro
     depends_on:
       sjv-redis:
         condition: service_healthy

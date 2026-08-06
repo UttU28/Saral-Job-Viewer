@@ -1,3 +1,5 @@
+# API image. Context: monorepo root.
+#   docker build -f docker/Dockerfile.api -t saral-api:latest .
 FROM python:3.12-slim-bookworm
 
 ENV PYTHONUNBUFFERED=1 \
@@ -26,9 +28,9 @@ RUN pip install --upgrade pip \
         "google-auth-httplib2>=0.2.0,<1" \
         "google-api-python-client>=2.150.0,<3"
 
-COPY app.py .
-COPY utils/ ./utils/
-COPY client_secret.json .
+COPY backend/app.py .
+COPY backend/utils/ ./utils/
+COPY backend/client_secret.json .
 
 EXPOSE 9260
 

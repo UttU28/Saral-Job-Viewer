@@ -8,10 +8,10 @@
 #   crontab -e                      # Edit current user's crontab
 #
 # Remember to give this script execute permissions if you haven't already:
-#   chmod +x /home/midhtechadmin/Desktop/Saral-Job-Viewer/scheduleMidhScraping.sh
+#   chmod +x /home/midhtechadmin/Desktop/Saral-Job-Viewer/scraping/scheduleMidhScraping.sh
 #
 # Example cron (logs go to zata/cron/scrapingCron-YYYY-MM-DD.log inside this script):
-#   0 6 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scheduleMidhScraping.sh
+#   0 6 * * * /home/midhtechadmin/Desktop/Saral-Job-Viewer/scraping/scheduleMidhScraping.sh
 # ------------------------------------------------------------
 # Run midhScraping.py with the repo venv. Intended for cron/systemd (no interactive shell).
 set -euo pipefail
@@ -19,10 +19,14 @@ set -euo pipefail
 export DISPLAY=:0
 
 repoRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-venvPython="${repoRoot}/venv/bin/python"
+monorepoRoot="$(cd "${repoRoot}/.." && pwd)"
+venvPython="${monorepoRoot}/venv/bin/python"
+if [[ ! -x "${venvPython}" ]]; then
+  venvPython="${repoRoot}/venv/bin/python"
+fi
 
 if [[ ! -x "${venvPython}" ]]; then
-  echo "error: expected venv at ${repoRoot}/venv (run: python3 -m venv venv && ./venv/bin/pip install -r requirements.txt)" >&2
+  echo "error: expected venv at ${monorepoRoot}/venv (run: python3 -m venv venv && ./venv/bin/pip install -r scraping/requirements.txt)" >&2
   exit 1
 fi
 
