@@ -19,34 +19,7 @@ env:
   VITE_API_URL: ${{ vars.VITE_API_URL || 'https://saral.thatinsaneguy.com' }}
 
 jobs:
-  detectChanges:
-    runs-on: self-hosted
-    outputs:
-      api: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.api }}
-      ui: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.ui }}
-      redis: ${{ github.event_name == 'workflow_dispatch' && 'true' || steps.filter.outputs.redis }}
-    steps:
-      - name: checkoutApp
-        uses: actions/checkout@v4
-
-      - name: detectPathChanges
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            api:
-              - 'backend/**'
-              - 'docker/Dockerfile.api'
-            ui:
-              - 'frontend/**'
-              - 'docker/Dockerfile.frontend'
-              - 'docker/nginx.frontend.conf'
-            redis:
-              - 'docker/Dockerfile.redis'
-
   buildApi:
-    needs: detectChanges
-    if: github.event_name == 'workflow_dispatch' || needs.detectChanges.outputs.api == 'true'
     runs-on: self-hosted
     permissions:
       contents: read
@@ -73,8 +46,6 @@ jobs:
           docker push "${image}:latest"
 
   buildUi:
-    needs: detectChanges
-    if: github.event_name == 'workflow_dispatch' || needs.detectChanges.outputs.ui == 'true'
     runs-on: self-hosted
     permissions:
       contents: read
@@ -102,8 +73,6 @@ jobs:
           docker push "${image}:latest"
 
   buildRedis:
-    needs: detectChanges
-    if: github.event_name == 'workflow_dispatch' || needs.detectChanges.outputs.redis == 'true'
     runs-on: self-hosted
     permissions:
       contents: read
@@ -130,14 +99,9 @@ jobs:
           docker push "${image}:latest"
 
   bumpGitOps:
-    needs: [detectChanges, buildApi, buildUi, buildRedis]
+    needs: [buildApi, buildUi, buildRedis]
     runs-on: self-hosted
-    if: |
-      always() &&
-      github.event_name != 'pull_request' &&
-      (needs.buildApi.result == 'success' ||
-       needs.buildUi.result == 'success' ||
-       needs.buildRedis.result == 'success')
+    if: github.event_name != 'pull_request'
     steps:
       - name: validateGitOpsToken
         env:
@@ -158,17 +122,11 @@ jobs:
         working-directory: homeLabOps
         env:
           IMAGE_OWNER: ${{ github.repository_owner }}
-          BUILD_API: ${{ needs.buildApi.result == 'success' }}
-          BUILD_UI: ${{ needs.buildUi.result == 'success' }}
-          BUILD_REDIS: ${{ needs.buildRedis.result == 'success' }}
         run: |
           ownerLower=$(echo "${IMAGE_OWNER}" | tr '[:upper:]' '[:lower:]')
           shortSha="${GITHUB_SHA::7}"
           kustomization="apps/saralJobViewer/kustomization.yaml"
-          bumped=""
-
-          bumpTag() {
-            local image="$1"
+          for image in saral-api saral-ui saral-redis; do
             awk -v img="ghcr.io/${ownerLower}/${image}" -v tag="${shortSha}" '
               $0 ~ "name: " img { inBlock=1 }
               inBlock && $0 ~ /^[[:space:]]*newTag:/ {
@@ -178,14 +136,7 @@ jobs:
               { print }
             ' "${kustomization}" > "${kustomization}.tmp"
             mv "${kustomization}.tmp" "${kustomization}"
-            bumped="${bumped} ${image}"
-          }
-
-          if [ "${BUILD_API}" = "true" ]; then bumpTag "saral-api"; fi
-          if [ "${BUILD_UI}" = "true" ]; then bumpTag "saral-ui"; fi
-          if [ "${BUILD_REDIS}" = "true" ]; then bumpTag "saral-redis"; fi
-
-          echo "Bumped:${bumped}"
+          done
           grep -A1 'name: ghcr.io' "${kustomization}"
 
       - name: commitAndPush
