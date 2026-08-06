@@ -1,6 +1,17 @@
-import { Check, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles } from "lucide-react";
+import { Check, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { EmailReviewRow } from "@/hooks/use-unread-emails";
 import {
@@ -8,8 +19,10 @@ import {
   type ApplyLabelsResult,
   type EmailCategory,
   type GmailStatus,
+  type NoiseCategoryCounts,
+  type NoiseDeleteResult,
 } from "@/lib/placetrack/mail-api";
-import { PLACETRACK_EMAILS_PATH } from "@/lib/placetrack/routing";
+import { EMAILS_PATH } from "@/lib/placetrack/routing";
 import { cn } from "@/lib/utils";
 
 type PlaceTrackEmailsPanelProps = {
@@ -27,7 +40,122 @@ type PlaceTrackEmailsPanelProps = {
   onCategorize: () => Promise<void>;
   onSetCategory: (messageId: string, category: EmailCategory) => void;
   onSubmit: () => Promise<ApplyLabelsResult | null>;
+  noiseCount?: NoiseCategoryCounts | null;
+  noiseLoading?: boolean;
+  noiseDeleting?: boolean;
+  noiseError?: string | null;
+  onDeleteNoise?: () => Promise<NoiseDeleteResult | null>;
 };
+
+const CATEGORY_SEGMENTS: Array<{
+  key: EmailCategory | "pending";
+  label: string;
+  barClass: string;
+  dotClass: string;
+}> = [
+  { key: "baharMil", label: "BaharMil", barClass: "bg-rose-500", dotClass: "bg-rose-400" },
+  { key: "oneSided", label: "oneSided", barClass: "bg-amber-500", dotClass: "bg-amber-400" },
+  { key: "jobAds", label: "jobAds", barClass: "bg-sky-500", dotClass: "bg-sky-400" },
+  { key: "pendingJobs", label: "pendingJobs", barClass: "bg-violet-500", dotClass: "bg-violet-400" },
+  { key: "shopping", label: "shopping", barClass: "bg-emerald-500", dotClass: "bg-emerald-400" },
+  { key: "finTax", label: "finTax", barClass: "bg-teal-500", dotClass: "bg-teal-400" },
+  { key: "none", label: "none", barClass: "bg-zinc-500", dotClass: "bg-zinc-400" },
+  { key: "pending", label: "pending", barClass: "bg-muted-foreground/25", dotClass: "bg-muted-foreground/50" },
+];
+
+function CategoryBreakdownBar({
+  rows,
+  isCategorizing,
+  categorizeProgress,
+}: {
+  rows: EmailReviewRow[];
+  isCategorizing: boolean;
+  categorizeProgress: { done: number; total: number } | null;
+}) {
+  const counts = useMemo(() => {
+    const next: Record<string, number> = {
+      baharMil: 0,
+      oneSided: 0,
+      jobAds: 0,
+      pendingJobs: 0,
+      shopping: 0,
+      finTax: 0,
+      none: 0,
+      pending: 0,
+    };
+    for (const row of rows) {
+      if (row.classifyStatus === "idle" || row.classifyStatus === "loading") {
+        next.pending += 1;
+        continue;
+      }
+      next[row.category] = (next[row.category] ?? 0) + 1;
+    }
+    return next;
+  }, [rows]);
+
+  const total = rows.length;
+  if (!total) return null;
+
+  const categorized = total - counts.pending;
+  const progressPct = Math.round((categorized / total) * 100);
+
+  return (
+    <div className="mb-4 rounded-xl border border-border/60 bg-card/40 px-3 py-3 sm:px-4">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-xs font-medium text-foreground/90">
+          Inbox mix
+          <span className="ml-2 font-normal text-muted-foreground">
+            {categorized}/{total} categorized · {progressPct}%
+          </span>
+        </p>
+        {isCategorizing && categorizeProgress ? (
+          <p className="text-[11px] tabular-nums text-muted-foreground">
+            Running {categorizeProgress.done}/{categorizeProgress.total}
+          </p>
+        ) : null}
+      </div>
+
+      <div
+        className="flex h-3 w-full overflow-hidden rounded-full bg-muted/40 ring-1 ring-inset ring-border/50"
+        role="img"
+        aria-label={`Category breakdown: ${progressPct}% categorized`}
+      >
+        {CATEGORY_SEGMENTS.map((segment) => {
+          const count = counts[segment.key] ?? 0;
+          if (!count) return null;
+          const widthPct = (count / total) * 100;
+          return (
+            <div
+              key={segment.key}
+              title={`${segment.label}: ${count}`}
+              className={cn(
+                "h-full min-w-0 transition-[width] duration-500 ease-out",
+                segment.barClass,
+                segment.key !== "pending" && "opacity-90",
+              )}
+              style={{ width: `${widthPct}%` }}
+            />
+          );
+        })}
+      </div>
+
+      <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        {CATEGORY_SEGMENTS.map((segment) => {
+          const count = counts[segment.key] ?? 0;
+          if (!count && segment.key === "pending" && !isCategorizing) return null;
+          if (!count && segment.key !== "pending") return null;
+          return (
+            <li key={segment.key} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span className={cn("h-2 w-2 shrink-0 rounded-full", segment.dotClass)} />
+              <span className="text-foreground/80">{segment.label}</span>
+              <span className="tabular-nums">{count}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function formatEmailDate(value?: string | null, internalDate?: string | null): string {
   let date: Date | null = null;
@@ -81,8 +209,14 @@ export function PlaceTrackEmailsPanel({
   onCategorize,
   onSetCategory,
   onSubmit,
+  noiseCount = null,
+  noiseLoading = false,
+  noiseDeleting = false,
+  noiseError = null,
+  onDeleteNoise,
 }: PlaceTrackEmailsPanelProps) {
   const { toast } = useToast();
+  const [noiseConfirmOpen, setNoiseConfirmOpen] = useState(false);
 
   if (!active) return null;
 
@@ -96,6 +230,7 @@ export function PlaceTrackEmailsPanel({
       row.category === "finTax",
   ).length;
   const classifiedCount = rows.filter((row) => row.classifyStatus === "done").length;
+  const noiseTotal = noiseCount?.total ?? 0;
 
   const handleSubmit = async () => {
     const result = await onSubmit();
@@ -118,13 +253,25 @@ export function PlaceTrackEmailsPanel({
     });
   };
 
+  const handleDeleteNoise = async () => {
+    if (!onDeleteNoise) return;
+    const result = await onDeleteNoise();
+    setNoiseConfirmOpen(false);
+    if (!result) return;
+    toast({
+      title: result.deleted > 0 ? "Noise mail deleted" : "Nothing to delete",
+      description: `Permanently removed ${result.deleted.toLocaleString()} from Promotions / Social / Updates`,
+      variant: result.errors.length ? "destructive" : "default",
+    });
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1100px] px-3 py-4 sm:px-6 sm:py-6">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display text-lg font-semibold tracking-tight sm:text-xl">Emails</h2>
-          <p className="text-sm text-muted-foreground">
-            Categorize → edit → Submit moves labeled mail out of Primary; none stays
+          <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">Emails</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Clean Primary with labels · wipe Promotions, Social & Updates
             {gmailStatus?.email ? ` · ${gmailStatus.email}` : ""}
           </p>
         </div>
@@ -139,9 +286,13 @@ export function PlaceTrackEmailsPanel({
             variant="outline"
             className="gap-2"
             onClick={onRefresh}
-            disabled={isLoading || isCategorizing || isSubmitting}
+            disabled={isLoading || isCategorizing || isSubmitting || noiseDeleting}
           >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            {isLoading || noiseLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             Refresh
           </Button>
           <Button
@@ -154,7 +305,7 @@ export function PlaceTrackEmailsPanel({
             {isCategorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isCategorizing && categorizeProgress
               ? `Categorizing ${categorizeProgress.done}/${categorizeProgress.total}`
-              : "Categorize (max 8)"}
+              : "Categorize"}
           </Button>
           <Button
             size="sm"
@@ -165,18 +316,60 @@ export function PlaceTrackEmailsPanel({
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             Submit ({labeledCount})
           </Button>
+          {onDeleteNoise ? (
+            <Button
+              size="sm"
+              variant="destructive"
+              className="gap-2"
+              onClick={() => setNoiseConfirmOpen(true)}
+              disabled={
+                !gmailStatus?.connected ||
+                noiseLoading ||
+                noiseDeleting ||
+                isCategorizing ||
+                isSubmitting ||
+                noiseTotal === 0
+              }
+            >
+              {noiseDeleting || noiseLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+              Delete noise ({noiseTotal.toLocaleString()})
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {gmailStatus?.connected && noiseCount ? (
+        <div className="mb-4 rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground/85">Promotions / Social / Updates: </span>
+          {noiseCount.categories.promotions.toLocaleString()} promotions ·{" "}
+          {noiseCount.categories.social.toLocaleString()} social ·{" "}
+          {noiseCount.categories.updates.toLocaleString()} updates ·{" "}
+          <span className="tabular-nums text-foreground/90">{noiseTotal.toLocaleString()} total</span>
+          {noiseError ? <span className="ml-2 text-destructive">{noiseError}</span> : null}
+        </div>
+      ) : null}
 
       {gmailStatus?.connected && gmailStatus.canModify === false ? (
         <div className="glass-card mb-4 rounded-xl border border-amber-500/30 p-4 text-center">
           <p className="mb-2 text-sm text-amber-200">
-            Gmail is connected for reading, but needs reconnect for label moves (gmail.modify).
+            Gmail is connected for reading, but needs reconnect for label moves and deletes (gmail.modify).
           </p>
-          <Button size="sm" onClick={() => startGmailAuth(PLACETRACK_EMAILS_PATH)}>
+          <Button size="sm" onClick={() => startGmailAuth(EMAILS_PATH)}>
             Reconnect Gmail
           </Button>
         </div>
+      ) : null}
+
+      {gmailStatus?.connected && rows.length > 0 ? (
+        <CategoryBreakdownBar
+          rows={rows}
+          isCategorizing={isCategorizing}
+          categorizeProgress={categorizeProgress}
+        />
       ) : null}
 
       {gmailStatus?.connected && rows.length > 0 ? (
@@ -204,7 +397,7 @@ export function PlaceTrackEmailsPanel({
           <p className="mb-4 text-sm text-muted-foreground">
             Connect Gmail (with modify access) to load unread mail and apply labels.
           </p>
-          <Button size="sm" onClick={() => startGmailAuth(PLACETRACK_EMAILS_PATH)}>
+          <Button size="sm" onClick={() => startGmailAuth(EMAILS_PATH)}>
             Connect Gmail
           </Button>
         </div>
@@ -218,7 +411,7 @@ export function PlaceTrackEmailsPanel({
               <p className="text-xs text-muted-foreground">
                 Your Gmail token was connected before label access was added. Reconnect Gmail, then Submit again.
               </p>
-              <Button size="sm" onClick={() => startGmailAuth(PLACETRACK_EMAILS_PATH)}>
+              <Button size="sm" onClick={() => startGmailAuth(EMAILS_PATH)}>
                 Reconnect Gmail
               </Button>
             </div>
@@ -320,6 +513,39 @@ export function PlaceTrackEmailsPanel({
           ))}
         </ul>
       ) : null}
+
+      <AlertDialog open={noiseConfirmOpen} onOpenChange={setNoiseConfirmOpen}>
+        <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-lg">Delete noise mail?</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              Permanently delete{" "}
+              <span className="font-medium text-foreground">{noiseTotal.toLocaleString()}</span> messages from
+              Promotions, Social, and Updates — read or unread. This cannot be undone.
+              {noiseCount ? (
+                <span className="mt-2 block tabular-nums">
+                  {noiseCount.categories.promotions.toLocaleString()} promotions ·{" "}
+                  {noiseCount.categories.social.toLocaleString()} social ·{" "}
+                  {noiseCount.categories.updates.toLocaleString()} updates
+                </span>
+              ) : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={noiseDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={noiseDeleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteNoise();
+              }}
+            >
+              {noiseDeleting ? "Deleting…" : "Delete forever"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

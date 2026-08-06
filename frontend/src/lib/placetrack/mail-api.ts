@@ -376,6 +376,62 @@ export async function fetchUnreadPrimaryEmails(options?: {
   return normalizeUnreadInbox((await response.json()) as Record<string, unknown>);
 }
 
+export type NoiseCategoryCounts = {
+  fetchedAt?: string;
+  total: number;
+  categories: {
+    promotions: number;
+    social: number;
+    updates: number;
+  };
+};
+
+export type NoiseDeleteResult = {
+  fetchedAt?: string;
+  permanent: boolean;
+  requested: number;
+  deleted: number;
+  categories: Record<string, unknown>;
+  errors: string[];
+};
+
+export async function fetchNoiseCategoryCount(): Promise<NoiseCategoryCounts> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/noise-count"));
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const cats = (raw.categories ?? {}) as Record<string, Record<string, unknown>>;
+  return {
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    total: Number(raw.total ?? 0),
+    categories: {
+      promotions: Number(cats.promotions?.count ?? 0),
+      social: Number(cats.social?.count ?? 0),
+      updates: Number(cats.updates?.count ?? 0),
+    },
+  };
+}
+
+export async function deleteNoiseCategoryMail(permanent = true): Promise<NoiseDeleteResult> {
+  const params = new URLSearchParams({ permanent: permanent ? "true" : "false" });
+  const response = await fetch(apiUrl(`/api/gmail/inbox/noise-delete?${params}`), {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return {
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    permanent: Boolean(raw.permanent),
+    requested: Number(raw.requested ?? 0),
+    deleted: Number(raw.deleted ?? 0),
+    categories: (raw.categories as Record<string, unknown>) ?? {},
+    errors: Array.isArray(raw.errors) ? (raw.errors as string[]) : [],
+  };
+}
+
 export async function fetchGmailLabels(): Promise<GmailLabelsResult> {
   const response = await fetch(apiUrl("/api/gmail/labels"));
   if (!response.ok) {

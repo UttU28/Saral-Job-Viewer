@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Briefcase, Flame, Home, LogOut, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound, Workflow } from "lucide-react";
+import { Briefcase, Flame, Home, LogOut, Mail, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound, Workflow } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -200,6 +200,9 @@ export function AppNav() {
               <NavLink href="/placetrack" icon={Workflow} matchPrefix>
                 PlaceTrack
               </NavLink>
+              <NavLink href="/emails" icon={Mail} matchPrefix>
+                Emails
+              </NavLink>
               {user?.isAdmin ? (
                 <NavLink href="/admin" icon={Shield}>
                   Admin
@@ -267,6 +270,7 @@ export function AppNav() {
                     onNavigate={closeMobile}
                   />
                   <MobileNavRow href="/placetrack" icon={Workflow} label="PlaceTrack" onNavigate={closeMobile} />
+                  <MobileNavRow href="/emails" icon={Mail} label="Emails" onNavigate={closeMobile} />
                   {user?.isAdmin ? (
                     <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
                   ) : null}

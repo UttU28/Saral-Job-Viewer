@@ -27,6 +27,7 @@ from utils.gmailConfig import (
     gmailOAuthReturnPath,
 )
 from utils.gmailInbox import fetchUnreadPrimaryEmails
+from utils.gmailCategoryTrash import countNoiseCategoryMail, trashNoiseCategoryMail
 from utils.gmailInboxClean import (
     applyEmailLabelActions,
     classifyManyUnreadEmails,
@@ -259,6 +260,30 @@ def getGmailUnreadPrimary(maxResults: int = 1000) -> dict:
 
     try:
         return fetchUnreadPrimaryEmails(maxResults=maxResults)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.get("/api/gmail/inbox/noise-count")
+def getGmailNoiseCategoryCount() -> dict:
+    """Count messages in Promotions + Social + Updates (read or unread)."""
+    _requireConnectedStatus()
+    try:
+        return countNoiseCategoryMail()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/noise-delete")
+def postGmailNoiseCategoryDelete(permanent: bool = True) -> dict:
+    """Permanently delete all Promotions, Social, and Updates mail (no mercy)."""
+    _requireConnectedStatus(needModify=True)
+    try:
+        return trashNoiseCategoryMail(permanent=permanent)
     except HTTPException:
         raise
     except Exception as exc:
