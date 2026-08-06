@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
+import os
+
+# Allow Google to return expanded scopes (e.g. adding gmail.modify on reconnect).
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
@@ -10,6 +13,10 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from utils.gmailConfig import (
+    GMAIL_SCOPE_COMPOSE,
+    GMAIL_SCOPE_MODIFY,
+    GMAIL_SCOPE_READONLY,
+    GMAIL_SCOPE_SEND,
     GMAIL_SCOPES,
     gmailCredentialsPath,
 )
@@ -27,19 +34,47 @@ def credentialsConfigured() -> bool:
     return gmailCredentialsPath().is_file()
 
 
-def _hasRequiredScopes(creds: Credentials) -> bool:
-    granted = set(creds.scopes or [])
-    return set(GMAIL_SCOPES).issubset(granted)
+def _grantedScopesFromToken(data: dict) -> list[str]:
+    raw = data.get("scopes")
+    if isinstance(raw, str) and raw.strip():
+        return [part.strip() for part in raw.split() if part.strip()]
+    if isinstance(raw, list):
+        return [str(part).strip() for part in raw if str(part).strip()]
+    return []
 
 
-def _readStoredCredentials() -> Credentials | None:
+def _canReadMail(granted: set[str]) -> bool:
+    hasTransport = GMAIL_SCOPE_COMPOSE in granted and GMAIL_SCOPE_SEND in granted
+    hasRead = GMAIL_SCOPE_READONLY in granted or GMAIL_SCOPE_MODIFY in granted
+    # Older tokens may only list readonly; still allow if modify/readonly present alone for inbox read.
+    if GMAIL_SCOPE_READONLY in granted or GMAIL_SCOPE_MODIFY in granted:
+        return True
+    return hasTransport and hasRead
+
+
+def _canModifyMail(granted: set[str]) -> bool:
+    return GMAIL_SCOPE_MODIFY in granted
+
+
+def _missingForFullAccess(granted: set[str]) -> list[str]:
+    return sorted(set(GMAIL_SCOPES) - granted)
+
+
+def _readStoredCredentials() -> tuple[Credentials | None, list[str]]:
+    """
+    Load token from store using scopes recorded IN the token.
+    Do not pass GMAIL_SCOPES into from_authorized_user_info — that overwrites
+    granted scopes and falsely reports gmail.modify as present.
+    """
     data = loadGmailTokenDict()
     if not data:
-        return None
+        return None, []
     try:
-        return Credentials.from_authorized_user_info(data, GMAIL_SCOPES)
+        granted = _grantedScopesFromToken(data)
+        creds = Credentials.from_authorized_user_info(data, scopes=granted or None)
+        return creds, granted
     except (ValueError, TypeError, json.JSONDecodeError):
-        return None
+        return None, []
 
 
 def saveCredentials(creds: Credentials) -> None:
@@ -67,16 +102,18 @@ def inspectGmailStatus() -> dict:
         return {
             "configured": False,
             "connected": False,
+            "canModify": False,
             "needsReauth": False,
             "email": None,
             "reason": "missingClientSecret",
         }
 
-    creds = _readStoredCredentials()
+    creds, grantedScopes = _readStoredCredentials()
     if creds is None:
         return {
             "configured": True,
             "connected": False,
+            "canModify": False,
             "needsReauth": True,
             "email": None,
             "reason": "noToken",
@@ -87,16 +124,22 @@ def inspectGmailStatus() -> dict:
         return {
             "configured": True,
             "connected": False,
+            "canModify": False,
             "needsReauth": True,
             "email": None,
             "reason": "refreshFailed",
         }
 
-    missingScopes = sorted(set(GMAIL_SCOPES) - set(creds.scopes or []))
-    if missingScopes:
+    granted = set(grantedScopes or creds.scopes or [])
+    canRead = _canReadMail(granted)
+    canModify = _canModifyMail(granted)
+    missingScopes = _missingForFullAccess(granted)
+
+    if not canRead:
         return {
             "configured": True,
             "connected": False,
+            "canModify": False,
             "needsReauth": True,
             "email": None,
             "reason": "missingScopes",
@@ -112,6 +155,7 @@ def inspectGmailStatus() -> dict:
         return {
             "configured": True,
             "connected": False,
+            "canModify": False,
             "needsReauth": True,
             "email": None,
             "reason": "apiUnreachable",
@@ -120,19 +164,28 @@ def inspectGmailStatus() -> dict:
     return {
         "configured": True,
         "connected": True,
-        "needsReauth": False,
+        "canModify": canModify,
+        "needsReauth": not canModify,
         "email": email,
-        "reason": None,
+        "reason": None if canModify else "missingScopes",
+        "missingScopes": [] if canModify else missingScopes,
+        "scopes": sorted(granted),
     }
 
 
-def loadCredentials() -> Credentials | None:
-    creds = _readStoredCredentials()
+def loadCredentials(*, needModify: bool = False) -> Credentials | None:
+    creds, grantedScopes = _readStoredCredentials()
     if creds is None:
         return None
 
     creds = _refreshCredentials(creds)
-    if creds is None or not creds.valid or not _hasRequiredScopes(creds):
+    if creds is None or not creds.valid:
+        return None
+
+    granted = set(grantedScopes or creds.scopes or [])
+    if needModify and not _canModifyMail(granted):
+        return None
+    if not _canReadMail(granted):
         return None
 
     return creds
@@ -158,8 +211,12 @@ def clearOAuthSession() -> None:
     clearOAuthSessionInStore()
 
 
-def getGmailService():
-    creds = loadCredentials()
+def getGmailService(*, needModify: bool = False):
+    creds = loadCredentials(needModify=needModify)
     if not creds:
+        if needModify:
+            raise RuntimeError(
+                "Gmail needs re-authorization for label changes (gmail.modify). Reconnect Gmail."
+            )
         raise RuntimeError("Gmail not connected. Complete OAuth first.")
     return build("gmail", "v1", credentials=creds, cache_discovery=False)

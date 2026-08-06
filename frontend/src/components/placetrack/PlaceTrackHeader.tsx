@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { MailBuilderToolbar } from "@/lib/placetrack/mail-builder-toolbar";
 import type { PipelineFilters } from "@/lib/placetrack/pipeline-filters";
-import { isPlaceTrackMailLocation } from "@/lib/placetrack/routing";
+import { getPlaceTrackTab, type PlaceTrackTab } from "@/lib/placetrack/routing";
 
 type PipelineActions = {
   isLoading: boolean;
@@ -27,9 +27,17 @@ type PlaceTrackHeaderProps = {
   mailBuilder?: MailBuilderToolbar;
 };
 
-function SubNavLink({ href, children, mailTab }: { href: string; children: React.ReactNode; mailTab: boolean }) {
+function SubNavLink({
+  href,
+  children,
+  tab,
+}: {
+  href: string;
+  children: React.ReactNode;
+  tab: PlaceTrackTab;
+}) {
   const [location] = useLocation();
-  const active = mailTab ? isPlaceTrackMailLocation(location) : !isPlaceTrackMailLocation(location);
+  const active = getPlaceTrackTab(location) === tab;
   return (
     <Link
       href={href}
@@ -45,16 +53,18 @@ function SubNavLink({ href, children, mailTab }: { href: string; children: React
 
 export function PlaceTrackHeader({ pipeline, filterBar, mailBuilder }: PlaceTrackHeaderProps) {
   const [location] = useLocation();
-  const onPipelinePage = !isPlaceTrackMailLocation(location);
+  const tab = getPlaceTrackTab(location);
+  const onPipelinePage = tab === "pipeline";
+  const onMailPage = tab === "mail";
 
   return (
     <div className="shrink-0 border-b border-border/80 bg-gradient-to-b from-card/80 to-background/60 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
         <nav className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-1">
-          <SubNavLink href="/" mailTab={false}>
+          <SubNavLink href="/placetrack" tab="pipeline">
             Pipeline
           </SubNavLink>
-          <SubNavLink href="/mail" mailTab={true}>
+          <SubNavLink href="/placetrack/mail" tab="mail">
             Mail Builder
           </SubNavLink>
         </nav>
@@ -69,7 +79,7 @@ export function PlaceTrackHeader({ pipeline, filterBar, mailBuilder }: PlaceTrac
           <PipelineFiltersBar {...filterBar} embedded />
         ) : null}
 
-        {!onPipelinePage ? (
+        {onMailPage ? (
           <div className="min-w-0 flex-1 basis-full sm:basis-auto">
             <h2 className="font-display text-sm font-semibold tracking-tight sm:text-base">Mail Builder</h2>
             <p className="truncate text-xs text-muted-foreground">
@@ -79,7 +89,7 @@ export function PlaceTrackHeader({ pipeline, filterBar, mailBuilder }: PlaceTrac
         ) : null}
 
         <div className="ml-auto flex shrink-0 flex-wrap items-center gap-1 sm:gap-2">
-          {!onPipelinePage ? (
+          {onMailPage ? (
             <>
               <Button
                 size="sm"

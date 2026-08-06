@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from utils.gmailAuth import (
     clearCredentials,
@@ -24,11 +26,51 @@ from utils.gmailConfig import (
     gmailOAuthRedirectUri,
     gmailOAuthReturnPath,
 )
+from utils.gmailInbox import fetchUnreadPrimaryEmails
+from utils.gmailCategoryTrash import countNoiseCategoryMail, trashNoiseCategoryMail
+from utils.gmailInboxClean import (
+    applyEmailLabelActions,
+    classifyManyUnreadEmails,
+    classifyOneUnreadEmail,
+    cleanUnreadPrimaryInbox,
+)
+from utils.gmailLabels import listGmailLabels
 from utils.gmailResumeStore import deleteResume, getResumeInfo, loadResumeAttachment, loadResumeDownload, saveResume
 from utils.gmailSentRecipients import fetchSentRecipientEmails
 from utils.gmailService import AttachmentInput, MailPayload, createDraft, sendMessage
 
 gmailRouter = APIRouter(tags=["gmail"])
+
+
+# Request bodies for inbox classify / apply (camelCase JSON)
+class ClassifyOneBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    messageId: str = Field(min_length=1)
+    useLlm: bool = True
+
+
+class ClassifyBatchBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    messageIds: list[str] = Field(min_length=1)
+    useLlm: bool = True
+
+
+class ApplyLabelItem(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    messageId: str = Field(min_length=1)
+    category: str | None = None
+
+
+class ApplyLabelsBody(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    items: list[ApplyLabelItem]
+    archive: bool = True
+    markRead: bool = True
+
 
 
 def _parseMailPayload(payloadJson: str) -> MailPayload:
@@ -69,14 +111,16 @@ async def _collectAttachments(
     return attachments
 
 
-def _requireConnectedStatus() -> dict:
+def _requireConnectedStatus(*, needModify: bool = False) -> dict:
     status = inspectGmailStatus()
-    if status.get("connected"):
+    if status.get("connected") and (not needModify or status.get("canModify")):
         return status
 
     detail = "Gmail not connected."
     reason = status.get("reason")
-    if reason == "missingScopes":
+    if needModify and status.get("connected") and not status.get("canModify"):
+        detail = "Gmail needs re-authorization for label changes (gmail.modify). Reconnect Gmail."
+    elif reason == "missingScopes":
         detail = "Gmail needs re-authorization for sent-mail access. Connect again."
     elif reason:
         detail = f"Gmail not connected ({reason})."
@@ -125,6 +169,8 @@ def gmailAuthCallback(code: str, state: str):
         flow.code_verifier = codeVerifier
 
     try:
+        # Reconnect may add gmail.modify on top of older readonly scopes.
+        os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
         flow.fetch_token(code=code)
     except Exception as exc:
         clearOAuthSession()
@@ -199,6 +245,145 @@ def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = Fals
 
     try:
         return fetchSentRecipientEmails(since=since, refresh=refresh)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.get("/api/gmail/inbox/unread")
+def getGmailUnreadPrimary(maxResults: int = 1000) -> dict:
+    _requireConnectedStatus()
+
+    if maxResults < 1 or maxResults > 1000:
+        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 1000")
+
+    try:
+        return fetchUnreadPrimaryEmails(maxResults=maxResults)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.get("/api/gmail/inbox/noise-count")
+def getGmailNoiseCategoryCount() -> dict:
+    """Count messages in Promotions + Social (read or unread)."""
+    _requireConnectedStatus()
+    try:
+        return countNoiseCategoryMail()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/noise-delete")
+def postGmailNoiseCategoryDelete(permanent: bool = False) -> dict:
+    """Move all Promotions and Social mail to Trash (gmail.modify)."""
+    _requireConnectedStatus(needModify=True)
+    try:
+        return trashNoiseCategoryMail(permanent=permanent)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.get("/api/gmail/labels")
+def getGmailLabels() -> dict:
+    _requireConnectedStatus()
+    try:
+        return listGmailLabels()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/clean")
+def postGmailInboxClean(
+    maxResults: int = 100,
+    dryRun: bool = False,
+    archive: bool = True,
+    markRead: bool = True,
+    useLlm: bool = True,
+) -> dict:
+    """
+    Categorize unread Primary job-application mail via local LLM (+ regex fallback):
+    - application received / thanks for applying → oneSided
+    - rejection / regret to inform → BaharMil
+    - job ads / alerts / LinkedIn digests / recruiter blasts → jobAds
+    - sign-in / verify / OTP / incomplete profile / action needed → pendingJobs
+    - retail orders / shipping / receipts / bookings → shopping
+    - banking / credit cards / tax / KYC / payments → finTax
+    Then optionally archive + mark read to clean the inbox.
+    """
+    _requireConnectedStatus()
+
+    if maxResults < 1 or maxResults > 1000:
+        raise HTTPException(status_code=422, detail="maxResults must be between 1 and 1000")
+
+    try:
+        return cleanUnreadPrimaryInbox(
+            maxResults=maxResults,
+            dryRun=dryRun,
+            archive=archive,
+            markRead=markRead,
+            useLlm=useLlm,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/classify-one")
+def postGmailClassifyOne(body: ClassifyOneBody) -> dict:
+    """Classify a single unread email (LLM when enabled). Does not change Gmail labels."""
+    _requireConnectedStatus()
+    try:
+        return classifyOneUnreadEmail(body.messageId, useLlm=body.useLlm)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/classify-batch")
+def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
+    """Classify up to 3 emails in one LLM call. Does not change Gmail labels."""
+    _requireConnectedStatus()
+    messageIds = [mid.strip() for mid in body.messageIds if isinstance(mid, str) and mid.strip()]
+    if not messageIds:
+        raise HTTPException(status_code=422, detail="messageIds required")
+    if len(messageIds) > 3:
+        raise HTTPException(status_code=422, detail="at most 3 messageIds per batch")
+
+    try:
+        results = classifyManyUnreadEmails(messageIds, useLlm=body.useLlm)
+        return {"count": len(results), "results": results}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/apply-labels")
+def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
+    """Apply confirmed BaharMil / oneSided / jobAds / pendingJobs / shopping / finTax labels after UI review."""
+    _requireConnectedStatus(needModify=True)
+    if not body.items:
+        raise HTTPException(status_code=422, detail="items required")
+    if len(body.items) > 200:
+        raise HTTPException(status_code=422, detail="at most 200 items")
+
+    try:
+        return applyEmailLabelActions(
+            [item.model_dump() for item in body.items],
+            archive=body.archive,
+            markRead=body.markRead,
+        )
     except HTTPException:
         raise
     except Exception as exc:

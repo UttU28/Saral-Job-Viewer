@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
+import { useAuth } from "@/auth/AuthProvider";
 import { PlaceTrackHeader } from "@/components/placetrack/PlaceTrackHeader";
 import { PlaceTrackMailPanel } from "@/components/placetrack/PlaceTrackMailPanel";
 import { JwtAuthForm } from "@/components/placetrack/JwtAuthForm";
 import { PipelineView } from "@/components/placetrack/PipelineView";
 import { GmailConnectCard } from "@/components/placetrack/GmailConnectCard";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Footer } from "@/components/Footer";
@@ -23,17 +25,46 @@ import {
   type PipelineFilters,
 } from "@/lib/placetrack/pipeline-filters";
 import { normalizePipelineData } from "@/lib/placetrack/pipeline-types";
-import { isPlaceTrackMailLocation } from "@/lib/placetrack/routing";
+import { EMAILS_PATH, getPlaceTrackTab } from "@/lib/placetrack/routing";
 import { cn } from "@/lib/utils";
 
 function PipelineSkeleton() {
   return <Skeleton className="h-[min(520px,60vh)] w-full rounded-xl bg-muted/40" />;
 }
 
-export default function PlaceTrackShell() {
-  const [location] = useLocation();
-  const isMailTab = isPlaceTrackMailLocation(location);
+function PlaceTrackAdminDenied() {
+  return (
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
+        <div className="flex flex-col">
+          <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 min-w-0">
+            <Alert variant="destructive" className="rounded-2xl">
+              <AlertTitle>Admin access required</AlertTitle>
+              <AlertDescription>
+                PlaceTrack is only visible to users with admin access.
+              </AlertDescription>
+            </Alert>
+          </div>
+          <Footer />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlaceTrackShellContent() {
+  const [location, setLocation] = useLocation();
+  const tab = getPlaceTrackTab(location);
+  const isMailTab = tab === "mail";
+  const isPipelineTab = tab === "pipeline";
   useMailTemplates();
+
+  // Old nested /placetrack/emails (wouter nest strips prefix → "/emails") → top-level Emails
+  useEffect(() => {
+    if (location === "/emails" || location.startsWith("/emails?")) {
+      setLocation(EMAILS_PATH);
+    }
+  }, [location, setLocation]);
 
   const {
     data,
@@ -58,7 +89,7 @@ export default function PlaceTrackShell() {
     needsConnect: needsGmailConnect,
     check: checkGmail,
     connect: connectGmail,
-  } = usePlaceTrackGmailAuth(pipelineLoaded && !isMailTab, true, "/placetrack");
+  } = usePlaceTrackGmailAuth(pipelineLoaded && isPipelineTab, true, "/placetrack");
   const { sentRecipients, refresh: refreshSentRecipients } = usePlaceTrackSentRecipients(
     pipelineLoaded && !needsGmailConnect,
   );
@@ -98,7 +129,7 @@ export default function PlaceTrackShell() {
             : undefined
         }
         filterBar={
-          !isMailTab && data && !needsAuth
+          isPipelineTab && data && !needsAuth
             ? {
                 filters,
                 onChange: setFilters,
@@ -111,7 +142,7 @@ export default function PlaceTrackShell() {
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
-        <div className={cn(!isMailTab ? "block" : "hidden")}>
+        <div className={cn(isPipelineTab ? "block" : "hidden")}>
           <div className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-6 sm:py-4">
             {isLoading && !data ? (
               <PipelineSkeleton />
@@ -149,7 +180,7 @@ export default function PlaceTrackShell() {
         <Footer />
       </div>
 
-      {!isMailTab && needsGmailConnect ? (
+      {isPipelineTab && needsGmailConnect ? (
         <div className="fixed inset-0 z-30 flex items-start justify-center overflow-y-auto bg-black/45 p-4 pt-[max(1rem,10vh)] backdrop-blur-sm sm:items-center sm:pt-4">
           <motion.div
             initial={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -179,4 +210,12 @@ export default function PlaceTrackShell() {
       ) : null}
     </div>
   );
+}
+
+export default function PlaceTrackShell() {
+  const { user } = useAuth();
+  if (!user?.isAdmin) {
+    return <PlaceTrackAdminDenied />;
+  }
+  return <PlaceTrackShellContent />;
 }

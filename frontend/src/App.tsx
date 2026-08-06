@@ -11,6 +11,7 @@ import Admin from "@/pages/Admin";
 import Interview from "@/pages/Interview";
 import Profile from "@/pages/Profile";
 import PlaceTrackShell from "@/pages/PlaceTrack";
+import EmailsPage from "@/pages/Emails";
 
 function Router() {
   const { isAuthenticated } = useAuth();
@@ -31,6 +32,7 @@ function Router() {
       <Route path="/profile" component={Profile} />
       <Route path="/admin" component={Admin} />
       <Route path="/interview" component={Interview} />
+      <Route path="/emails" component={EmailsPage} />
       <Route path="/placetrack" nest>
         <PlaceTrackShell />
       </Route>
