@@ -72,12 +72,20 @@ jobs:
     if: github.event_name != 'pull_request'
 
     steps:
+      - name: validateGitOpsToken
+        env:
+          GIT_TOKEN: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+        run: |
+          if [ -z "$GIT_TOKEN" ]; then
+            echo "::error::Missing HOMELABOPS_GIT_TOKEN — add it under Saral-Job-Viewer → Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
       - name: checkoutHomeLabOps
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.HOMELABOPS_REPO }}
-          token: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
-          path: homeLabOps
+        env:
+          GIT_TOKEN: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GIT_TOKEN}@github.com/${{ env.HOMELABOPS_REPO }}.git" homeLabOps
 
       - name: updateImageTags
         working-directory: homeLabOps
@@ -102,13 +110,16 @@ jobs:
 
       - name: commitAndPush
         working-directory: homeLabOps
+        env:
+          GIT_TOKEN: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GIT_TOKEN}@github.com/${{ env.HOMELABOPS_REPO }}.git"
           git add apps/saralJobViewer/kustomization.yaml
           if git diff --staged --quiet; then
             echo "No tag changes to commit."
             exit 0
           fi
           git commit -m "chore(saral): bump images to ${GITHUB_SHA::7}"
-          git push
+          git push origin HEAD
