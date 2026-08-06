@@ -47,28 +47,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: setImageOwner
-        id: owner
-        run: echo "lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
-
-      - name: dockerMeta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/${{ matrix.image }}
-          tags: |
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
-
       - name: buildAndPush
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: ${{ matrix.useBuildArgs && format('VITE_API_URL={0}', env.VITE_API_URL) || '' }}
+        run: |
+          ownerLower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          shortSha="${GITHUB_SHA::7}"
+          image="${{ env.REGISTRY }}/${ownerLower}/${{ matrix.image }}"
+          buildArgs=()
+
+          if [ "${{ matrix.useBuildArgs }}" = "true" ]; then
+            buildArgs+=(--build-arg "VITE_API_URL=${{ env.VITE_API_URL }}")
+          fi
+
+          docker build -f "${{ matrix.dockerfile }}" "${buildArgs[@]}" \
+            -t "${image}:${shortSha}" \
+            -t "${image}:latest" \
+            .
+
+          docker push "${image}:${shortSha}"
+          docker push "${image}:latest"
 
   bumpGitOps:
     needs: buildAndPush
