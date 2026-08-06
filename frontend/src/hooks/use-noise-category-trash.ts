@@ -31,7 +31,7 @@ export function useNoiseCategoryTrash(enabled: boolean): NoiseTrashState {
     try {
       setCounts(await fetchNoiseCategoryCount());
     } catch (err) {
-      setError(err instanceof MailApiError ? err.message : "Could not load Promotions/Social/Updates count.");
+      setError(err instanceof MailApiError ? err.message : "Could not load Promotions/Social count.");
     } finally {
       setIsLoading(false);
     }
@@ -41,12 +41,13 @@ export function useNoiseCategoryTrash(enabled: boolean): NoiseTrashState {
     setIsDeleting(true);
     setError(null);
     try {
-      const result = await deleteNoiseCategoryMail(true);
+      // Trash via gmail.modify — batchDelete needs full mail.google.com scope and fails with 403.
+      const result = await deleteNoiseCategoryMail(false);
       setLastDelete(result);
       setCounts({
         fetchedAt: result.fetchedAt,
         total: 0,
-        categories: { promotions: 0, social: 0, updates: 0 },
+        categories: { promotions: 0, social: 0 },
       });
       // Re-count after delete in case anything remains
       try {

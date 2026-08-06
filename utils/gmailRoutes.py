@@ -268,7 +268,7 @@ def getGmailUnreadPrimary(maxResults: int = 1000) -> dict:
 
 @gmailRouter.get("/api/gmail/inbox/noise-count")
 def getGmailNoiseCategoryCount() -> dict:
-    """Count messages in Promotions + Social + Updates (read or unread)."""
+    """Count messages in Promotions + Social (read or unread)."""
     _requireConnectedStatus()
     try:
         return countNoiseCategoryMail()
@@ -279,8 +279,8 @@ def getGmailNoiseCategoryCount() -> dict:
 
 
 @gmailRouter.post("/api/gmail/inbox/noise-delete")
-def postGmailNoiseCategoryDelete(permanent: bool = True) -> dict:
-    """Permanently delete all Promotions, Social, and Updates mail (no mercy)."""
+def postGmailNoiseCategoryDelete(permanent: bool = False) -> dict:
+    """Move all Promotions and Social mail to Trash (gmail.modify)."""
     _requireConnectedStatus(needModify=True)
     try:
         return trashNoiseCategoryMail(permanent=permanent)

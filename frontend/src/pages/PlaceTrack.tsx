@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
+import { useAuth } from "@/auth/AuthProvider";
 import { PlaceTrackHeader } from "@/components/placetrack/PlaceTrackHeader";
 import { PlaceTrackMailPanel } from "@/components/placetrack/PlaceTrackMailPanel";
 import { JwtAuthForm } from "@/components/placetrack/JwtAuthForm";
 import { PipelineView } from "@/components/placetrack/PipelineView";
 import { GmailConnectCard } from "@/components/placetrack/GmailConnectCard";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Footer } from "@/components/Footer";
@@ -30,7 +32,27 @@ function PipelineSkeleton() {
   return <Skeleton className="h-[min(520px,60vh)] w-full rounded-xl bg-muted/40" />;
 }
 
-export default function PlaceTrackShell() {
+function PlaceTrackAdminDenied() {
+  return (
+    <div className="flex min-h-0 w-full flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden scrollbar-themed">
+        <div className="flex flex-col">
+          <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-5 min-w-0">
+            <Alert variant="destructive" className="rounded-2xl">
+              <AlertTitle>Admin access required</AlertTitle>
+              <AlertDescription>
+                PlaceTrack is only visible to users with admin access.
+              </AlertDescription>
+            </Alert>
+          </div>
+          <Footer />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlaceTrackShellContent() {
   const [location, setLocation] = useLocation();
   const tab = getPlaceTrackTab(location);
   const isMailTab = tab === "mail";
@@ -188,4 +210,12 @@ export default function PlaceTrackShell() {
       ) : null}
     </div>
   );
+}
+
+export default function PlaceTrackShell() {
+  const { user } = useAuth();
+  if (!user?.isAdmin) {
+    return <PlaceTrackAdminDenied />;
+  }
+  return <PlaceTrackShellContent />;
 }

@@ -197,16 +197,18 @@ export function AppNav() {
               <NavLink href="/interview" icon={MessageCircleQuestion}>
                 Interview
               </NavLink>
-              <NavLink href="/placetrack" icon={Workflow} matchPrefix>
-                PlaceTrack
-              </NavLink>
-              <NavLink href="/emails" icon={Mail} matchPrefix>
-                Emails
-              </NavLink>
               {user?.isAdmin ? (
-                <NavLink href="/admin" icon={Shield}>
-                  Admin
-                </NavLink>
+                <>
+                  <NavLink href="/placetrack" icon={Workflow} matchPrefix>
+                    PlaceTrack
+                  </NavLink>
+                  <NavLink href="/emails" icon={Mail} matchPrefix>
+                    Emails
+                  </NavLink>
+                  <NavLink href="/admin" icon={Shield}>
+                    Admin
+                  </NavLink>
+                </>
               ) : null}
               <Button
                 type="button"
@@ -269,10 +271,12 @@ export function AppNav() {
                     label="Interview prep"
                     onNavigate={closeMobile}
                   />
-                  <MobileNavRow href="/placetrack" icon={Workflow} label="PlaceTrack" onNavigate={closeMobile} />
-                  <MobileNavRow href="/emails" icon={Mail} label="Emails" onNavigate={closeMobile} />
                   {user?.isAdmin ? (
-                    <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
+                    <>
+                      <MobileNavRow href="/placetrack" icon={Workflow} label="PlaceTrack" onNavigate={closeMobile} />
+                      <MobileNavRow href="/emails" icon={Mail} label="Emails" onNavigate={closeMobile} />
+                      <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
+                    </>
                   ) : null}
                 </div>
                 <div className="px-4 pb-4 pt-2 border-t border-border/80 space-y-2 mt-auto">

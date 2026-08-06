@@ -259,9 +259,11 @@ export function PlaceTrackEmailsPanel({
     setNoiseConfirmOpen(false);
     if (!result) return;
     toast({
-      title: result.deleted > 0 ? "Noise mail deleted" : "Nothing to delete",
-      description: `Permanently removed ${result.deleted.toLocaleString()} from Promotions / Social / Updates`,
-      variant: result.errors.length ? "destructive" : "default",
+      title: result.deleted > 0 ? "Noise mail moved to Trash" : "Nothing to delete",
+      description: result.errors.length
+        ? result.errors[0]
+        : `Moved ${result.deleted.toLocaleString()} from Promotions / Social to Trash`,
+      variant: result.errors.length && result.deleted === 0 ? "destructive" : "default",
     });
   };
 
@@ -271,7 +273,7 @@ export function PlaceTrackEmailsPanel({
         <div className="min-w-0">
           <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">Emails</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Clean Primary with labels · wipe Promotions, Social & Updates
+            Clean Primary with labels · wipe Promotions & Social
             {gmailStatus?.email ? ` · ${gmailStatus.email}` : ""}
           </p>
         </div>
@@ -344,10 +346,9 @@ export function PlaceTrackEmailsPanel({
 
       {gmailStatus?.connected && noiseCount ? (
         <div className="mb-4 rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/85">Promotions / Social / Updates: </span>
+          <span className="font-medium text-foreground/85">Promotions / Social: </span>
           {noiseCount.categories.promotions.toLocaleString()} promotions ·{" "}
           {noiseCount.categories.social.toLocaleString()} social ·{" "}
-          {noiseCount.categories.updates.toLocaleString()} updates ·{" "}
           <span className="tabular-nums text-foreground/90">{noiseTotal.toLocaleString()} total</span>
           {noiseError ? <span className="ml-2 text-destructive">{noiseError}</span> : null}
         </div>
@@ -517,16 +518,15 @@ export function PlaceTrackEmailsPanel({
       <AlertDialog open={noiseConfirmOpen} onOpenChange={setNoiseConfirmOpen}>
         <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="font-display text-lg">Delete noise mail?</AlertDialogTitle>
+            <AlertDialogTitle className="font-display text-lg">Trash noise mail?</AlertDialogTitle>
             <AlertDialogDescription className="text-sm text-muted-foreground">
-              Permanently delete{" "}
+              Move{" "}
               <span className="font-medium text-foreground">{noiseTotal.toLocaleString()}</span> messages from
-              Promotions, Social, and Updates — read or unread. This cannot be undone.
+              Promotions and Social to Trash — read or unread. You can empty Trash in Gmail later.
               {noiseCount ? (
                 <span className="mt-2 block tabular-nums">
                   {noiseCount.categories.promotions.toLocaleString()} promotions ·{" "}
-                  {noiseCount.categories.social.toLocaleString()} social ·{" "}
-                  {noiseCount.categories.updates.toLocaleString()} updates
+                  {noiseCount.categories.social.toLocaleString()} social
                 </span>
               ) : null}
             </AlertDialogDescription>
@@ -541,7 +541,7 @@ export function PlaceTrackEmailsPanel({
                 void handleDeleteNoise();
               }}
             >
-              {noiseDeleting ? "Deleting…" : "Delete forever"}
+              {noiseDeleting ? "Trashing…" : "Move to Trash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

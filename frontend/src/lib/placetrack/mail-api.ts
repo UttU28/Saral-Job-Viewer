@@ -382,7 +382,6 @@ export type NoiseCategoryCounts = {
   categories: {
     promotions: number;
     social: number;
-    updates: number;
   };
 };
 
@@ -408,12 +407,11 @@ export async function fetchNoiseCategoryCount(): Promise<NoiseCategoryCounts> {
     categories: {
       promotions: Number(cats.promotions?.count ?? 0),
       social: Number(cats.social?.count ?? 0),
-      updates: Number(cats.updates?.count ?? 0),
     },
   };
 }
 
-export async function deleteNoiseCategoryMail(permanent = true): Promise<NoiseDeleteResult> {
+export async function deleteNoiseCategoryMail(permanent = false): Promise<NoiseDeleteResult> {
   const params = new URLSearchParams({ permanent: permanent ? "true" : "false" });
   const response = await fetch(apiUrl(`/api/gmail/inbox/noise-delete?${params}`), {
     method: "POST",

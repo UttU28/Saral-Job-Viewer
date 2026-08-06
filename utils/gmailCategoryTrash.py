@@ -8,7 +8,6 @@ from utils.gmailAuth import getGmailService
 NOISE_CATEGORIES = (
     ("promotions", "category:promotions"),
     ("social", "category:social"),
-    ("updates", "category:updates"),
 )
 
 BATCH_DELETE_SIZE = 1000
@@ -73,7 +72,7 @@ def _estimateCount(gmail, *, query: str) -> int:
 
 
 def countNoiseCategoryMail() -> dict:
-    """Count mail in Promotions + Social + Updates (any read state)."""
+    """Count mail in Promotions + Social (any read state)."""
     gmail = getGmailService()
     categories: dict[str, dict] = {}
     total = 0
@@ -90,10 +89,13 @@ def countNoiseCategoryMail() -> dict:
     }
 
 
-def trashNoiseCategoryMail(*, permanent: bool = True) -> dict:
+def trashNoiseCategoryMail(*, permanent: bool = False) -> dict:
     """
-    Delete all Promotions, Social, and Updates mail (read or unread).
-    permanent=True uses batchDelete (bypasses Trash). permanent=False moves to Trash.
+    Move all Promotions and Social mail to Trash (read or unread).
+
+    Uses batchModify + TRASH, which works with gmail.modify.
+    permanent=True (batchDelete) needs https://mail.google.com/ and is not used by default —
+    with only gmail.modify, batchDelete returns 403 and deletes nothing.
     """
     gmail = getGmailService(needModify=True)
     categories: dict[str, dict] = {}
@@ -110,11 +112,13 @@ def trashNoiseCategoryMail(*, permanent: bool = True) -> dict:
 
     deleted = 0
     errors: list[str] = []
+    # Prefer Trash via modify scope. Only attempt batchDelete when explicitly requested.
+    usePermanent = permanent
 
     for start in range(0, len(allIds), BATCH_DELETE_SIZE):
         chunk = allIds[start : start + BATCH_DELETE_SIZE]
         try:
-            if permanent:
+            if usePermanent:
                 gmail.users().messages().batchDelete(userId="me", body={"ids": chunk}).execute()
             else:
                 gmail.users().messages().batchModify(
@@ -123,11 +127,26 @@ def trashNoiseCategoryMail(*, permanent: bool = True) -> dict:
                 ).execute()
             deleted += len(chunk)
         except Exception as exc:
-            errors.append(str(exc))
+            message = str(exc)
+            # Fall back when permanent delete is blocked by OAuth scope.
+            if usePermanent and ("insufficient" in message.lower() or "403" in message):
+                usePermanent = False
+                try:
+                    gmail.users().messages().batchModify(
+                        userId="me",
+                        body={"ids": chunk, "addLabelIds": ["TRASH"], "removeLabelIds": ["INBOX"]},
+                    ).execute()
+                    deleted += len(chunk)
+                    errors.append("batchDelete requires full mail scope; fell back to Trash")
+                    continue
+                except Exception as fallbackExc:
+                    errors.append(str(fallbackExc))
+                    continue
+            errors.append(message)
 
     return {
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
-        "permanent": permanent,
+        "permanent": usePermanent and permanent,
         "requested": len(allIds),
         "deleted": deleted,
         "categories": categories,
