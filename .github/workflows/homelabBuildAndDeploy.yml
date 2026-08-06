@@ -1,0 +1,118 @@
+name: homelabBuildAndDeploy
+
+on:
+  push:
+    branches: [main, cid]
+    paths:
+      - backend/**
+      - frontend/**
+      - docker/**
+      - docker-compose.yml
+      - .github/workflows/homelabBuildAndDeploy.yml
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  HOMELABOPS_REPO: ${{ vars.HOMELABOPS_REPO || 'UttU28/homeLabOps' }}
+  VITE_API_URL: ${{ vars.VITE_API_URL || 'https://saral.thatinsaneguy.com' }}
+
+jobs:
+  buildAndPush:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          - image: saral-api
+            dockerfile: docker/Dockerfile.api
+            useBuildArgs: false
+          - image: saral-redis
+            dockerfile: docker/Dockerfile.redis
+            useBuildArgs: false
+          - image: saral-ui
+            dockerfile: docker/Dockerfile.frontend
+            useBuildArgs: true
+
+    steps:
+      - name: checkoutApp
+        uses: actions/checkout@v4
+
+      - name: loginGhcr
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: setImageOwner
+        id: owner
+        run: echo "lower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: dockerMeta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.owner.outputs.lower }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: buildAndPush
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.useBuildArgs && format('VITE_API_URL={0}', env.VITE_API_URL) || '' }}
+
+  bumpGitOps:
+    needs: buildAndPush
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: checkoutHomeLabOps
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.HOMELABOPS_REPO }}
+          token: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+          path: homeLabOps
+
+      - name: updateImageTags
+        working-directory: homeLabOps
+        env:
+          IMAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          ownerLower=$(echo "${IMAGE_OWNER}" | tr '[:upper:]' '[:lower:]')
+          shortSha="${GITHUB_SHA::7}"
+          kustomization="apps/saralJobViewer/kustomization.yaml"
+          for image in saral-api saral-ui saral-redis; do
+            awk -v img="ghcr.io/${ownerLower}/${image}" -v tag="${shortSha}" '
+              $0 ~ "name: " img { inBlock=1 }
+              inBlock && $0 ~ /^[[:space:]]*newTag:/ {
+                sub(/newTag:.*/, "newTag: " tag)
+                inBlock=0
+              }
+              { print }
+            ' "${kustomization}" > "${kustomization}.tmp"
+            mv "${kustomization}.tmp" "${kustomization}"
+          done
+          grep -A1 'name: ghcr.io' "${kustomization}"
+
+      - name: commitAndPush
+        working-directory: homeLabOps
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/saralJobViewer/kustomization.yaml
+          if git diff --staged --quiet; then
+            echo "No tag changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(saral): bump images to ${GITHUB_SHA::7}"
+          git push
