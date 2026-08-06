@@ -167,7 +167,7 @@ export default function AuthHome() {
                   Saral Job Viewer
                 </h1>
                 <p className="text-xs text-muted-foreground/85 max-w-2xl">
-                  <span className="text-foreground/80">Mon–Sun</span> stats
+                  <span className="text-foreground/80">All Time</span> stats
                 </p>
               </div>
             </div>

@@ -30,7 +30,7 @@ RUN pip install --upgrade pip \
 
 COPY backend/app.py .
 COPY backend/utils/ ./utils/
-COPY backend/client_secret.json .
+# client_secret.json is mounted at runtime (compose volume / K8s secret), not baked into the image.
 
 EXPOSE 9260
 
