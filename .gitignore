@@ -13,6 +13,8 @@ venv/
 !frontend/index.html
 # Generated nginx config (from deploy.sh templates)
 docker/generated/nginx.saral.conf
+docker/validation-logs/*
+!docker/validation-logs/.gitkeep
 # Optional local secrets
 gcp-sa.json
 client_secret.json

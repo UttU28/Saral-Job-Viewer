@@ -48,6 +48,7 @@ services:
       REDIS_URL: redis://sjv-redis:9262/0
       VALIDATION_IMAGE: saral-dvalidate:latest
       VALIDATION_DOCKER_NETWORK: saral-job-viewer_sjv-net
+      VALIDATION_LOGS_DIR: /var/validation-logs
       API_PORT: "9260"
     expose:
       - "9260"
@@ -55,6 +56,7 @@ services:
       - "127.0.0.1:9260:9260"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker/validation-logs:/var/validation-logs
       - ./backend/client_secret.json:/app/client_secret.json:ro
     depends_on:
       sjv-redis:

@@ -75,6 +75,8 @@ from utils.redisCache import (
     setCachedJson,
 )
 from utils.validationDocker import (
+    clearValidationContainerLogs,
+    fetchValidationContainerLogs,
     fetchValidationExecutionStatus,
     listValidationExecutions,
     triggerValidationContainer,
@@ -603,6 +605,48 @@ def getAdminValidationExecutions(
             running,
         )
         return {"ok": True, **payload}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/admin/jobs/validation-executions/{execution_name}/logs")
+def getAdminValidationExecutionLogs(
+    execution_name: str,
+    offset: int = Query(default=0, ge=0),
+    currentUser: dict[str, Any] = Depends(requireAdmin),
+):
+    try:
+        payload = fetchValidationContainerLogs(executionName=execution_name, offset=offset)
+        logger.info(
+            "[VALIDATION_LOGS] admin=%s execution=%s state=%s offset=%s bytes=%s",
+            str(currentUser.get("email") or ""),
+            payload.get("executionName"),
+            payload.get("state"),
+            offset,
+            len(str(payload.get("logs") or "")),
+        )
+        return {"ok": True, **payload}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/admin/jobs/validation-executions/{execution_name}/logs")
+def deleteAdminValidationExecutionLogs(
+    execution_name: str,
+    currentUser: dict[str, Any] = Depends(requireAdmin),
+):
+    try:
+        payload = clearValidationContainerLogs(executionName=execution_name)
+        logger.info(
+            "[VALIDATION_LOGS_CLEAR] admin=%s execution=%s",
+            str(currentUser.get("email") or ""),
+            execution_name,
+        )
+        return payload
     except HTTPException:
         raise
     except Exception as exc:

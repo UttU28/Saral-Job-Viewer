@@ -14,6 +14,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { Footer } from "@/components/Footer";
+import { ValidationExecutionLogPanel } from "@/components/ValidationExecutionLogPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -155,6 +156,8 @@ export default function Admin() {
   );
   const adminScraperKeywordsQuery = useAdminScraperKeywordsQuery(Boolean(user?.isAdmin));
   const [validationExecutionsExpanded, setValidationExecutionsExpanded] = useState(false);
+  const [expandedValidationExecution, setExpandedValidationExecution] = useState<string | null>(null);
+  const [validationLogResetToken, setValidationLogResetToken] = useState(0);
   const [userListExpanded, setUserListExpanded] = useState(false);
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
   const [runningAction, setRunningAction] = useState<AdminJobAction | null>(null);
@@ -166,6 +169,22 @@ export default function Admin() {
 
   const validationExecutionsAll = validationExecQuery.data?.executions ?? [];
   const hasRunningValidation = validationExecutionsAll.some((r) => r.state === "RUNNING");
+  const selectedValidationExecution =
+    validationExecutionsAll.find((row) => row.executionName === expandedValidationExecution) ??
+    validationExecutionsAll.find((row) => row.state === "RUNNING") ??
+    validationExecutionsAll[0] ??
+    null;
+
+  useEffect(() => {
+    if (!validationExecutionsAll.length) return;
+    setExpandedValidationExecution((current) => {
+      if (current && validationExecutionsAll.some((row) => row.executionName === current)) {
+        return current;
+      }
+      const running = validationExecutionsAll.find((row) => row.state === "RUNNING");
+      return running?.executionName ?? validationExecutionsAll[0]?.executionName ?? null;
+    });
+  }, [validationExecutionsAll]);
 
   useEffect(() => {
     if (!hasRunningValidation) return;
@@ -265,6 +284,8 @@ export default function Admin() {
         await queryClient.invalidateQueries({ queryKey: ["jobListInfinite"] });
       }
       if (result.validationRun?.executionName) {
+        setExpandedValidationExecution(result.validationRun.executionName);
+        setValidationLogResetToken((value) => value + 1);
         await queryClient.invalidateQueries({ queryKey: ["adminValidationExecutions"] });
       }
       const execLabel = result.validationRun?.executionName
@@ -540,7 +561,8 @@ export default function Admin() {
                 <div className="space-y-1 min-w-0">
                   <h2 className="text-sm sm:text-base font-semibold text-foreground">Validation runs</h2>
                   <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                    Recent local Docker validation containers (newest first on each page).
+                    Recent local Docker validation containers (newest first). Container logs appear below the
+                    selected run and stream live while a job is running.
                   </p>
                 </div>
                 <Button
@@ -581,17 +603,56 @@ export default function Admin() {
                   </AlertDescription>
                 </Alert>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {validationExecutionsAll.length === 0 ? (
                     <p className="text-sm text-muted-foreground">No validation runs yet.</p>
                   ) : null}
+                  {selectedValidationExecution ? (
+                    <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3 sm:p-4">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-foreground">Container logs</p>
+                        <span
+                          className={cn(
+                            "inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                            executionStateStyles(selectedValidationExecution.state),
+                          )}
+                        >
+                          {selectedValidationExecution.state}
+                        </span>
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {validationExecutionDisplayId(
+                            selectedValidationExecution.shortName,
+                            selectedValidationExecution.executionName,
+                          )}
+                        </span>
+                      </div>
+                      <ValidationExecutionLogPanel
+                        row={selectedValidationExecution}
+                        expanded
+                        showHeader={false}
+                        resetToken={
+                          selectedValidationExecution.executionName === expandedValidationExecution
+                            ? validationLogResetToken
+                            : 0
+                        }
+                      />
+                    </div>
+                  ) : null}
+                  <div className="space-y-2">
                   {validationExecutionsVisible.map((row) => {
                     const timing = validationExecutionTiming(row, Date.now());
+                    const isSelected = expandedValidationExecution === row.executionName;
                     return (
                     <div
                       key={row.executionName}
-                      className="rounded-xl border border-border/65 bg-background/55 px-3 py-2.5 sm:px-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4"
+                      className={cn(
+                        "rounded-xl border px-3 py-2.5 sm:px-4",
+                        isSelected
+                          ? "border-primary/35 bg-primary/[0.06]"
+                          : "border-border/65 bg-background/55",
+                      )}
                     >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                       <div className="min-w-0 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                         <span
                           className={cn(
@@ -608,7 +669,7 @@ export default function Admin() {
                           {validationExecutionDisplayId(row.shortName, row.executionName)}
                         </p>
                       </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] sm:text-xs text-muted-foreground tabular-nums">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] sm:text-xs text-muted-foreground tabular-nums">
                         <span title={timing.title || undefined}>
                           <span className="text-foreground/90">{timing.startLabel}</span>
                           {timing.durationLabel ? (
@@ -622,10 +683,21 @@ export default function Admin() {
                           tasks: {row.runningCount} / {row.succeededCount} / {row.failedCount}
                           {row.cancelledCount ? ` · cancelled ${row.cancelledCount}` : ""}
                         </span>
+                        <Button
+                          type="button"
+                          variant={isSelected ? "secondary" : "outline"}
+                          size="sm"
+                          className="h-7 px-2.5 text-xs"
+                          onClick={() => setExpandedValidationExecution(row.executionName)}
+                        >
+                          {isSelected ? "Showing logs" : "Show logs"}
+                        </Button>
+                      </div>
                       </div>
                     </div>
                     );
                   })}
+                  </div>
                   {validationHiddenCount > 0 ? (
                     <div className="pt-1">
                       <Button

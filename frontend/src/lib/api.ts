@@ -397,6 +397,8 @@ export type ValidationExecutionRow = {
   runningCount: number;
   startTime: string;
   completionTime: string;
+  mode?: string;
+  hasLogs?: boolean;
 };
 
 export type AdminValidationExecutionsResponse = {
@@ -404,6 +406,15 @@ export type AdminValidationExecutionsResponse = {
   parentJob: string;
   executions: ValidationExecutionRow[];
   nextPageToken: string;
+};
+
+export type AdminValidationExecutionLogsResponse = {
+  ok: boolean;
+  executionName: string;
+  state: string;
+  logs: string;
+  offset: number;
+  complete: boolean;
 };
 
 export function fetchAdminValidationExecutions(params?: {
@@ -414,6 +425,26 @@ export function fetchAdminValidationExecutions(params?: {
     limit: params?.limit != null ? String(params.limit) : undefined,
     pageToken: params?.pageToken,
   });
+}
+
+export function fetchAdminValidationExecutionLogs(
+  executionName: string,
+  params?: { offset?: number },
+): Promise<AdminValidationExecutionLogsResponse> {
+  return fetchJson<AdminValidationExecutionLogsResponse>(
+    `/api/admin/jobs/validation-executions/${encodeURIComponent(executionName)}/logs`,
+    {
+      offset: params?.offset != null ? String(params.offset) : undefined,
+    },
+  );
+}
+
+export function clearAdminValidationExecutionLogs(
+  executionName: string,
+): Promise<{ ok: boolean; executionName: string; cleared: boolean }> {
+  return deleteJson<{ ok: boolean; executionName: string; cleared: boolean }>(
+    `/api/admin/jobs/validation-executions/${encodeURIComponent(executionName)}/logs`,
+  );
 }
 
 export type AdminJobActionResponse = {
