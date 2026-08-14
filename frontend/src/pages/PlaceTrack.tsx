@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { PlaceTrackHeader } from "@/components/placetrack/PlaceTrackHeader";
 import { PlaceTrackMailPanel } from "@/components/placetrack/PlaceTrackMailPanel";
@@ -41,9 +41,12 @@ function PlaceTrackAdminDenied() {
             <Alert variant="destructive" className="rounded-2xl">
               <AlertTitle>Admin access required</AlertTitle>
               <AlertDescription>
-                PlaceTrack is only visible to users with admin access.
+                PlaceTrack is only available from the Admin panel for users with admin access.
               </AlertDescription>
             </Alert>
+            <Button type="button" variant="secondary" className="rounded-xl" asChild>
+              <Link href="/admin">Go to Admin</Link>
+            </Button>
           </div>
           <Footer />
         </div>

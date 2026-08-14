@@ -5,12 +5,15 @@ import {
   CircleX,
   Flame,
   Loader2,
+  Mail,
   RefreshCw,
   Shield,
   ShieldCheck,
   ShieldX,
+  Workflow,
   X,
 } from "lucide-react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/auth/AuthProvider";
 import { Footer } from "@/components/Footer";
@@ -375,6 +378,44 @@ export default function Admin() {
                   <p className="text-sm text-muted-foreground leading-relaxed">
                     View all users, review counts, and manage admin access from one place.
                   </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card/45 p-4 sm:p-5">
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <h2 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
+                    <Workflow className="h-4 w-4 text-primary" aria-hidden />
+                    PlaceTrack
+                  </h2>
+                  <p className="text-xs sm:text-sm text-muted-foreground">
+                    Placement pipeline and mail tools are admin-only. Open them from here.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Button type="button" variant="secondary" className="h-auto justify-start gap-3 rounded-xl px-4 py-3" asChild>
+                    <Link href="/placetrack">
+                      <Workflow className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                      <span className="text-left">
+                        <span className="block text-sm font-semibold text-foreground">Open pipeline</span>
+                        <span className="block text-xs text-muted-foreground font-normal">
+                          Vendor placement tracking
+                        </span>
+                      </span>
+                    </Link>
+                  </Button>
+                  <Button type="button" variant="outline" className="h-auto justify-start gap-3 rounded-xl px-4 py-3" asChild>
+                    <Link href="/placetrack/mail">
+                      <Mail className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                      <span className="text-left">
+                        <span className="block text-sm font-semibold text-foreground">Mail builder</span>
+                        <span className="block text-xs text-muted-foreground font-normal">
+                          Draft and send placement mail
+                        </span>
+                      </span>
+                    </Link>
+                  </Button>
                 </div>
               </div>
             </div>

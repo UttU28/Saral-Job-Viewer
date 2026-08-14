@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, KeyRound, Loader2, Mail, RefreshCw, Send } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Loader2, Mail, RefreshCw, Send, Shield } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { PipelineFiltersBar } from "@/components/placetrack/PipelineFiltersBar";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,13 @@ export function PlaceTrackHeader({ pipeline, filterBar, mailBuilder }: PlaceTrac
   return (
     <div className="shrink-0 border-b border-border/80 bg-gradient-to-b from-card/80 to-background/60 backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+        <Button type="button" variant="ghost" size="sm" className="rounded-xl gap-1.5 h-8 shrink-0 text-muted-foreground" asChild>
+          <Link href="/admin">
+            <Shield className="h-3.5 w-3.5" aria-hidden />
+            Admin
+          </Link>
+        </Button>
+
         <nav className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-1">
           <SubNavLink href="/placetrack" tab="pipeline">
             Pipeline
