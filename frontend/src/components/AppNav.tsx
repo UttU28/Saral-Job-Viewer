@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Briefcase, Flame, Home, LogOut, Mail, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound } from "lucide-react";
+import { Briefcase, Flame, Home, LogOut, Menu, MessageCircleQuestion, Moon, Shield, Sun, UserRound } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useAuth } from "@/auth/AuthProvider";
 import { useTheme } from "@/components/ThemeProvider";
@@ -198,14 +198,9 @@ export function AppNav() {
                 Interview
               </NavLink>
               {user?.isAdmin ? (
-                <>
-                  <NavLink href="/emails" icon={Mail} matchPrefix>
-                    Emails
-                  </NavLink>
-                  <NavLink href="/admin" icon={Shield}>
-                    Admin
-                  </NavLink>
-                </>
+                <NavLink href="/admin" icon={Shield}>
+                  Admin
+                </NavLink>
               ) : null}
               <Button
                 type="button"
@@ -269,10 +264,7 @@ export function AppNav() {
                     onNavigate={closeMobile}
                   />
                   {user?.isAdmin ? (
-                    <>
-                      <MobileNavRow href="/emails" icon={Mail} label="Emails" onNavigate={closeMobile} />
-                      <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
-                    </>
+                    <MobileNavRow href="/admin" icon={Shield} label="Admin" onNavigate={closeMobile} />
                   ) : null}
                 </div>
                 <div className="px-4 pb-4 pt-2 border-t border-border/80 space-y-2 mt-auto">

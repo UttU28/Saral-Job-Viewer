@@ -393,7 +393,7 @@ export default function Admin() {
                     Placement pipeline and mail tools are admin-only. Open them from here.
                   </p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Button type="button" variant="secondary" className="h-auto justify-start gap-3 rounded-xl px-4 py-3" asChild>
                     <Link href="/placetrack">
                       <Workflow className="h-4 w-4 shrink-0 text-primary" aria-hidden />
@@ -412,6 +412,17 @@ export default function Admin() {
                         <span className="block text-sm font-semibold text-foreground">Mail builder</span>
                         <span className="block text-xs text-muted-foreground font-normal">
                           Draft and send placement mail
+                        </span>
+                      </span>
+                    </Link>
+                  </Button>
+                  <Button type="button" variant="outline" className="h-auto justify-start gap-3 rounded-xl px-4 py-3" asChild>
+                    <Link href="/emails">
+                      <Mail className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+                      <span className="text-left">
+                        <span className="block text-sm font-semibold text-foreground">Emails inbox</span>
+                        <span className="block text-xs text-muted-foreground font-normal">
+                          Unread Gmail + noise cleanup
                         </span>
                       </span>
                     </Link>
