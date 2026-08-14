@@ -67,6 +67,10 @@ export function PlaceTrackHeader({ pipeline, filterBar, mailBuilder }: PlaceTrac
           </Link>
         </Button>
 
+        <span className="hidden shrink-0 text-sm font-semibold tracking-tight text-foreground sm:inline">
+          Jobs Tracker
+        </span>
+
         <nav className="flex shrink-0 items-center gap-1 rounded-xl border border-border/60 bg-muted/20 p-1">
           <SubNavLink href="/placetrack" tab="pipeline">
             Pipeline

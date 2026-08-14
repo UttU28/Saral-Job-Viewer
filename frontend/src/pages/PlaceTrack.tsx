@@ -41,7 +41,7 @@ function PlaceTrackAdminDenied() {
             <Alert variant="destructive" className="rounded-2xl">
               <AlertTitle>Admin access required</AlertTitle>
               <AlertDescription>
-                PlaceTrack is only available from the Admin panel for users with admin access.
+                Jobs Tracker is only available from the Admin panel for users with admin access.
               </AlertDescription>
             </Alert>
             <Button type="button" variant="secondary" className="rounded-xl" asChild>

@@ -387,10 +387,10 @@ export default function Admin() {
                 <div className="space-y-1">
                   <h2 className="text-base sm:text-lg font-semibold text-foreground flex items-center gap-2">
                     <Workflow className="h-4 w-4 text-primary" aria-hidden />
-                    PlaceTrack
+                    Jobs Tracker
                   </h2>
                   <p className="text-xs sm:text-sm text-muted-foreground">
-                    Placement pipeline and mail tools are admin-only. Open them from here.
+                    Jobs Tracker pipeline and mail tools are admin-only. Open them from here.
                   </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

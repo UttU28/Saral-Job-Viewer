@@ -20,7 +20,7 @@ export function JwtAuthForm({
   onFetchNew,
   isLoading = false,
   error = null,
-  title = "Connect to PlaceTrack",
+  title = "Connect to Jobs Tracker",
   description = "JWT is saved in MongoDB and shared across devices. Fetch a new token or load the pipeline with the one below.",
 }: JwtAuthFormProps) {
   const [token, setToken] = useState("");
