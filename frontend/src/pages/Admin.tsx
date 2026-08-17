@@ -400,7 +400,7 @@ export default function Admin() {
                       <span className="text-left">
                         <span className="block text-sm font-semibold text-foreground">Open pipeline</span>
                         <span className="block text-xs text-muted-foreground font-normal">
-                          Vendor placement tracking
+                          Under development
                         </span>
                       </span>
                     </Link>
