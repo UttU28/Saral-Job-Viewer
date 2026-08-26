@@ -7,11 +7,13 @@ from email.utils import parseaddr
 
 from utils.gmailAuth import getGmailService
 from utils.gmailLabels import (
+    CLEAN_CATEGORIES,
     CLEAN_LABEL_BAHARMIL,
     CLEAN_LABEL_FINTAX,
     CLEAN_LABEL_JOBADS,
     CLEAN_LABEL_ONESIDED,
     CLEAN_LABEL_PENDINGJOBS,
+    CLEAN_LABEL_REPLYSPAM,
     CLEAN_LABEL_SHOPPING,
     resolveCleanLabels,
 )
@@ -406,6 +408,37 @@ FINTAX_PATTERNS = [
     )
 ]
 
+REPLY_PREFIX_PATTERN = re.compile(r"^\s*re\s*:\s*", re.I)
+REPLY_SPAM_SUBJECT_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"act\s+today",
+        r"start\s+saving",
+        r"selected\s+approach",
+        r"request\s*a?\s*quote",
+        r"compare\s*insurance",
+        r"feedback\s+is\s+ready",
+        r"participant\s+matching",
+        r"current\s+participant\s+matches",
+        r"monthly\s+summary\s*##",
+        r"##[a-z0-9]{2,}",
+        r"\[\s*[a-z]{3}/\d{4}\s*\]",
+        r"\[\s*-\d{1,2}:\d{2}\s*\]",
+    )
+]
+REPLY_SPAM_BODY_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"smail\.com",
+        r"ssl:\s*active",
+        r"auth:\s*active",
+        r"server:\s*\S+\s+port:\s*\d{6,}",
+        r"port:\s*\d{6,}",
+    )
+]
+# Throwaway / campaign TLDs seen on fake-reply spam. Never enough alone.
+REPLY_SPAM_TLDS = frozenset({"cv", "casa", "courses", "gq", "tk", "ml", "ga", "cf"})
+
 LLM_SYSTEM_PROMPT = """You classify inbound emails for a job seeker inbox cleaner.
 Return ONLY valid JSON.
 
@@ -416,6 +449,7 @@ Labels (choose exactly one per email):
 - "jobAds": recruiter/staffing job pitches and job digests. Not shopping. Not banking.
 - "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / delivered, pickup, merchant receipts (Banggood, Best Buy, Uber Eats, Epic, AMC, Shopify). Not bank statements or tax.
 - "finTax": banking, credit cards, payments, tax, and finance compliance — bank/credit-union statements, overdraft notices, credit reports/scores, Amex/Capital One/card shipping & card marketing, crypto KYC (Binance), demat/broker statements, IRS/ITR/FBAR/tax preparer mail, tax payment confirmations, utility bill payment confirmations, Zelle. Not job mail. Not merchant product orders (those are shopping).
+- "replySpam": fake reply-chain spam impersonating a person (First Last @ random multi-part domain, "Re:" + marketing/insurance/quote/summary, SMTP dumps like smail.com / SSL: Active). NOT a real Re: thread from Gmail/Outlook or a known company/ATS.
 - "none": pure personal mail, unrelated newsletters, or anything that is not the above.
 
 Rules:
@@ -427,7 +461,8 @@ Rules:
 6. Recruiter cold outreach is jobAds.
 7. If unsure between finTax and none for clear bank/tax/payment mail, prefer finTax.
 8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax/KYC = finTax.
-9. If unsure otherwise, use none.
+9. Real job-thread Re: from a known company or personal mailbox is none/job category — never replySpam.
+10. If unsure otherwise, use none.
 """
 
 
@@ -501,6 +536,76 @@ def _domainOf(email: str) -> str:
     return email.rsplit("@", 1)[-1].strip().lower()
 
 
+def _isProtectedSender(fromEmail: str) -> bool:
+    if isAtsSender(fromEmail):
+        return True
+    domain = _domainOf(fromEmail)
+    return bool(domain) and domain in PERSONAL_DOMAINS
+
+
+def _junkSpamDomain(domain: str) -> bool:
+    labels = [part for part in (domain or "").split(".") if part]
+    if len(labels) < 2:
+        return False
+    tld = labels[-1]
+    if tld in REPLY_SPAM_TLDS:
+        return True
+    if domain.endswith(".co.uk") and len(labels) >= 3:
+        return True
+    if tld in {"team", "my"} and len(labels) >= 3:
+        return True
+    if len(labels) >= 3 and tld not in {"com", "org", "net", "edu", "gov"}:
+        return True
+    return False
+
+
+def _localMatchesDisplayName(fromName: str, fromEmail: str) -> bool:
+    local = re.sub(r"[^a-z]", "", (fromEmail.split("@", 1)[0] if "@" in fromEmail else fromEmail).lower())
+    name = re.sub(r"[^a-z]", "", (fromName or "").lower())
+    return len(name) >= 8 and local == name
+
+
+def replySpamReason(
+    *,
+    subject: str,
+    text: str,
+    fromEmail: str,
+    fromName: str = "",
+) -> str | None:
+    """
+    Fake Re: marketing/phishing that impersonates a person on a random domain.
+    Requires a Re: subject plus at least two independent campaign signals so
+    real recruiter/company reply threads are left alone.
+    """
+    if _isProtectedSender(fromEmail):
+        return None
+    subjectLine = (subject or "").strip()
+    if not subjectLine:
+        firstLine = (text or "").splitlines()[0] if text else ""
+        subjectLine = firstLine.strip()
+    if not REPLY_PREFIX_PATTERN.search(subjectLine):
+        return None
+
+    score = 0
+    reasons: list[str] = []
+    if _localMatchesDisplayName(fromName, fromEmail):
+        score += 2
+        reasons.append("nameLocal")
+    if _junkSpamDomain(_domainOf(fromEmail)):
+        score += 2
+        reasons.append("junkDomain")
+    if any(pattern.search(subjectLine) for pattern in REPLY_SPAM_SUBJECT_PATTERNS):
+        score += 2
+        reasons.append("spamSubject")
+    haystack = text or ""
+    if any(pattern.search(haystack) for pattern in REPLY_SPAM_BODY_PATTERNS):
+        score += 3
+        reasons.append("smtpDump")
+    if score >= 4:
+        return "+".join(reasons)
+    return None
+
+
 def isAtsSender(fromEmail: str) -> bool:
     domain = _domainOf(fromEmail)
     if not domain:
@@ -539,6 +644,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_SHOPPING
     if category == "finTax":
         return CLEAN_LABEL_FINTAX
+    if category == "replySpam":
+        return CLEAN_LABEL_REPLYSPAM
     return None
 
 
@@ -553,7 +660,7 @@ def _result(category: str | None, reason: str, *, isCompany: bool, isJobRelated:
     }
 
 
-def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
+def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", subject: str = "") -> dict:
     haystack = (text or "").strip()
     # Decode common HTML entities that sneak into subjects/snippets.
     haystack = (
@@ -564,8 +671,24 @@ def classifyWithRegex(text: str, *, fromEmail: str = "") -> dict:
         .replace("&lt;", "<")
         .replace("&gt;", ">")
     )
+    subjectLine = (subject or "").strip() or ((haystack.splitlines()[0] if haystack else "").strip())
     company = isCompanySender(fromEmail)
     ats = isAtsSender(fromEmail)
+
+    spamReason = replySpamReason(
+        subject=subjectLine,
+        text=haystack,
+        fromEmail=fromEmail,
+        fromName=fromName,
+    )
+    if spamReason:
+        return _result(
+            "replySpam",
+            f"replySpam:{spamReason}",
+            isCompany=False,
+            isJobRelated=False,
+            source="regex",
+        )
 
     def _firstMatch(patterns: list[re.Pattern[str]]) -> re.Match[str] | None:
         for pattern in patterns:
@@ -688,19 +811,15 @@ def _truncate(text: str, limit: int = 1800) -> str:
 def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
     if not localLlmEnabled():
         return False
+    # High-confidence fake-reply spam: do not let the LLM relabel it.
+    if regexResult.get("category") == "replySpam":
+        return False
     # Always LLM-classify ATS / job-application-looking mail; regex is fallback only.
     if isAtsSender(fromEmail):
         return True
     if regexResult.get("isJobRelated"):
         return True
-    if regexResult.get("category") in {
-        "baharMil",
-        "oneSided",
-        "jobAds",
-        "pendingJobs",
-        "shopping",
-        "finTax",
-    }:
+    if regexResult.get("category") in CLEAN_CATEGORIES:
         return True
     return hasJobSignals(text)
 
@@ -780,6 +899,14 @@ def _normalizeLlmCategory(value: object) -> str | None:
         "payments",
     }:
         return "finTax"
+    if normalized in {
+        "replyspam",
+        "fakespam",
+        "fakesreply",
+        "scamreply",
+        "replyphishing",
+    }:
+        return "replySpam"
     if normalized in {"none", "skip", "other", "ignore", "untouched", "unrelated"}:
         return None
     return None
@@ -789,17 +916,15 @@ def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
     """
     Prefer LLM when it picks a real label. If LLM says none/skip but regex already
     matched a clean label, keep the regex label.
+    Never let the LLM add or remove replySpam — that is regex-only.
     """
     llmCategory = llmResult.get("category")
     regexCategory = regexResult.get("category")
-    if llmCategory is None and regexCategory in {
-        "baharMil",
-        "oneSided",
-        "jobAds",
-        "pendingJobs",
-        "shopping",
-        "finTax",
-    }:
+    if regexCategory == "replySpam":
+        return dict(regexResult)
+    if llmCategory == "replySpam" and regexCategory != "replySpam":
+        return dict(regexResult)
+    if llmCategory is None and regexCategory in CLEAN_CATEGORIES:
         kept = dict(regexResult)
         kept["reason"] = (
             f"{regexResult.get('reason') or 'regex'}"
@@ -836,10 +961,12 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
         "- shopping — retail/food/entertainment/travel merchant orders, shipped, delivered, pickup, receipts\n"
         "- finTax — banking, credit cards, credit reports, KYC, demat statements, tax/ITR/FBAR/IRS, "
         "tax preparer mail, utility/tax payment confirmations, Amex/Capital One card mail\n"
+        "- replySpam — fake Re: person-impersonation spam on random domains / SMTP dumps "
+        "(NOT real company or Gmail reply threads)\n"
         "- none — pure personal / unrelated\n\n"
         "Important: bank statements, Amex, Binance KYC, tax filing = finTax. Merchant product orders = shopping.\n"
         "Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|none","reason":"short"}]}\n\n'
+        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -928,7 +1055,12 @@ def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> l
     loaded: list[dict] = []
     for messageId in messageIds:
         item = _loadMessageForClassify(gmail, messageId.strip())
-        regexResult = classifyWithRegex(item.get("text") or "", fromEmail=item.get("fromEmail") or "")
+        regexResult = classifyWithRegex(
+            item.get("text") or "",
+            fromEmail=item.get("fromEmail") or "",
+            fromName=item.get("fromName") or "",
+            subject=item.get("subject") or "",
+        )
         item["classification"] = regexResult
         loaded.append(item)
 
@@ -990,7 +1122,8 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - baharMil / oneSided / jobAds / pendingJobs / shopping / finTax: add that label, mark read, remove from Inbox (leaves Primary)
+    - replySpam: add label, mark read, move to Trash
+    - other clean labels: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
     labels = resolveCleanLabels(createMissing=True)
@@ -1003,6 +1136,7 @@ def applyEmailLabelActions(
         "pendingJobs": 0,
         "shopping": 0,
         "finTax": 0,
+        "replySpam": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -1018,14 +1152,14 @@ def applyEmailLabelActions(
             category = category.strip()
         if category in ("", "none", None):
             category = None
-        elif category not in ("baharMil", "oneSided", "jobAds", "pendingJobs", "shopping", "finTax"):
+        elif category not in CLEAN_CATEGORIES:
             counts["errors"] += 1
             results.append(
                 {
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, or none",
                 }
             )
             continue
@@ -1055,6 +1189,8 @@ def applyEmailLabelActions(
 
         labelMeta = labels[labelName]
         addIds = [labelMeta["id"]]
+        if category == "replySpam":
+            addIds.append("TRASH")
         removeIds: list[str] = []
         if markRead:
             removeIds.append("UNREAD")
@@ -1070,18 +1206,8 @@ def applyEmailLabelActions(
                 id=messageId,
                 body={"addLabelIds": addIds, "removeLabelIds": removeIds},
             ).execute()
-            if category == "baharMil":
-                counts["baharMil"] += 1
-            elif category == "oneSided":
-                counts["oneSided"] += 1
-            elif category == "jobAds":
-                counts["jobAds"] += 1
-            elif category == "pendingJobs":
-                counts["pendingJobs"] += 1
-            elif category == "shopping":
-                counts["shopping"] += 1
-            else:
-                counts["finTax"] += 1
+            if category in counts:
+                counts[category] += 1
             counts["applied"] += 1
             results.append(
                 {
@@ -1181,7 +1307,12 @@ def _classifyLoadedMessages(items: list[dict], *, forceLlm: bool = True) -> None
     pendingLlm: list[dict] = []
 
     for item in items:
-        regexResult = classifyWithRegex(item.get("text") or "", fromEmail=item.get("fromEmail") or "")
+        regexResult = classifyWithRegex(
+            item.get("text") or "",
+            fromEmail=item.get("fromEmail") or "",
+            fromName=item.get("fromName") or "",
+            subject=item.get("subject") or "",
+        )
         item["classification"] = regexResult
         if forceLlm and _shouldAskLlm(regexResult, item.get("text") or "", item.get("fromEmail") or ""):
             pendingLlm.append(
@@ -1248,6 +1379,7 @@ def cleanUnreadPrimaryInbox(
         "pendingJobs": 0,
         "shopping": 0,
         "finTax": 0,
+        "replySpam": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -1290,18 +1422,9 @@ def cleanUnreadPrimaryInbox(
             results.append(entry)
             continue
 
-        if classification.get("category") == "baharMil":
-            counts["baharMil"] += 1
-        elif classification.get("category") == "oneSided":
-            counts["oneSided"] += 1
-        elif classification.get("category") == "jobAds":
-            counts["jobAds"] += 1
-        elif classification.get("category") == "pendingJobs":
-            counts["pendingJobs"] += 1
-        elif classification.get("category") == "shopping":
-            counts["shopping"] += 1
-        elif classification.get("category") == "finTax":
-            counts["finTax"] += 1
+        category = classification.get("category")
+        if category in counts:
+            counts[category] += 1
 
         labelMeta = labels[labelName]
         entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}
@@ -1312,6 +1435,8 @@ def cleanUnreadPrimaryInbox(
             continue
 
         addIds = [labelMeta["id"]]
+        if classification.get("category") == "replySpam":
+            addIds.append("TRASH")
         removeIds: list[str] = []
         if markRead:
             removeIds.append("UNREAD")

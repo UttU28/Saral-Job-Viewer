@@ -68,6 +68,7 @@ export type EmailCategory =
   | "pendingJobs"
   | "shopping"
   | "finTax"
+  | "replySpam"
   | "none";
 
 export type ClassifyOneResult = {
@@ -95,6 +96,7 @@ export type ApplyLabelsResult = {
     pendingJobs: number;
     shopping: number;
     finTax: number;
+    replySpam: number;
     skipped: number;
     applied: number;
     errors: number;
@@ -203,7 +205,8 @@ function normalizeCategory(value: unknown): EmailCategory {
     value === "jobAds" ||
     value === "pendingJobs" ||
     value === "shopping" ||
-    value === "finTax"
+    value === "finTax" ||
+    value === "replySpam"
   ) {
     return value;
   }
@@ -521,6 +524,7 @@ async function applyEmailLabelsOnce(options: {
       pendingJobs: Number(countsRaw.pendingJobs ?? 0),
       shopping: Number(countsRaw.shopping ?? 0),
       finTax: Number(countsRaw.finTax ?? 0),
+      replySpam: Number(countsRaw.replySpam ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
       errors: Number(countsRaw.errors ?? 0),
@@ -547,6 +551,7 @@ export async function applyEmailLabels(options: {
         pendingJobs: 0,
         shopping: 0,
         finTax: 0,
+        replySpam: 0,
         skipped: 0,
         applied: 0,
         errors: 0,
@@ -564,9 +569,10 @@ export async function applyEmailLabels(options: {
       oneSided: 0,
       jobAds: 0,
       pendingJobs: 0,
-      shopping: 0,
-      finTax: 0,
-      skipped: 0,
+        shopping: 0,
+        finTax: 0,
+        replySpam: 0,
+        skipped: 0,
       applied: 0,
       errors: 0,
     },
@@ -590,6 +596,7 @@ export async function applyEmailLabels(options: {
     merged.counts.pendingJobs += batch.counts.pendingJobs;
     merged.counts.shopping += batch.counts.shopping;
     merged.counts.finTax += batch.counts.finTax;
+    merged.counts.replySpam += batch.counts.replySpam;
     merged.counts.skipped += batch.counts.skipped;
     merged.counts.applied += batch.counts.applied;
     merged.counts.errors += batch.counts.errors;

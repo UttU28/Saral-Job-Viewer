@@ -59,6 +59,7 @@ const CATEGORY_SEGMENTS: Array<{
   { key: "pendingJobs", label: "pendingJobs", barClass: "bg-violet-500", dotClass: "bg-violet-400" },
   { key: "shopping", label: "shopping", barClass: "bg-emerald-500", dotClass: "bg-emerald-400" },
   { key: "finTax", label: "finTax", barClass: "bg-teal-500", dotClass: "bg-teal-400" },
+  { key: "replySpam", label: "replySpam", barClass: "bg-orange-500", dotClass: "bg-orange-400" },
   { key: "none", label: "none", barClass: "bg-zinc-500", dotClass: "bg-zinc-400" },
   { key: "pending", label: "pending", barClass: "bg-muted-foreground/25", dotClass: "bg-muted-foreground/50" },
 ];
@@ -80,6 +81,7 @@ function CategoryBreakdownBar({
       pendingJobs: 0,
       shopping: 0,
       finTax: 0,
+      replySpam: 0,
       none: 0,
       pending: 0,
     };
@@ -227,7 +229,8 @@ export function PlaceTrackEmailsPanel({
       row.category === "jobAds" ||
       row.category === "pendingJobs" ||
       row.category === "shopping" ||
-      row.category === "finTax",
+      row.category === "finTax" ||
+      row.category === "replySpam",
   ).length;
   const classifiedCount = rows.filter((row) => row.classifyStatus === "done").length;
   const noiseTotal = noiseCount?.total ?? 0;
@@ -243,6 +246,7 @@ export function PlaceTrackEmailsPanel({
       `pendingJobs ${result.counts.pendingJobs}`,
       `shopping ${result.counts.shopping}`,
       `finTax ${result.counts.finTax}`,
+      `replySpam ${result.counts.replySpam}`,
       `left none in Primary`,
     ];
     if (result.counts.errors) parts.push(`errors ${result.counts.errors}`);
@@ -384,7 +388,7 @@ export function PlaceTrackEmailsPanel({
           Last submit: applied {lastApply.counts.applied} · BaharMil {lastApply.counts.baharMil} · oneSided{" "}
           {lastApply.counts.oneSided} · jobAds {lastApply.counts.jobAds} · pendingJobs{" "}
           {lastApply.counts.pendingJobs} · shopping {lastApply.counts.shopping} · finTax{" "}
-          {lastApply.counts.finTax}
+          {lastApply.counts.finTax} · replySpam {lastApply.counts.replySpam}
           {lastApply.counts.errors ? ` · errors ${lastApply.counts.errors}` : ""}
         </div>
       ) : null}
@@ -482,6 +486,7 @@ export function PlaceTrackEmailsPanel({
                     row.category === "pendingJobs" && "border-violet-500/40 text-violet-400",
                     row.category === "shopping" && "border-emerald-500/40 text-emerald-400",
                     row.category === "finTax" && "border-teal-500/40 text-teal-400",
+                    row.category === "replySpam" && "border-orange-500/40 text-orange-400",
                   )}
                   value={row.category}
                   disabled={isCategorizing || isSubmitting || row.classifyStatus === "loading"}
@@ -494,6 +499,7 @@ export function PlaceTrackEmailsPanel({
                   <option value="pendingJobs">pendingJobs</option>
                   <option value="shopping">shopping</option>
                   <option value="finTax">finTax</option>
+                  <option value="replySpam">replySpam</option>
                 </select>
                 <div className="flex items-center gap-1">
                   {row.classifyStatus === "loading" ? (

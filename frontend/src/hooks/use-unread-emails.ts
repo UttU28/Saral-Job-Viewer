@@ -174,13 +174,14 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
         row.category === "jobAds" ||
         row.category === "pendingJobs" ||
         row.category === "shopping" ||
-        row.category === "finTax",
+        row.category === "finTax" ||
+        row.category === "replySpam",
     );
     const items = toApply.map((row) => ({ messageId: row.id, category: row.category }));
 
     if (!items.length) {
       setError(
-        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, or finTax.",
+        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, finTax, or replySpam.",
       );
       return null;
     }
