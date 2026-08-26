@@ -5,7 +5,7 @@ import os
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -133,7 +133,7 @@ def getGmailStatus() -> dict:
 
 
 @gmailRouter.get("/api/gmail/auth/start")
-def startGmailAuth(returnTo: str | None = None):
+def startGmailAuth(request: Request, returnTo: str | None = None):
     if not credentialsConfigured():
         raise HTTPException(
             status_code=503,
@@ -145,24 +145,24 @@ def startGmailAuth(returnTo: str | None = None):
         if isinstance(returnTo, str) and returnTo.startswith("/")
         else gmailOAuthReturnPath()
     )
-    redirectUri = gmailOAuthRedirectUri()
+    redirectUri = gmailOAuthRedirectUri(request)
     flow = createOAuthFlow(redirectUri)
     authorizationUrl, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
     )
-    saveOAuthSession(state, flow.code_verifier, safeReturn)
+    saveOAuthSession(state, flow.code_verifier, safeReturn, redirectUri=redirectUri)
     return RedirectResponse(authorizationUrl)
 
 
 @gmailRouter.get("/api/gmail/auth/callback")
-def gmailAuthCallback(code: str, state: str):
+def gmailAuthCallback(request: Request, code: str, state: str):
     session = loadOAuthSession()
     if not session or session.get("state") != state:
         raise HTTPException(status_code=400, detail="Invalid OAuth state. Try Connect Gmail again.")
 
-    redirectUri = gmailOAuthRedirectUri()
+    redirectUri = session.get("redirectUri") or session.get("redirect_uri") or gmailOAuthRedirectUri(request)
     flow = createOAuthFlow(redirectUri)
     codeVerifier = session.get("codeVerifier") or session.get("code_verifier")
     if codeVerifier:
@@ -183,7 +183,7 @@ def gmailAuthCallback(code: str, state: str):
     if not isinstance(returnTo, str) or not returnTo.startswith("/"):
         returnTo = gmailOAuthReturnPath()
 
-    return RedirectResponse(f"{gmailFrontendUrl()}{returnTo}?gmail=connected")
+    return RedirectResponse(f"{gmailFrontendUrl(request)}{returnTo}?gmail=connected")
 
 
 @gmailRouter.post("/api/gmail/disconnect")

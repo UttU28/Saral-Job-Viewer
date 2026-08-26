@@ -199,8 +199,13 @@ def createOAuthFlow(redirectUri: str) -> Flow:
     )
 
 
-def saveOAuthSession(state: str, codeVerifier: str | None, returnTo: str = "/") -> None:
-    saveOAuthSessionInStore(state, codeVerifier, returnTo)
+def saveOAuthSession(
+    state: str,
+    codeVerifier: str | None,
+    returnTo: str = "/",
+    redirectUri: str | None = None,
+) -> None:
+    saveOAuthSessionInStore(state, codeVerifier, returnTo, redirectUri=redirectUri)
 
 
 def loadOAuthSession() -> dict | None:

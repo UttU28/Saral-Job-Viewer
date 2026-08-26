@@ -153,8 +153,15 @@ def loadGmailOAuthSession() -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else _loadGmailOAuthSessionFromFile()
 
 
-def saveGmailOAuthSession(state: str, codeVerifier: str | None, returnTo: str = "/") -> None:
+def saveGmailOAuthSession(
+    state: str,
+    codeVerifier: str | None,
+    returnTo: str = "/",
+    redirectUri: str | None = None,
+) -> None:
     payload = {"state": state, "codeVerifier": codeVerifier, "returnTo": returnTo}
+    if redirectUri:
+        payload["redirectUri"] = redirectUri
     _patchWorkspace({"gmailOAuthState": payload})
     path = _gmailOAuthStateFilePath()
     path.parent.mkdir(parents=True, exist_ok=True)

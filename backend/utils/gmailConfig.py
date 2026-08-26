@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 GMAIL_DATA_DIR = ROOT_DIR / "data" / "gmail"
@@ -52,7 +54,9 @@ def apiPort() -> int:
 
 
 def _publicSiteUrl() -> str | None:
-    for key in ("GMAIL_OAUTH_BASE_URL", "SARAL_API_BASE_URL", "VITE_API_URL", "FRONTEND_URL"):
+    # Prefer the public site over GMAIL_OAUTH_BASE_URL so a leftover localhost
+    # override cannot send production Google OAuth to 127.0.0.1.
+    for key in ("SARAL_API_BASE_URL", "VITE_API_URL", "FRONTEND_URL", "GMAIL_OAUTH_BASE_URL"):
         value = (os.getenv(key) or "").strip().rstrip("/")
         if value:
             return value
@@ -63,11 +67,68 @@ def _publicSiteUrl() -> str | None:
     return None
 
 
-def gmailOAuthBaseUrl() -> str:
+def _hostName(hostHeader: str) -> str:
+    host = hostHeader.strip().lower()
+    if host.startswith("[") and "]" in host:
+        return host[1 : host.index("]")]
+    return host.split(":")[0]
+
+
+def _allowedOauthHosts() -> set[str]:
+    hosts = {"localhost", "127.0.0.1"}
+    domain = (os.getenv("SARAL_DOMAIN") or "").strip().lower()
+    if domain:
+        hosts.add(domain)
+    extra = (os.getenv("GMAIL_OAUTH_ALLOWED_HOSTS") or "").strip()
+    for part in extra.split(","):
+        name = _hostName(part)
+        if name:
+            hosts.add(name)
+    return hosts
+
+
+def gmailPublicOriginFromRequest(request: Any | None) -> str | None:
+    if request is None:
+        return None
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return None
+
+    forwardedHost = (headers.get("x-forwarded-host") or "").split(",")[0].strip()
+    host = forwardedHost or (headers.get("host") or "").strip()
+    if not host:
+        return None
+
+    hostname = _hostName(host)
+    if hostname not in _allowedOauthHosts():
+        return None
+
+    proto = (headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if proto not in ("http", "https"):
+        domain = (os.getenv("SARAL_DOMAIN") or "").strip().lower()
+        if hostname == domain:
+            proto = "https"
+        else:
+            url = getattr(request, "url", None)
+            proto = str(getattr(url, "scheme", "") or "http")
+
+    if hostname in ("localhost", "127.0.0.1"):
+        return f"{proto}://{host}".rstrip("/")
+    return f"{proto}://{hostname}".rstrip("/")
+
+
+def gmailOAuthBaseUrl(request: Any | None = None) -> str:
+    origin = gmailPublicOriginFromRequest(request)
+    if origin:
+        return origin
     return (_publicSiteUrl() or f"http://localhost:{apiPort()}").rstrip("/")
 
 
-def gmailFrontendUrl() -> str:
+def gmailFrontendUrl(request: Any | None = None) -> str:
+    origin = gmailPublicOriginFromRequest(request)
+    hostname = (urlparse(origin).hostname or "") if origin else ""
+    if origin and hostname not in ("localhost", "127.0.0.1"):
+        return origin
     explicit = (
         os.getenv("GMAIL_FRONTEND_URL")
         or os.getenv("FRONTEND_URL")
@@ -79,8 +140,8 @@ def gmailFrontendUrl() -> str:
     return (_publicSiteUrl() or "http://localhost:5173").rstrip("/")
 
 
-def gmailOAuthRedirectUri() -> str:
-    return f"{gmailOAuthBaseUrl()}{GMAIL_CALLBACK_PATH}"
+def gmailOAuthRedirectUri(request: Any | None = None) -> str:
+    return f"{gmailOAuthBaseUrl(request)}{GMAIL_CALLBACK_PATH}"
 
 
 def gmailOAuthReturnPath() -> str:
