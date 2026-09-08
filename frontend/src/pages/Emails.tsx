@@ -52,6 +52,10 @@ export default function EmailsPage() {
           onCategorize={() => unreadInbox.categorizeAll()}
           onSetCategory={unreadInbox.setRowCategory}
           onSubmit={() => unreadInbox.submitLabels()}
+          classifyProvider={unreadInbox.classifyProvider}
+          effectiveProvider={unreadInbox.effectiveProvider}
+          classifyAiStatus={unreadInbox.classifyAiStatus}
+          onClassifyProviderChange={unreadInbox.setClassifyProvider}
           noiseCount={noiseTrash.counts}
           noiseLoading={noiseTrash.isLoading}
           noiseDeleting={noiseTrash.isDeleting}

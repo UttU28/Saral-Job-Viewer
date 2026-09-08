@@ -2,10 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   applyEmailLabels,
   classifyOneEmail,
+  fetchClassifyAiStatus,
   fetchGmailStatus,
   fetchUnreadPrimaryEmails,
   MailApiError,
   type ApplyLabelsResult,
+  type ClassifyAiStatus,
+  type ClassifyProvider,
   type EmailCategory,
   type GmailStatus,
   type UnreadEmail,
@@ -13,6 +16,7 @@ import {
 
 /** Keep at most this many classify-one requests in flight. */
 const CLASSIFY_CONCURRENCY = 8;
+const PROVIDER_STORAGE_KEY = "sjv-email-classify-provider";
 
 export type EmailReviewRow = UnreadEmail & {
   category: EmailCategory;
@@ -32,11 +36,25 @@ type UnreadEmailsState = {
   categorizeProgress: { done: number; total: number } | null;
   error: string | null;
   lastApply: ApplyLabelsResult | null;
+  classifyProvider: ClassifyProvider;
+  classifyAiStatus: ClassifyAiStatus | null;
+  effectiveProvider: ClassifyProvider;
+  setClassifyProvider: (provider: ClassifyProvider) => void;
   refresh: () => Promise<void>;
   categorizeAll: () => Promise<void>;
   setRowCategory: (messageId: string, category: EmailCategory) => void;
   submitLabels: () => Promise<ApplyLabelsResult | null>;
 };
+
+function readStoredProvider(): ClassifyProvider | null {
+  try {
+    const value = localStorage.getItem(PROVIDER_STORAGE_KEY);
+    if (value === "openai" || value === "regex" || value === "local") return value;
+  } catch {
+    // ignore
+  }
+  return null;
+}
 
 function toReviewRow(email: UnreadEmail): EmailReviewRow {
   return {
@@ -60,6 +78,45 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   );
   const [error, setError] = useState<string | null>(null);
   const [lastApply, setLastApply] = useState<ApplyLabelsResult | null>(null);
+  const [classifyProvider, setClassifyProviderState] = useState<ClassifyProvider>(
+    () => readStoredProvider() ?? "local",
+  );
+  const [classifyAiStatus, setClassifyAiStatus] = useState<ClassifyAiStatus | null>(null);
+
+  const effectiveProvider: ClassifyProvider = (() => {
+    if (classifyProvider === "regex") return "regex";
+    if (classifyProvider === "openai") {
+      if (classifyAiStatus && !classifyAiStatus.openai.available) return "regex";
+      return "openai";
+    }
+    if (classifyAiStatus && !classifyAiStatus.local.available) return "regex";
+    return "local";
+  })();
+
+  const setClassifyProvider = useCallback((provider: ClassifyProvider) => {
+    setClassifyProviderState(provider);
+    try {
+      localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const refreshAiStatus = useCallback(async () => {
+    try {
+      setClassifyAiStatus(await fetchClassifyAiStatus());
+    } catch {
+      setClassifyAiStatus((prev) =>
+        prev ?? {
+          local: { available: false, enabled: true, label: "Local AI", error: "status unavailable" },
+          openai: { available: false, enabled: true, label: "OpenAI", error: "status unavailable" },
+          regex: { available: true, enabled: true, label: "Regex" },
+          recommended: "regex",
+          running: "regex",
+        },
+      );
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -121,7 +178,7 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       );
 
       try {
-        const result = await classifyOneEmail(messageId, true);
+        const result = await classifyOneEmail(messageId, effectiveProvider !== "regex", effectiveProvider);
         setRows((prev) =>
           prev.map((row) =>
             row.id === messageId
@@ -164,7 +221,7 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     await Promise.all(workers);
 
     setIsCategorizing(false);
-  }, [rows]);
+  }, [rows, effectiveProvider]);
 
   const submitLabels = useCallback(async (): Promise<ApplyLabelsResult | null> => {
     const toApply = rows.filter(
@@ -250,7 +307,20 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   useEffect(() => {
     if (!enabled) return;
     void refresh();
-  }, [enabled, refresh]);
+    void refreshAiStatus();
+    const timer = window.setInterval(() => {
+      void refreshAiStatus();
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [enabled, refresh, refreshAiStatus]);
+
+  useEffect(() => {
+    if (!classifyAiStatus) return;
+    if (readStoredProvider()) return;
+    if (classifyAiStatus.recommended !== classifyProvider) {
+      setClassifyProvider(classifyAiStatus.recommended);
+    }
+  }, [classifyAiStatus, classifyProvider, setClassifyProvider]);
 
   return {
     gmailStatus,
@@ -262,6 +332,10 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     categorizeProgress,
     error,
     lastApply,
+    classifyProvider,
+    classifyAiStatus,
+    effectiveProvider,
+    setClassifyProvider,
     refresh,
     categorizeAll,
     setRowCategory,

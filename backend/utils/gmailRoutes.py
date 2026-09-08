@@ -38,6 +38,7 @@ from utils.gmailLabels import listGmailLabels
 from utils.gmailResumeStore import deleteResume, getResumeInfo, loadResumeAttachment, loadResumeDownload, saveResume
 from utils.gmailSentRecipients import fetchSentRecipientEmails
 from utils.gmailService import AttachmentInput, MailPayload, createDraft, sendMessage
+from utils.localLlm import classifyProviderStatus
 
 gmailRouter = APIRouter(tags=["gmail"])
 
@@ -48,6 +49,7 @@ class ClassifyOneBody(BaseModel):
 
     messageId: str = Field(min_length=1)
     useLlm: bool = True
+    provider: str | None = None
 
 
 class ClassifyBatchBody(BaseModel):
@@ -55,6 +57,7 @@ class ClassifyBatchBody(BaseModel):
 
     messageIds: list[str] = Field(min_length=1)
     useLlm: bool = True
+    provider: str | None = None
 
 
 class ApplyLabelItem(BaseModel):
@@ -301,6 +304,12 @@ def getGmailLabels() -> dict:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
+@gmailRouter.get("/api/gmail/inbox/ai-status")
+def getGmailClassifyAiStatus() -> dict:
+    """Probe Local AI and OpenAI so the Emails UI can show which backend is live."""
+    return classifyProviderStatus()
+
+
 @gmailRouter.post("/api/gmail/inbox/clean")
 def postGmailInboxClean(
     maxResults: int = 100,
@@ -308,6 +317,7 @@ def postGmailInboxClean(
     archive: bool = True,
     markRead: bool = True,
     useLlm: bool = True,
+    provider: str | None = None,
 ) -> dict:
     """
     Categorize unread Primary job-application mail via local LLM (+ regex fallback):
@@ -332,6 +342,7 @@ def postGmailInboxClean(
             archive=archive,
             markRead=markRead,
             useLlm=useLlm,
+            provider=provider,
         )
     except HTTPException:
         raise
@@ -344,7 +355,7 @@ def postGmailClassifyOne(body: ClassifyOneBody) -> dict:
     """Classify a single unread email (LLM when enabled). Does not change Gmail labels."""
     _requireConnectedStatus()
     try:
-        return classifyOneUnreadEmail(body.messageId, useLlm=body.useLlm)
+        return classifyOneUnreadEmail(body.messageId, useLlm=body.useLlm, provider=body.provider)
     except HTTPException:
         raise
     except Exception as exc:
@@ -362,7 +373,7 @@ def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
         raise HTTPException(status_code=422, detail="at most 3 messageIds per batch")
 
     try:
-        results = classifyManyUnreadEmails(messageIds, useLlm=body.useLlm)
+        results = classifyManyUnreadEmails(messageIds, useLlm=body.useLlm, provider=body.provider)
         return {"count": len(results), "results": results}
     except HTTPException:
         raise

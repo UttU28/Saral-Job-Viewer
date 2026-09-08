@@ -18,9 +18,10 @@ from utils.gmailLabels import (
     resolveCleanLabels,
 )
 from utils.localLlm import (
+    ClassifyProvider,
     chatCompletions,
     extractJsonObject,
-    localLlmEnabled,
+    resolveClassifyProvider,
 )
 
 HEADER_NAMES = ("From", "Subject", "Date", "To", "Reply-To")
@@ -809,8 +810,6 @@ def _truncate(text: str, limit: int = 1800) -> str:
 
 
 def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
-    if not localLlmEnabled():
-        return False
     # High-confidence fake-reply spam: do not let the LLM relabel it.
     if regexResult.get("category") == "replySpam":
         return False
@@ -934,7 +933,7 @@ def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
     return llmResult
 
 
-def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
+def classifyBatchWithLlm(items: list[dict], *, provider: ClassifyProvider = "local") -> dict[str, dict]:
     """
     items: [{id, fromEmail, subject, text}]
     returns id -> classification dict
@@ -970,6 +969,8 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
         + "\n\n".join(lines)
     )
 
+    if provider not in {"local", "openai"}:
+        raise RuntimeError("LLM provider must be local or openai.")
     raw = chatCompletions(
         [
             {"role": "system", "content": LLM_SYSTEM_PROMPT},
@@ -977,6 +978,7 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
         ],
         temperature=0.0,
         maxTokens=min(1600, 120 * len(items) + 300),
+        provider=provider,
     )
     parsed = extractJsonObject(raw)
     rows = parsed.get("results") if isinstance(parsed, dict) else parsed
@@ -997,21 +999,24 @@ def classifyBatchWithLlm(items: list[dict]) -> dict[str, dict]:
             f"llm:{reason}",
             isCompany=True,
             isJobRelated=category is not None or bool(row.get("isJobRelated")),
-            source="llm",
+            source=provider,
         )
     return byId
 
 
-def classifyJobApplicationText(text: str, *, fromEmail: str = "", useLlm: bool = False) -> dict:
+def classifyJobApplicationText(
+    text: str,
+    *,
+    fromEmail: str = "",
+    useLlm: bool = False,
+    provider: str | None = None,
+) -> dict:
     """
     Fast path for list preview (regex). Set useLlm=True for single-message LLM.
     """
     regexResult = classifyWithRegex(text, fromEmail=fromEmail)
-    if not useLlm:
-        return regexResult
-
-    # For explicit one-by-one classify, always try LLM when enabled.
-    if not localLlmEnabled():
+    resolved = resolveClassifyProvider(provider) if useLlm else "regex"
+    if resolved == "regex":
         return regexResult
 
     try:
@@ -1023,7 +1028,8 @@ def classifyJobApplicationText(text: str, *, fromEmail: str = "", useLlm: bool =
                     "subject": "",
                     "text": text,
                 }
-            ]
+            ],
+            provider=resolved,
         )
         llmResult = batch.get("single")
         if llmResult is None:
@@ -1035,21 +1041,33 @@ def classifyJobApplicationText(text: str, *, fromEmail: str = "", useLlm: bool =
         return fallback
 
 
-def classifyOneUnreadEmail(messageId: str, *, useLlm: bool = True) -> dict:
+def classifyOneUnreadEmail(
+    messageId: str,
+    *,
+    useLlm: bool = True,
+    provider: str | None = None,
+) -> dict:
     """Load one Gmail message and classify it (LLM preferred)."""
-    results = classifyManyUnreadEmails([messageId], useLlm=useLlm)
+    results = classifyManyUnreadEmails([messageId], useLlm=useLlm, provider=provider)
     if not results:
         raise RuntimeError(f"Failed to classify message {messageId}")
     return results[0]
 
 
-def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> list[dict]:
+def classifyManyUnreadEmails(
+    messageIds: list[str],
+    *,
+    useLlm: bool = True,
+    provider: str | None = None,
+) -> list[dict]:
     """
     Load and classify several Gmail messages in one LLM call (recommended batch size: 3).
     Falls back to regex per message if LLM is disabled or fails.
     """
     if not messageIds:
         return []
+
+    resolved: ClassifyProvider = resolveClassifyProvider(provider) if useLlm else "regex"
 
     gmail = getGmailService()
     loaded: list[dict] = []
@@ -1064,7 +1082,7 @@ def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> l
         item["classification"] = regexResult
         loaded.append(item)
 
-    if useLlm and localLlmEnabled():
+    if resolved in {"local", "openai"}:
         try:
             llmResults = classifyBatchWithLlm(
                 [
@@ -1075,7 +1093,8 @@ def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> l
                         "text": item.get("text") or "",
                     }
                     for item in loaded
-                ]
+                ],
+                provider=resolved,
             )
             for item in loaded:
                 llmResult = llmResults.get(item["id"])
@@ -1106,6 +1125,7 @@ def classifyManyUnreadEmails(messageIds: list[str], *, useLlm: bool = True) -> l
                 "labelName": classification.get("labelName"),
                 "reason": classification.get("reason"),
                 "source": classification.get("source"),
+                "provider": classification.get("source") or resolved,
                 "isCompany": classification.get("isCompany"),
                 "isJobRelated": classification.get("isJobRelated"),
             }
@@ -1303,8 +1323,14 @@ def _loadMessageForClassify(gmail, msgId: str) -> dict:
     }
 
 
-def _classifyLoadedMessages(items: list[dict], *, forceLlm: bool = True) -> None:
+def _classifyLoadedMessages(
+    items: list[dict],
+    *,
+    forceLlm: bool = True,
+    provider: ClassifyProvider = "local",
+) -> None:
     pendingLlm: list[dict] = []
+    useLlm = forceLlm and provider in {"local", "openai"}
 
     for item in items:
         regexResult = classifyWithRegex(
@@ -1314,7 +1340,7 @@ def _classifyLoadedMessages(items: list[dict], *, forceLlm: bool = True) -> None
             subject=item.get("subject") or "",
         )
         item["classification"] = regexResult
-        if forceLlm and _shouldAskLlm(regexResult, item.get("text") or "", item.get("fromEmail") or ""):
+        if useLlm and _shouldAskLlm(regexResult, item.get("text") or "", item.get("fromEmail") or ""):
             pendingLlm.append(
                 {
                     "id": item["id"],
@@ -1332,7 +1358,7 @@ def _classifyLoadedMessages(items: list[dict], *, forceLlm: bool = True) -> None
     for start in range(0, len(pendingLlm), batchSize):
         chunk = pendingLlm[start : start + batchSize]
         try:
-            llmResults = classifyBatchWithLlm(chunk)
+            llmResults = classifyBatchWithLlm(chunk, provider=provider)
         except Exception as exc:
             for item in items:
                 if any(row["id"] == item["id"] for row in chunk):
@@ -1358,6 +1384,7 @@ def cleanUnreadPrimaryInbox(
     archive: bool = True,
     markRead: bool = True,
     useLlm: bool = True,
+    provider: str | None = None,
 ) -> dict:
     """
     Scan unread Primary mail, label rejections as BaharMil, application
@@ -1395,11 +1422,12 @@ def cleanUnreadPrimaryInbox(
             counts["errors"] += 1
             results.append({"id": msgId, "error": str(exc), "action": "error"})
 
-    _classifyLoadedMessages(loaded, forceLlm=useLlm and localLlmEnabled())
+    resolved = resolveClassifyProvider(provider) if useLlm else "regex"
+    _classifyLoadedMessages(loaded, forceLlm=resolved != "regex", provider=resolved)
 
     for item in loaded:
         classification = item.get("classification") or {}
-        if classification.get("source") == "llm":
+        if classification.get("source") in {"llm", "local", "openai"}:
             counts["llmUsed"] += 1
         else:
             counts["regexUsed"] += 1
@@ -1462,7 +1490,8 @@ def cleanUnreadPrimaryInbox(
         "dryRun": dryRun,
         "archive": archive,
         "markRead": markRead,
-        "useLlm": useLlm and localLlmEnabled(),
+        "useLlm": resolved != "regex",
+        "provider": resolved,
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
         "labels": {
             name: {"id": meta["id"], "name": meta["name"], "created": meta["created"]}

@@ -71,6 +71,25 @@ export type EmailCategory =
   | "replySpam"
   | "none";
 
+export type ClassifyProvider = "local" | "openai" | "regex";
+
+export type ClassifyAiProbe = {
+  available: boolean;
+  enabled?: boolean;
+  baseUrl?: string;
+  model?: string;
+  label?: string;
+  error?: string;
+};
+
+export type ClassifyAiStatus = {
+  local: ClassifyAiProbe;
+  openai: ClassifyAiProbe;
+  regex: ClassifyAiProbe;
+  recommended: ClassifyProvider;
+  running: ClassifyProvider;
+};
+
 export type ClassifyOneResult = {
   id: string;
   threadId?: string | null;
@@ -82,6 +101,7 @@ export type ClassifyOneResult = {
   labelName?: string | null;
   reason?: string | null;
   source?: string | null;
+  provider?: ClassifyProvider | string | null;
 };
 
 export type ApplyLabelsResult = {
@@ -225,6 +245,7 @@ function normalizeClassifyOne(raw: Record<string, unknown>): ClassifyOneResult {
     labelName: (raw.labelName ?? raw.label_name) as string | null | undefined,
     reason: typeof raw.reason === "string" ? raw.reason : null,
     source: typeof raw.source === "string" ? raw.source : null,
+    provider: typeof raw.provider === "string" ? raw.provider : null,
   };
 }
 
@@ -455,11 +476,42 @@ export async function fetchGmailLabels(): Promise<GmailLabelsResult> {
   };
 }
 
-export async function classifyOneEmail(messageId: string, useLlm = true): Promise<ClassifyOneResult> {
+export async function fetchClassifyAiStatus(): Promise<ClassifyAiStatus> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/ai-status"));
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const probe = (value: unknown): ClassifyAiProbe => {
+    const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    return {
+      available: Boolean(row.available),
+      enabled: row.enabled == null ? undefined : Boolean(row.enabled),
+      baseUrl: typeof row.baseUrl === "string" ? row.baseUrl : undefined,
+      model: typeof row.model === "string" ? row.model : undefined,
+      label: typeof row.label === "string" ? row.label : undefined,
+      error: typeof row.error === "string" ? row.error : undefined,
+    };
+  };
+  const recommended = raw.recommended === "openai" || raw.recommended === "regex" ? raw.recommended : "local";
+  return {
+    local: probe(raw.local),
+    openai: probe(raw.openai),
+    regex: probe(raw.regex),
+    recommended,
+    running: raw.running === "openai" || raw.running === "regex" ? raw.running : recommended,
+  };
+}
+
+export async function classifyOneEmail(
+  messageId: string,
+  useLlm = true,
+  provider: ClassifyProvider = "local",
+): Promise<ClassifyOneResult> {
   const response = await fetch(apiUrl("/api/gmail/inbox/classify-one"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messageId, useLlm }),
+    body: JSON.stringify({ messageId, useLlm, provider }),
   });
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
@@ -470,11 +522,12 @@ export async function classifyOneEmail(messageId: string, useLlm = true): Promis
 export async function classifyEmailBatch(
   messageIds: string[],
   useLlm = true,
+  provider: ClassifyProvider = "local",
 ): Promise<ClassifyOneResult[]> {
   const response = await fetch(apiUrl("/api/gmail/inbox/classify-batch"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messageIds, useLlm }),
+    body: JSON.stringify({ messageIds, useLlm, provider }),
   });
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);

@@ -3,12 +3,17 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+from typing import Any, Literal
 
 import requests
 
 DEFAULT_LLM_BASE_URL = "http://12.216.3.116:8000/v1"
 DEFAULT_LLM_MODEL = "/root/.cache/huggingface/Gemma-4-31B-IT-NVFP4"
+DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+LlmProvider = Literal["local", "openai"]
+ClassifyProvider = Literal["local", "openai", "regex"]
 
 
 def localLlmBaseUrl() -> str:
@@ -31,30 +36,173 @@ def localLlmTimeoutSeconds() -> float:
         return 120.0
 
 
+def localLlmApiKey() -> str:
+    key = (os.getenv("LOCAL_LLM_API_KEY") or "").strip()
+    if not key or key.lower() in {"not-needed", "none", "n/a"}:
+        return ""
+    return key
+
+
+def openaiApiKey() -> str:
+    return (os.getenv("OPENAI_API_KEY") or "").strip()
+
+
+def openaiEnabled() -> bool:
+    return bool(openaiApiKey())
+
+
+def openaiModel() -> str:
+    return (os.getenv("OPENAI_MODEL") or DEFAULT_OPENAI_MODEL).strip()
+
+
+def openaiBaseUrl() -> str:
+    return (os.getenv("OPENAI_BASE_URL") or DEFAULT_OPENAI_BASE_URL).strip().rstrip("/")
+
+
+def openaiTimeoutSeconds() -> float:
+    try:
+        return max(5.0, float(os.getenv("OPENAI_TIMEOUT_SECONDS") or "60"))
+    except ValueError:
+        return 60.0
+
+
+def _headersFor(provider: LlmProvider) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if provider == "openai":
+        key = openaiApiKey()
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        return headers
+    localKey = localLlmApiKey()
+    if localKey:
+        headers["Authorization"] = f"Bearer {localKey}"
+    return headers
+
+
 def chatCompletions(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.0,
     maxTokens: int = 512,
+    provider: LlmProvider = "local",
 ) -> str:
-    url = f"{localLlmBaseUrl()}/chat/completions"
+    if provider == "openai":
+        if not openaiEnabled():
+            raise RuntimeError("OpenAI API key is not configured.")
+        url = f"{openaiBaseUrl()}/chat/completions"
+        model = openaiModel()
+        timeout = openaiTimeoutSeconds()
+    else:
+        url = f"{localLlmBaseUrl()}/chat/completions"
+        model = localLlmModel()
+        timeout = localLlmTimeoutSeconds()
+
     payload = {
-        "model": localLlmModel(),
+        "model": model,
         "messages": messages,
         "temperature": temperature,
         "max_tokens": maxTokens,
     }
-    response = requests.post(url, json=payload, timeout=localLlmTimeoutSeconds())
+    response = requests.post(url, json=payload, headers=_headersFor(provider), timeout=timeout)
     response.raise_for_status()
     data = response.json()
     choices = data.get("choices") or []
     if not choices:
-        raise RuntimeError("Local LLM returned no choices.")
+        raise RuntimeError(f"{provider} LLM returned no choices.")
     message = choices[0].get("message") or {}
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("Local LLM returned empty content.")
+        raise RuntimeError(f"{provider} LLM returned empty content.")
     return content.strip()
+
+
+def probeLocalLlm() -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "available": False,
+        "enabled": localLlmEnabled(),
+        "baseUrl": localLlmBaseUrl(),
+        "model": localLlmModel(),
+        "label": "Local AI",
+    }
+    if not localLlmEnabled():
+        payload["error"] = "LOCAL_LLM_ENABLED is off"
+        return payload
+    try:
+        response = requests.get(
+            f"{localLlmBaseUrl()}/models",
+            headers=_headersFor("local"),
+            timeout=3.0,
+        )
+        response.raise_for_status()
+        payload["available"] = True
+    except Exception as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def probeOpenAi() -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "available": False,
+        "enabled": openaiEnabled(),
+        "baseUrl": openaiBaseUrl(),
+        "model": openaiModel(),
+        "label": "OpenAI",
+    }
+    if not openaiEnabled():
+        payload["error"] = "OPENAI_API_KEY is not set"
+        return payload
+    try:
+        response = requests.get(
+            f"{openaiBaseUrl()}/models",
+            headers=_headersFor("openai"),
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        payload["available"] = True
+    except Exception as exc:
+        payload["error"] = str(exc)
+    return payload
+
+
+def classifyProviderStatus() -> dict[str, Any]:
+    local = probeLocalLlm()
+    openai = probeOpenAi()
+    regex = {"available": True, "enabled": True, "label": "Regex"}
+    if local.get("available"):
+        recommended: ClassifyProvider = "local"
+    elif openai.get("available"):
+        recommended = "openai"
+    else:
+        recommended = "regex"
+    return {
+        "local": local,
+        "openai": openai,
+        "regex": regex,
+        "recommended": recommended,
+        "running": recommended,
+    }
+
+
+def normalizeClassifyProvider(value: str | None) -> ClassifyProvider:
+    raw = (value or "").strip().lower()
+    if raw in {"openai", "gpt", "cloud"}:
+        return "openai"
+    if raw in {"regex", "offline", "none"}:
+        return "regex"
+    if raw in {"local", "internal", "vllm", "gemma"}:
+        return "local"
+    return "local"
+
+
+def resolveClassifyProvider(requested: str | None) -> ClassifyProvider:
+    wanted = normalizeClassifyProvider(requested)
+    if wanted == "regex":
+        return "regex"
+    if wanted == "openai":
+        return "openai" if openaiEnabled() else "regex"
+    if not localLlmEnabled():
+        return "regex"
+    return "local"
 
 
 def extractJsonObject(text: str) -> Any:

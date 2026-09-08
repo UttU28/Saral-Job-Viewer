@@ -1,7 +1,8 @@
-import { Check, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2 } from "lucide-react";
+import { Check, Cpu, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +18,8 @@ import type { EmailReviewRow } from "@/hooks/use-unread-emails";
 import {
   startGmailAuth,
   type ApplyLabelsResult,
+  type ClassifyAiStatus,
+  type ClassifyProvider,
   type EmailCategory,
   type GmailStatus,
   type NoiseCategoryCounts,
@@ -40,6 +43,10 @@ type PlaceTrackEmailsPanelProps = {
   onCategorize: () => Promise<void>;
   onSetCategory: (messageId: string, category: EmailCategory) => void;
   onSubmit: () => Promise<ApplyLabelsResult | null>;
+  classifyProvider?: ClassifyProvider;
+  effectiveProvider?: ClassifyProvider;
+  classifyAiStatus?: ClassifyAiStatus | null;
+  onClassifyProviderChange?: (provider: ClassifyProvider) => void;
   noiseCount?: NoiseCategoryCounts | null;
   noiseLoading?: boolean;
   noiseDeleting?: boolean;
@@ -68,10 +75,12 @@ function CategoryBreakdownBar({
   rows,
   isCategorizing,
   categorizeProgress,
+  usingProvider,
 }: {
   rows: EmailReviewRow[];
   isCategorizing: boolean;
   categorizeProgress: { done: number; total: number } | null;
+  usingProvider?: ClassifyProvider;
 }) {
   const counts = useMemo(() => {
     const next: Record<string, number> = {
@@ -113,7 +122,10 @@ function CategoryBreakdownBar({
         {isCategorizing && categorizeProgress ? (
           <p className="text-[11px] tabular-nums text-muted-foreground">
             Running {categorizeProgress.done}/{categorizeProgress.total}
+            {usingProvider ? ` · ${providerLabel(usingProvider)}` : ""}
           </p>
+        ) : usingProvider ? (
+          <p className="text-[11px] text-muted-foreground">Ready with {providerLabel(usingProvider)}</p>
         ) : null}
       </div>
 
@@ -155,6 +167,97 @@ function CategoryBreakdownBar({
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function providerLabel(provider: ClassifyProvider | string | null | undefined): string {
+  const value = (provider || "").toLowerCase();
+  if (value === "openai" || value === "gpt") return "OpenAI";
+  if (value === "regex") return "Regex";
+  if (value === "local" || value === "llm") return "Local AI";
+  if (value === "user") return "Manual";
+  return "Local AI";
+}
+
+function ClassifyProviderControls({
+  selected,
+  effective,
+  status,
+  disabled,
+  onChange,
+}: {
+  selected: ClassifyProvider;
+  effective: ClassifyProvider;
+  status: ClassifyAiStatus | null;
+  disabled: boolean;
+  onChange: (provider: ClassifyProvider) => void;
+}) {
+  const localUp = status?.local.available ?? false;
+  const openaiUp = status?.openai.available ?? false;
+  const fallback = selected !== effective;
+
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+      <ToggleGroup
+        type="single"
+        size="sm"
+        variant="outline"
+        value={selected}
+        disabled={disabled}
+        onValueChange={(value) => {
+          if (value === "local" || value === "openai" || value === "regex") onChange(value);
+        }}
+        className="grid w-full grid-cols-3 gap-0 rounded-lg border border-border/70 bg-background/60 p-0.5 sm:max-w-[360px]"
+        aria-label="Categorize with"
+      >
+        <ToggleGroupItem
+          value="local"
+          className="h-9 min-w-0 w-full px-1 text-[11px] sm:h-8 sm:text-xs"
+          title="Internal model at 12.216.3.116"
+        >
+          Local AI
+        </ToggleGroupItem>
+        <ToggleGroupItem value="openai" className="h-9 min-w-0 w-full px-1 text-[11px] sm:h-8 sm:text-xs">
+          OpenAI
+        </ToggleGroupItem>
+        <ToggleGroupItem value="regex" className="h-9 min-w-0 w-full px-1 text-[11px] sm:h-8 sm:text-xs">
+          Regex
+        </ToggleGroupItem>
+      </ToggleGroup>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <span
+          className={cn(
+            "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium",
+            effective === "local" && "border-emerald-500/40 bg-emerald-500/10 text-emerald-300",
+            effective === "openai" && "border-sky-500/40 bg-sky-500/10 text-sky-300",
+            effective === "regex" && "border-amber-500/40 bg-amber-500/10 text-amber-200",
+          )}
+          title={
+            effective === "local"
+              ? status?.local.model || "Local AI"
+              : effective === "openai"
+                ? status?.openai.model || "OpenAI"
+                : "Keyword / regex fallback"
+          }
+        >
+          <span
+            className={cn(
+              "h-1.5 w-1.5 shrink-0 rounded-full",
+              effective === "local" && "bg-emerald-400",
+              effective === "openai" && "bg-sky-400",
+              effective === "regex" && "bg-amber-400",
+            )}
+          />
+          {effective === "local" ? <Cpu className="h-3 w-3 shrink-0" /> : <WandSparkles className="h-3 w-3 shrink-0" />}
+          <span className="truncate">Using {providerLabel(effective)}</span>
+        </span>
+        <span className="text-[11px] leading-snug text-muted-foreground">
+          {fallback
+            ? `${providerLabel(selected)} offline — ${providerLabel(effective)}`
+            : `Local ${localUp ? "online" : "offline"} · OpenAI ${openaiUp ? "online" : "offline"}`}
+        </span>
+      </div>
     </div>
   );
 }
@@ -211,6 +314,10 @@ export function PlaceTrackEmailsPanel({
   onCategorize,
   onSetCategory,
   onSubmit,
+  classifyProvider = "local",
+  effectiveProvider = "local",
+  classifyAiStatus = null,
+  onClassifyProviderChange,
   noiseCount = null,
   noiseLoading = false,
   noiseDeleting = false,
@@ -273,20 +380,33 @@ export function PlaceTrackEmailsPanel({
 
   return (
     <div className="mx-auto w-full max-w-[1100px] px-3 py-4 sm:px-6 sm:py-6">
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">Emails</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            Clean Primary with labels · wipe Promotions & Social
-            {gmailStatus?.email ? ` · ${gmailStatus.email}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="font-display text-xl font-semibold tracking-tight sm:text-2xl">Emails</h1>
+            <p className="mt-0.5 break-words text-sm text-muted-foreground">
+              Clean Primary with labels · wipe Promotions & Social
+              {gmailStatus?.email ? ` · ${gmailStatus.email}` : ""}
+            </p>
+          </div>
           {fetchedAt ? (
-            <span className="hidden text-xs text-muted-foreground sm:inline">
+            <span className="text-xs text-muted-foreground">
               Updated {new Date(fetchedAt).toLocaleTimeString()}
             </span>
           ) : null}
+        </div>
+
+        {onClassifyProviderChange ? (
+          <ClassifyProviderControls
+            selected={classifyProvider}
+            effective={effectiveProvider}
+            status={classifyAiStatus}
+            disabled={isLoading || isCategorizing || isSubmitting}
+            onChange={onClassifyProviderChange}
+          />
+        ) : null}
+
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             variant="outline"
@@ -299,7 +419,7 @@ export function PlaceTrackEmailsPanel({
             ) : (
               <RefreshCw className="h-4 w-4" />
             )}
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           <Button
             size="sm"
@@ -310,7 +430,7 @@ export function PlaceTrackEmailsPanel({
           >
             {isCategorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isCategorizing && categorizeProgress
-              ? `Categorizing ${categorizeProgress.done}/${categorizeProgress.total}`
+              ? `${categorizeProgress.done}/${categorizeProgress.total}`
               : "Categorize"}
           </Button>
           <Button
@@ -374,6 +494,7 @@ export function PlaceTrackEmailsPanel({
           rows={rows}
           isCategorizing={isCategorizing}
           categorizeProgress={categorizeProgress}
+          usingProvider={effectiveProvider}
         />
       ) : null}
 
@@ -467,8 +588,8 @@ export function PlaceTrackEmailsPanel({
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{row.snippet}</p>
                 ) : null}
                 {row.reason ? (
-                  <p className="mt-1 truncate text-[11px] text-muted-foreground/90">
-                    {row.source ? `${row.source}: ` : ""}
+                  <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
+                    {row.source ? `${providerLabel(row.source)}: ` : ""}
                     {row.reason}
                   </p>
                 ) : null}
