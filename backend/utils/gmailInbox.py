@@ -7,6 +7,8 @@ from utils.gmailAuth import getGmailService
 
 UNREAD_PRIMARY_QUERY = "is:unread in:inbox category:primary"
 HEADER_NAMES = ("From", "Subject", "Date", "To")
+UNREAD_PAGE_SIZE = 400
+GMAIL_LIST_MAX = 500
 
 
 def _headerMap(payload: dict) -> dict[str, str]:
@@ -31,6 +33,28 @@ def _parseDate(value: str) -> str | None:
         return None
 
 
+def _listUnreadPage(gmail, *, pageSize: int, pageToken: str | None = None) -> dict:
+    size = max(1, min(int(pageSize), GMAIL_LIST_MAX))
+    kwargs: dict = {
+        "userId": "me",
+        "q": UNREAD_PRIMARY_QUERY,
+        "maxResults": size,
+    }
+    if pageToken:
+        kwargs["pageToken"] = pageToken
+    response = gmail.users().messages().list(**kwargs).execute()
+    messageIds: list[str] = []
+    for item in response.get("messages") or []:
+        msgId = item.get("id")
+        if msgId:
+            messageIds.append(msgId)
+    return {
+        "ids": messageIds,
+        "nextPageToken": response.get("nextPageToken"),
+        "resultSizeEstimate": int(response.get("resultSizeEstimate") or 0),
+    }
+
+
 def _listUnreadMessageIds(gmail, *, maxResults: int = 100) -> list[str]:
     messageIds: list[str] = []
     pageToken: str | None = None
@@ -39,65 +63,104 @@ def _listUnreadMessageIds(gmail, *, maxResults: int = 100) -> list[str]:
         remaining = maxResults - len(messageIds)
         if remaining <= 0:
             break
-
-        response = (
-            gmail.users()
-            .messages()
-            .list(
-                userId="me",
-                q=UNREAD_PRIMARY_QUERY,
-                maxResults=min(remaining, 100),
-                pageToken=pageToken,
-            )
-            .execute()
-        )
-        for item in response.get("messages") or []:
-            msgId = item.get("id")
-            if msgId:
-                messageIds.append(msgId)
-                if len(messageIds) >= maxResults:
-                    return messageIds
-
-        pageToken = response.get("nextPageToken")
+        page = _listUnreadPage(gmail, pageSize=min(remaining, 100), pageToken=pageToken)
+        messageIds.extend(page["ids"])
+        if len(messageIds) >= maxResults:
+            return messageIds[:maxResults]
+        pageToken = page.get("nextPageToken")
         if not pageToken:
             break
 
     return messageIds
 
 
+def _loadUnreadMetadata(gmail, msgId: str) -> dict:
+    message = (
+        gmail.users()
+        .messages()
+        .get(
+            userId="me",
+            id=msgId,
+            format="metadata",
+            metadataHeaders=list(HEADER_NAMES),
+        )
+        .execute()
+    )
+    headers = _headerMap(message.get("payload") or {})
+    fromName, fromEmail = _parseFrom(headers.get("from", ""))
+    return {
+        "id": msgId,
+        "threadId": message.get("threadId"),
+        "fromName": fromName or None,
+        "fromEmail": fromEmail or None,
+        "subject": (headers.get("subject") or "(no subject)").strip(),
+        "snippet": (message.get("snippet") or "").strip(),
+        "date": _parseDate(headers.get("date", "")),
+        "internalDate": message.get("internalDate"),
+        "labelIds": message.get("labelIds") or [],
+    }
+
+
+def countUnreadPrimaryEmails(*, pageSize: int = UNREAD_PAGE_SIZE) -> dict:
+    """Cheap total for pagination. Gmail resultSizeEstimate (not a full scan)."""
+    size = max(1, min(int(pageSize), GMAIL_LIST_MAX))
+    gmail = getGmailService()
+    page = _listUnreadPage(gmail, pageSize=1, pageToken=None)
+    estimate = int(page.get("resultSizeEstimate") or 0)
+    if estimate < 1 and page["ids"]:
+        estimate = 1
+    totalPages = (estimate + size - 1) // size if estimate else 0
+    return {
+        "query": UNREAD_PRIMARY_QUERY,
+        "fetchedAt": datetime.now(timezone.utc).isoformat(),
+        "total": estimate,
+        "totalIsEstimate": True,
+        "pageSize": size,
+        "totalPages": totalPages,
+    }
+
+
+def fetchUnreadPrimaryPage(
+    *,
+    pageSize: int = UNREAD_PAGE_SIZE,
+    pageToken: str | None = None,
+    idsOnly: bool = False,
+) -> dict:
+    """One Gmail list page (up to 400). idsOnly skips message.get for token walking."""
+    size = max(1, min(int(pageSize), GMAIL_LIST_MAX))
+    gmail = getGmailService()
+    listed = _listUnreadPage(gmail, pageSize=size, pageToken=pageToken or None)
+    emails: list[dict] = []
+    if not idsOnly:
+        for msgId in listed["ids"]:
+            emails.append(_loadUnreadMetadata(gmail, msgId))
+    estimate = int(listed.get("resultSizeEstimate") or 0)
+    if estimate < len(listed["ids"]):
+        estimate = len(listed["ids"])
+    nextToken = listed.get("nextPageToken")
+    totalPages = (estimate + size - 1) // size if estimate else (1 if listed["ids"] else 0)
+    if nextToken and totalPages < 2:
+        totalPages = 2
+    return {
+        "query": UNREAD_PRIMARY_QUERY,
+        "fetchedAt": datetime.now(timezone.utc).isoformat(),
+        "count": len(emails) if not idsOnly else len(listed["ids"]),
+        "emails": emails,
+        "ids": listed["ids"],
+        "nextPageToken": nextToken,
+        "pageSize": size,
+        "total": estimate,
+        "totalIsEstimate": True,
+        "totalPages": totalPages,
+        "hasMore": bool(nextToken),
+    }
+
+
 def fetchUnreadPrimaryEmails(*, maxResults: int = 1000) -> dict:
     """List unread Primary inbox messages (metadata only — no LLM)."""
     gmail = getGmailService()
     messageIds = _listUnreadMessageIds(gmail, maxResults=max(1, min(maxResults, 1000)))
-    emails: list[dict] = []
-
-    for msgId in messageIds:
-        message = (
-            gmail.users()
-            .messages()
-            .get(
-                userId="me",
-                id=msgId,
-                format="metadata",
-                metadataHeaders=list(HEADER_NAMES),
-            )
-            .execute()
-        )
-        headers = _headerMap(message.get("payload") or {})
-        fromName, fromEmail = _parseFrom(headers.get("from", ""))
-        emails.append(
-            {
-                "id": msgId,
-                "threadId": message.get("threadId"),
-                "fromName": fromName or None,
-                "fromEmail": fromEmail or None,
-                "subject": (headers.get("subject") or "(no subject)").strip(),
-                "snippet": (message.get("snippet") or "").strip(),
-                "date": _parseDate(headers.get("date", "")),
-                "internalDate": message.get("internalDate"),
-                "labelIds": message.get("labelIds") or [],
-            }
-        )
+    emails = [_loadUnreadMetadata(gmail, msgId) for msgId in messageIds]
 
     return {
         "query": UNREAD_PRIMARY_QUERY,

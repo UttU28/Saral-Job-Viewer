@@ -1,4 +1,4 @@
-import { Check, Cpu, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2, WandSparkles } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Cpu, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,14 +32,22 @@ type PlaceTrackEmailsPanelProps = {
   active: boolean;
   gmailStatus: GmailStatus | null;
   rows: EmailReviewRow[];
+  allRows: EmailReviewRow[];
   fetchedAt: string | null;
   isLoading: boolean;
+  isFetchingPage?: boolean;
   isCategorizing: boolean;
   isSubmitting: boolean;
   categorizeProgress: { done: number; total: number } | null;
+  currentPage?: number;
+  totalPages?: number;
+  total?: number;
+  pageSize?: number;
+  canSubmitAll?: boolean;
   error: string | null;
   lastApply: ApplyLabelsResult | null;
   onRefresh: () => void;
+  onGoToPage?: (page: number) => void;
   onCategorize: () => Promise<void>;
   onSetCategory: (messageId: string, category: EmailCategory) => void;
   onSubmit: () => Promise<ApplyLabelsResult | null>;
@@ -67,7 +75,8 @@ const CATEGORY_SEGMENTS: Array<{
   { key: "shopping", label: "shopping", barClass: "bg-emerald-500", dotClass: "bg-emerald-400" },
   { key: "finTax", label: "finTax", barClass: "bg-teal-500", dotClass: "bg-teal-400" },
   { key: "cicd", label: "CICD", barClass: "bg-indigo-500", dotClass: "bg-indigo-400" },
-  { key: "replySpam", label: "Trash", barClass: "bg-orange-500", dotClass: "bg-orange-400" },
+  { key: "replySpam", label: "replySpam", barClass: "bg-fuchsia-500", dotClass: "bg-fuchsia-400" },
+  { key: "trash", label: "Trash", barClass: "bg-orange-500", dotClass: "bg-orange-400" },
   { key: "none", label: "none", barClass: "bg-zinc-500", dotClass: "bg-zinc-400" },
   { key: "pending", label: "pending", barClass: "bg-muted-foreground/25", dotClass: "bg-muted-foreground/50" },
 ];
@@ -77,11 +86,13 @@ function CategoryBreakdownBar({
   isCategorizing,
   categorizeProgress,
   usingProvider,
+  inboxTotal = 0,
 }: {
   rows: EmailReviewRow[];
   isCategorizing: boolean;
   categorizeProgress: { done: number; total: number } | null;
   usingProvider?: ClassifyProvider;
+  inboxTotal?: number;
 }) {
   const counts = useMemo(() => {
     const next: Record<string, number> = {
@@ -93,6 +104,7 @@ function CategoryBreakdownBar({
       finTax: 0,
       cicd: 0,
       replySpam: 0,
+      trash: 0,
       none: 0,
       pending: 0,
     };
@@ -106,11 +118,18 @@ function CategoryBreakdownBar({
     return next;
   }, [rows]);
 
-  const total = rows.length;
-  if (!total) return null;
-
-  const categorized = total - counts.pending;
-  const progressPct = Math.round((categorized / total) * 100);
+  const categorizedKnown = Object.entries(counts).reduce(
+    (sum, [key, count]) => (key === "pending" ? sum : sum + count),
+    0,
+  );
+  const done = categorizeProgress?.done ?? categorizedKnown;
+  const barTotal = Math.max(categorizeProgress?.total ?? 0, inboxTotal, rows.length, done);
+  if (!barTotal) return null;
+  const displayCounts = {
+    ...counts,
+    pending: Math.max(0, barTotal - categorizedKnown),
+  };
+  const progressPct = Math.round((done / barTotal) * 100);
 
   return (
     <div className="mb-4 rounded-xl border border-border/60 bg-card/40 px-3 py-3 sm:px-4">
@@ -118,7 +137,7 @@ function CategoryBreakdownBar({
         <p className="text-xs font-medium text-foreground/90">
           Inbox mix
           <span className="ml-2 font-normal text-muted-foreground">
-            {categorized}/{total} categorized · {progressPct}%
+            {done}/{barTotal} categorized · {progressPct}%
           </span>
         </p>
         {isCategorizing && categorizeProgress ? (
@@ -137,9 +156,9 @@ function CategoryBreakdownBar({
         aria-label={`Category breakdown: ${progressPct}% categorized`}
       >
         {CATEGORY_SEGMENTS.map((segment) => {
-          const count = counts[segment.key] ?? 0;
+          const count = displayCounts[segment.key] ?? 0;
           if (!count) return null;
-          const widthPct = (count / total) * 100;
+          const widthPct = (count / barTotal) * 100;
           return (
             <div
               key={segment.key}
@@ -157,7 +176,7 @@ function CategoryBreakdownBar({
 
       <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
         {CATEGORY_SEGMENTS.map((segment) => {
-          const count = counts[segment.key] ?? 0;
+          const count = displayCounts[segment.key] ?? 0;
           if (!count && segment.key === "pending" && !isCategorizing) return null;
           if (!count && segment.key !== "pending") return null;
           return (
@@ -305,14 +324,22 @@ export function PlaceTrackEmailsPanel({
   active,
   gmailStatus,
   rows,
+  allRows,
   fetchedAt,
   isLoading,
+  isFetchingPage = false,
   isCategorizing,
   isSubmitting,
   categorizeProgress,
+  currentPage = 1,
+  totalPages = 0,
+  total = 0,
+  pageSize = 400,
+  canSubmitAll = false,
   error,
   lastApply,
   onRefresh,
+  onGoToPage,
   onCategorize,
   onSetCategory,
   onSubmit,
@@ -331,7 +358,7 @@ export function PlaceTrackEmailsPanel({
 
   if (!active) return null;
 
-  const labeledCount = rows.filter(
+  const labeledCount = allRows.filter(
     (row) =>
       row.category === "baharMil" ||
       row.category === "oneSided" ||
@@ -340,9 +367,10 @@ export function PlaceTrackEmailsPanel({
       row.category === "shopping" ||
       row.category === "finTax" ||
       row.category === "replySpam" ||
+      row.category === "trash" ||
       row.category === "cicd",
   ).length;
-  const classifiedCount = rows.filter((row) => row.classifyStatus === "done").length;
+  const classifiedCount = allRows.filter((row) => row.classifyStatus === "done").length;
   const noiseTotal = noiseCount?.total ?? 0;
 
   const handleSubmit = async () => {
@@ -357,7 +385,8 @@ export function PlaceTrackEmailsPanel({
       `shopping ${result.counts.shopping}`,
       `finTax ${result.counts.finTax}`,
       `CICD ${result.counts.cicd}`,
-      `Trash ${result.counts.replySpam}`,
+      `replySpam ${result.counts.replySpam}`,
+      `Trash ${result.counts.trash}`,
       `left none in Primary`,
     ];
     if (result.counts.errors) parts.push(`errors ${result.counts.errors}`);
@@ -437,6 +466,7 @@ export function PlaceTrackEmailsPanel({
               ? `${categorizeProgress.done}/${categorizeProgress.total}`
               : "Categorize"}
           </Button>
+          {canSubmitAll ? (
           <Button
             size="sm"
             className="gap-2"
@@ -446,6 +476,7 @@ export function PlaceTrackEmailsPanel({
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             Submit ({labeledCount})
           </Button>
+          ) : null}
           {onDeleteNoise ? (
             <Button
               size="sm"
@@ -472,6 +503,68 @@ export function PlaceTrackEmailsPanel({
         </div>
       </div>
 
+      {gmailStatus?.connected && totalPages > 0 ? (
+        <div className="mb-4 rounded-xl border border-border/60 bg-card/40 px-3 py-3 sm:px-4">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium text-foreground">
+              Page {currentPage} of {Math.max(totalPages, 1)}
+              <span className="ml-2 font-normal text-muted-foreground">
+                {total.toLocaleString()} unread · {pageSize}/page
+                {isFetchingPage ? " · loading page…" : ""}
+              </span>
+            </p>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-2"
+                disabled={isLoading || isFetchingPage || isCategorizing || currentPage <= 1}
+                onClick={() => onGoToPage?.(currentPage - 1)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex max-w-[min(100%,22rem)] flex-wrap items-center justify-center gap-1">
+                {Array.from({ length: Math.max(totalPages, 1) }, (_, index) => index + 1)
+                  .filter((page) => {
+                    if (totalPages <= 12) return true;
+                    if (page === 1 || page === totalPages) return true;
+                    return Math.abs(page - currentPage) <= 2;
+                  })
+                  .map((page, index, list) => {
+                    const prev = list[index - 1];
+                    const gap = prev != null && page - prev > 1;
+                    return (
+                      <span key={page} className="flex items-center gap-1">
+                        {gap ? <span className="px-0.5 text-xs text-muted-foreground">…</span> : null}
+                        <Button
+                          size="sm"
+                          variant={page === currentPage ? "default" : "outline"}
+                          className="h-8 min-w-8 px-2 tabular-nums"
+                          disabled={isLoading || isFetchingPage || isCategorizing}
+                          onClick={() => onGoToPage?.(page)}
+                        >
+                          {page}
+                        </Button>
+                      </span>
+                    );
+                  })}
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-2"
+                disabled={
+                  isLoading || isFetchingPage || isCategorizing || currentPage >= Math.max(totalPages, 1)
+                }
+                onClick={() => onGoToPage?.(currentPage + 1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {gmailStatus?.connected && noiseCount ? (
         <div className="mb-4 rounded-xl border border-border/60 bg-muted/15 px-3 py-2.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/85">Promotions / Social: </span>
@@ -493,18 +586,24 @@ export function PlaceTrackEmailsPanel({
         </div>
       ) : null}
 
-      {gmailStatus?.connected && rows.length > 0 ? (
+      {gmailStatus?.connected && (allRows.length > 0 || total > 0) ? (
         <CategoryBreakdownBar
-          rows={rows}
+          rows={allRows}
           isCategorizing={isCategorizing}
           categorizeProgress={categorizeProgress}
           usingProvider={effectiveProvider}
+          inboxTotal={total}
         />
       ) : null}
 
-      {gmailStatus?.connected && rows.length > 0 ? (
+      {gmailStatus?.connected && (allRows.length > 0 || total > 0) ? (
         <div className="mb-4 text-xs text-muted-foreground">
-          {rows.length} unread · {classifiedCount} categorized · {labeledCount} ready to label
+          {categorizeProgress
+            ? `${categorizeProgress.done}/${categorizeProgress.total} categorized`
+            : `${classifiedCount} categorized`}
+          {" · "}
+          {total.toLocaleString()} unread · page {currentPage}/{Math.max(totalPages, 1)} · {labeledCount} ready
+          to label
         </div>
       ) : null}
 
@@ -513,7 +612,8 @@ export function PlaceTrackEmailsPanel({
           Last submit: applied {lastApply.counts.applied} · BaharMil {lastApply.counts.baharMil} · oneSided{" "}
           {lastApply.counts.oneSided} · jobAds {lastApply.counts.jobAds} · pendingJobs{" "}
           {lastApply.counts.pendingJobs} · shopping {lastApply.counts.shopping} · finTax{" "}
-          {lastApply.counts.finTax} · CICD {lastApply.counts.cicd} · Trash {lastApply.counts.replySpam}
+          {lastApply.counts.finTax} · CICD {lastApply.counts.cicd} · replySpam {lastApply.counts.replySpam} · Trash{" "}
+          {lastApply.counts.trash}
           {lastApply.counts.errors ? ` · errors ${lastApply.counts.errors}` : ""}
         </div>
       ) : null}
@@ -612,7 +712,8 @@ export function PlaceTrackEmailsPanel({
                     row.category === "shopping" && "border-emerald-500/40 text-emerald-400",
                     row.category === "finTax" && "border-teal-500/40 text-teal-400",
                     row.category === "cicd" && "border-indigo-500/40 text-indigo-400",
-                    row.category === "replySpam" && "border-orange-500/40 text-orange-400",
+                    row.category === "replySpam" && "border-fuchsia-500/40 text-fuchsia-400",
+                    row.category === "trash" && "border-orange-500/40 text-orange-400",
                   )}
                   value={row.category}
                   disabled={isCategorizing || isSubmitting || row.classifyStatus === "loading"}
@@ -626,7 +727,8 @@ export function PlaceTrackEmailsPanel({
                   <option value="shopping">shopping</option>
                   <option value="finTax">finTax</option>
                   <option value="cicd">CICD</option>
-                  <option value="replySpam">Trash</option>
+                  <option value="replySpam">replySpam</option>
+                  <option value="trash">Trash</option>
                 </select>
                 <div className="flex items-center gap-1">
                   {row.classifyStatus === "loading" ? (

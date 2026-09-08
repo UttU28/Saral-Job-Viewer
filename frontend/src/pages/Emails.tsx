@@ -38,16 +38,26 @@ export default function EmailsPage() {
           active
           gmailStatus={unreadInbox.gmailStatus}
           rows={unreadInbox.rows}
+          allRows={unreadInbox.allRows}
           fetchedAt={unreadInbox.fetchedAt}
           isLoading={unreadInbox.isLoading}
+          isFetchingPage={unreadInbox.isFetchingPage}
           isCategorizing={unreadInbox.isCategorizing}
           isSubmitting={unreadInbox.isSubmitting}
           categorizeProgress={unreadInbox.categorizeProgress}
+          currentPage={unreadInbox.currentPage}
+          totalPages={unreadInbox.totalPages}
+          total={unreadInbox.total}
+          pageSize={unreadInbox.pageSize}
+          canSubmitAll={unreadInbox.canSubmitAll}
           error={unreadInbox.error}
           lastApply={unreadInbox.lastApply}
           onRefresh={() => {
             void unreadInbox.refresh();
             void noiseTrash.refresh();
+          }}
+          onGoToPage={(page) => {
+            void unreadInbox.goToPage(page);
           }}
           onCategorize={() => unreadInbox.categorizeAll()}
           onSetCategory={unreadInbox.setRowCategory}

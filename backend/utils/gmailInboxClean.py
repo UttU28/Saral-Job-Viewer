@@ -14,6 +14,7 @@ from utils.gmailLabels import (
     CLEAN_LABEL_ONESIDED,
     CLEAN_LABEL_PENDINGJOBS,
     CLEAN_LABEL_REPLYSPAM,
+    CLEAN_LABEL_TRASH,
     CLEAN_LABEL_SHOPPING,
     CLEAN_LABEL_CICD,
     resolveCleanLabels,
@@ -85,11 +86,49 @@ ATS_DOMAIN_HINTS = (
     "adp.com",
 )
 
+# Housing / school / loan "applications" are not employment. Do not treat as jobs.
+NON_JOB_APPLICATION_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"rental\s+application",
+        r"lease\s+application",
+        r"housing\s+application",
+        r"apartment\s+application",
+        r"tenant\s+application",
+        r"\blandlord\b",
+        r"\btenant\b",
+        r"\bapartment\b",
+        r"\blease\b",
+        r"proof\s+of\s+(income|residence|rental|address)",
+        r"property\s+manager",
+        r"\brealtor\b",
+        r"mortgage\s+application",
+        r"loan\s+application",
+        r"rental\s+(docs?|documents?)",
+    )
+]
+EMPLOYMENT_JOB_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"\bcandidate\b",
+        r"\bcandidacy\b",
+        r"\brecruit(er|ing|ment)?\b",
+        r"\btalent\s+acquisition\b",
+        r"\bhiring\b",
+        r"\binterview\b",
+        r"\bresume\b",
+        r"\bjob\s+(application|opening|opportunity|alert|requisition|title)\b",
+        r"\bworkday\b",
+        r"\bgreenhouse\b",
+        r"\bicims\b",
+    )
+]
+
 JOB_SIGNAL_PATTERNS = [
     re.compile(p, re.I)
     for p in (
-        r"\bapplication\b",
-        r"\bappl(y|ied|ying)\b",
+        r"\bjob\s+application\b",
+        r"\bappl(y|ied|ying)\s+(for\s+)?(the\s+)?(role|position|job|opening)\b",
         r"\bcandidacy\b",
         r"\bcandidate\b",
         r"\brecruit(er|ing|ment)?\b",
@@ -278,31 +317,13 @@ JOBADS_PATTERNS = [
 PENDINGJOBS_PATTERNS = [
     re.compile(p, re.I)
     for p in (
-        r"sign[- ]?in\s+link",
-        r"sign[- ]?in\s+(to|for)\s+(your\s+)?(application|account|candidate)",
-        r"log\s*in\s+(to\s+)?(complete|continue|finish|view|edit)",
-        r"click\s+here\s+to\s+log",
         r"additional\s+information\s+needed",
         r"profile\s+is\s+incomplete",
-        r"complete\s+(your\s+)?(profile|application|account)",
-        r"verify\s+your\s+(candidate\s+)?(account|email)",
-        r"confirm\s+your\s+email",
-        r"email\s+address\s+and\s+creating\s+your\s+account",
-        r"security\s+code\s+for\s+your\s+application",
-        r"security\s+code\s+field",
-        r"one[- ]?time\s+(pass(word|code)|code|otp)",
-        r"\botp\b",
-        r"verification\s+code",
-        r"activate\s+your\s+(candidate\s+)?account",
-        r"complete\s+setup\s+for\s+your\s+candidate\s+account",
+        r"complete\s+(your\s+)?(candidate\s+)?(profile|application)\b",
         r"resubmit\s+your\s+application",
-        r"action\s+required",
-        r"please\s+verify",
-        r"confirm\s+your\s+(candidate\s+)?account",
-        r"finish\s+(setting\s+up|creating)\s+your\s+account",
-        r"magic\s+link",
         r"view/?edit\s+application",
-        r"you\s+requested\s+a\s+sign[- ]?in\s+link",
+        r"complete\s+setup\s+for\s+your\s+candidate\s+account",
+        r"activate\s+your\s+candidate\s+account",
     )
 ]
 
@@ -356,6 +377,20 @@ SHOPPING_PATTERNS = [
         r"upcoming\s+.+\s+flight",
         r"issue\s+with\s+my\s+delivery",
         r"check\s+your\s+order\s+\d+",
+        r"e-?ticket",
+        r"boarding\s+pass",
+        r"booking\s+reference",
+        r"\bpnr\b\s*:",
+        r"your\s+itinerary",
+        r"flight\s+confirmation",
+        r"check[- ]?in\s+is\s+now\s+open",
+        r"bus\s+ticket",
+        r"train\s+ticket",
+        r"your\s+(flight|bus|train|trip)\s+(is\s+)?confirm",
+        r"qatar\s+airways.+(booking|ticket|itinerary|e-?ticket)",
+        r"ticketless\s+travel",
+        r"confirmed\s+reservation",
+        r"your\s+policy\s+was\s+confirmed",
     )
 ]
 
@@ -424,6 +459,11 @@ PROMO_TRASH_DOMAINS = frozenset(
         "legal.spotify.com",
         "business.amazon.com",
         "emails.synchrony.com",
+        "ripplematch.com",
+        "kimbocorp.com",
+        "yesware.com",
+        "mixmax.com",
+        "streak.com",
     }
 )
 
@@ -476,6 +516,47 @@ PROMO_TRASH_PATTERNS = [
         r"introducing\s+intelligent\s+transcription",
         r"get\s+unstuck!?\s+import\s+your\s+tax\s+forms",
         r"transactions\s+with\s+certain\s+crypto\s+platforms",
+        r"post-grad\s+plans",
+        r"chance\s+to\s+win\s+a\s+gift\s+card",
+        r"\b\d+-minute\s+survey\b",
+        r"take\s+(our|this|a)\s+(quick\s+)?survey",
+        r"how\s+did\s+we\s+do\?",
+        r"rate\s+your\s+(experience|trip|purchase)",
+        r"net\s+promoter",
+        r"\bnps\s+survey\b",
+        r"customer\s+satisfaction\s+survey",
+        r"we\s+want\s+your\s+feedback",
+        r"tell\s+us\s+about\s+your",
+        r"graduation\s+is\s+just\s+around\s+the\s+corner",
+        r"expanding\s+overseas",
+        r"back\s+on\s+the\s+agenda",
+        r"study\s+in\s+(the\s+)?(usa|uk|canada|australia|germany)",
+        r"overseas\s+(education|admission)",
+        r"college\s+admission",
+        r"apply\s+for\s+admission",
+        r"your\s+quote\s+is\s+ready",
+        r"request\s+a\s+(free\s+)?quote",
+        r"compare\s+(car\s+|auto\s+|home\s+)?insurance",
+        r"insurance\s+quote",
+        r"messaged\s+you",
+        r"is\s+waiting\s+to\s+hear\s+from\s+you",
+        r"invitation\s+to\s+connect",
+        r"you\s+have\s+a\s+new\s+(linkedin\s+)?message",
+        r"inmail",
+        r"your\s+(google\s+)?timeline",
+        r"new\s+login\s+to",
+        r"new\s+sign[- ]?in",
+        r"did\s+you\s+just\s+(sign[- ]?in|log\s*in|log\s*on)",
+        r"we\s+noticed\s+a\s+new\s+(sign[- ]?in|login)",
+        r"someone\s+signed\s+in",
+        r"security\s+alert:.+signed\s+in",
+        r"your\s+verification\s+code",
+        r"one[- ]?time\s+(pass(word|code)|code)",
+        r"\botp\b",
+        r"g-\d{6}\b",
+        r"authentication\s+code",
+        r"2-step\s+verification",
+        r"two[- ]factor",
     )
 ]
 
@@ -510,32 +591,67 @@ REPLY_SPAM_BODY_PATTERNS = [
 # Throwaway / campaign TLDs seen on fake-reply spam. Never enough alone.
 REPLY_SPAM_TLDS = frozenset({"cv", "casa", "courses", "gq", "tk", "ml", "ga", "cf"})
 
+# Mailtrack *reminder product* only. Do not match ordinary mail with a tracking footer.
+MAILTRACK_FOOTER_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"sender\s+notified\s+with\s+mailtrack",
+        r"email\s+tracked\s+with\s+mailtrack",
+        r"sent\s+with\s+mailtrack",
+        r"tracked\s+with\s+mailtrack",
+        r"mailtrack\s*[·•|]\s*opt\s*out",
+        r"get\s+mailtrack",
+    )
+]
+MAILTRACK_NAG_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"has\s+not\s+been\s+opened\s+yet",
+        r"hasn['’`]?t\s+been\s+opened",
+        r"still\s+(hasn['’`]?t\s+been\s+)?unopened",
+        r"was\s+not\s+opened",
+        r"no\s+reply\s+yet",
+        r"hasn['’`]?t\s+replied",
+        r"did\s+not\s+reply",
+        r"didn['’`]?t\s+reply",
+        r"no\s+response\s+yet",
+        r"hasn['’`]?t\s+responded",
+        r"last\s+reminder",
+        r"final\s+reminder",
+        r"this\s+is\s+your\s+last\s+(reminder|email)",
+        r"snooze\s+for\s+24h",
+        r"mailtrack\s+reminder",
+    )
+]
+
 LLM_SYSTEM_PROMPT = """You classify inbound emails for a job seeker inbox cleaner.
 Return ONLY valid JSON.
 
 Labels (choose exactly one per email):
 - "baharMil": company rejection / not selected / not moving forward / other candidates chosen.
 - "oneSided": automated JOB APPLICATION acknowledgment or receipt — thanks for applying, "we've received your application", Indeed/LinkedIn application digests. Not retail orders. Not bank/tax mail.
-- "pendingJobs": action still needed on a job application/portal — sign-in, verify account, OTP, incomplete profile, additional info needed.
-- "jobAds": recruiter/staffing job pitches and job digests. Not shopping. Not banking.
-- "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / delivered, pickup, merchant receipts (Banggood, Best Buy, Uber Eats, Epic, AMC, Shopify). Not bank statements or tax.
-- "finTax": REAL money / tax / account operations only — monthly statements, payment received/scheduled/processed, payment due, Zelle sent/received, IRS/ITR/FBAR/tax-preparer mail, utility bill pay now. NOT credit-score nags, credit-monitoring alerts, card offers, bank ads, surveys, KYC reminders, Amex Offers, Klarna ads.
-- "replySpam": TRASH. Fake Re: impersonation spam AND marketing/ads (credit score changed, offers waiting, TransUnion/BankBazaar/Experian alerts, Capital One/Amex offers, LinkedIn event wrap-ups, product newsletters). Submit moves these to Gmail Trash.
-- "cicd": CI/CD and GitOps notifications — GitHub Actions / Checks / Dependabot workflow mail, GitLab CI, Azure DevOps / Pipelines, Argo CD / Flux / Tekton / Jenkins / CircleCI / Buildkite / Travis / Harness / Spinnaker, Vercel/Netlify/Cloudflare deploy status, Cloud Build, CodePipeline. Pass, fail, cancelled, skipped, verification, OpenAPI/ABI checks. NOT job applications. NOT personal GitHub social mail that is not a workflow.
-- "none": pure personal mail, unrelated newsletters, or anything that is not the above.
+- "pendingJobs": incomplete EMPLOYMENT / job-portal application only (candidate profile, ATS docs). NEVER rental/lease/housing/apartment applications, NEVER mortgage/loan apps, NEVER personal doc threads. Those are "none". NOT login OTP (those are trash).
+- "jobAds": recruiter/staffing job pitches and job digests. Not shopping. Not banking. Not LinkedIn “someone messaged you”.
+- "shopping": retail / food / entertainment AND travel tickets — order confirmations, shipped/delivered, pickup, merchant receipts, FLIGHT/BUS/TRAIN e-tickets, itineraries, boarding passes, booking references, hotel/airline confirmations. Keep these. Not bank statements. Not CSAT surveys.
+- "finTax": REAL money / tax / account operations only — monthly statements, payment received/scheduled/processed, payment due, Zelle sent/received, IRS/ITR/FBAR/tax-preparer mail, utility bill pay now. NOT credit-score nags, offers, surveys, KYC reminders.
+- "replySpam": Mailtrack “no reply / last reminder / unopened” nags ONLY. Label replySpam. Do NOT use for marketing, OTP, or ordinary tracked mail.
+- "trash": TRASH (Gmail Trash on submit). Fake Re: impersonation; marketing/ads; surveys/NPS; insurance quotes; product pitches; overseas/college admission marketing; LinkedIn messages/connect/inmail; Google Timeline; login/OTP/new-sign-in. NEVER trash real tickets (shopping) or Mailtrack no-reply nags (those are replySpam).
+- "cicd": CI/CD and GitOps notifications — GitHub Actions / Checks, GitLab CI, Azure DevOps, Argo CD, Jenkins, CircleCI, etc.
+- "none": only genuine personal mail from humans you know. When unsure between none and trash for marketing/survey/login, choose trash.
 
 Rules:
 1. Prefer baharMil when both thanks-for-applying AND rejection language appear.
 2. oneSided is ONLY for job-application receipts — never for orders, bank, or tax.
-3. Shopping = merchant orders/shipments/receipts. finTax = actual payments/statements/tax filings only.
-4. Credit monitoring, FICO/score alerts, card offers, bank ads, surveys, KYC nags = replySpam (trash), never finTax.
-5. Sign-in / OTP / verify for job portals are pendingJobs.
-6. Recruiter cold outreach is jobAds. LinkedIn event/replay/invite mail is replySpam (trash), not jobAds.
-7. If unsure between finTax and replySpam for bank mail: money moved or a real statement = finTax; offer/score/ad = replySpam.
-8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax payment = finTax.
-9. Real job-thread Re: from a known company or personal mailbox is none/job category — never replySpam unless it is fake impersonation spam.
-10. GitHub/GitLab/Azure/Argo/Jenkins/CircleCI pipeline and workflow mail is cicd — including notifications@github.com "PR run failed" / "Run failed" / "workflow run". Never none for those.
-11. If unsure otherwise, use none.
+3. Shopping = merchant orders AND travel tickets/itineraries. finTax = actual payments/statements/tax filings only.
+4. Surveys, marketing, insurance quotes, admissions spam, LinkedIn pings, login/OTP = trash. Mailtrack no-reply/last-reminder nags = replySpam. Real mail with a Mailtrack pixel is none (not trash, not replySpam).
+5. pendingJobs is incomplete JOB/employment applications only — not OTP, not rental/lease/housing applications, not sending personal proof docs. Those are none.
+6. Recruiter role blasts = jobAds. LinkedIn “messaged you” / connect = trash.
+7. If unsure between finTax and trash for bank mail: money moved or a real statement = finTax; offer/score/ad = trash.
+8. If unsure between shopping and trash for an airline: e-ticket/itinerary/booking = shopping; CSAT/survey = trash.
+9. Real job-thread Re: from a known company or personal mailbox is none/job category — never trash unless fake impersonation. Do not trash just because Mailtrack tracked the send. Mailtrack no-reply nags = replySpam.
+10. GitHub/GitLab/Azure/Argo workflow mail is cicd.
+11. If unsure between none and trash for marketing/survey/login, use trash.
+12. Rental/lease/housing/apartment applications, sending proof docs to a landlord, mortgage/loan apps = none. Never pendingJobs/oneSided/baharMil unless it is clearly employment.
 """
 
 
@@ -679,8 +795,39 @@ def replySpamReason(
     return None
 
 
+def mailtrackNagReason(*, subject: str, text: str, fromEmail: str) -> str | None:
+    """Mailtrack no-reply / last-reminder nags only, not tracked real mail."""
+    domain = _domainOf(fromEmail)
+    # Real people (Gmail/Outlook/company) whose thread merely has a Mailtrack pixel.
+    if not domain or "mailtrack" not in domain:
+        return None
+    if domain in PERSONAL_DOMAINS:
+        return None
+    local = (fromEmail.split("@", 1)[0] if "@" in fromEmail else "").lower()
+    haystack = f"{subject or ''}\n{text or ''}"
+    if any(pattern.search(haystack) for pattern in MAILTRACK_FOOTER_PATTERNS) and not any(
+        pattern.search(haystack) for pattern in MAILTRACK_NAG_PATTERNS
+    ):
+        return None
+    nagHit = None
+    for pattern in MAILTRACK_NAG_PATTERNS:
+        match = pattern.search(haystack)
+        if match:
+            nagHit = match
+            break
+    if nagHit:
+        return f"mailtrackNag:{nagHit.group(0)[:80]}"
+    if local in {"reminders", "reminder"} and re.search(
+        r"\b(not\s+opened|unopened|no[- ]?reply|didn['’`]?t\s+reply|last\s+(reminder|email))\b",
+        haystack,
+        re.I,
+    ):
+        return "mailtrackNag"
+    return None
+
+
 def promoTrashReason(*, subject: str, text: str, fromEmail: str) -> str | None:
-    """Bank/credit/product ads and score nags — trash. Real payments/statements are finTax."""
+    """Marketing, surveys, login/OTP nags — trash. Tickets/orders/payments are kept."""
     domain = _domainOf(fromEmail)
     haystack = f"{subject or ''}\n{text or ''}"
     cleaned = (
@@ -690,6 +837,8 @@ def promoTrashReason(*, subject: str, text: str, fromEmail: str) -> str | None:
         .replace("*", " ")
     )
     cleaned = re.sub(r"\s+", " ", cleaned)
+    if any(pattern.search(haystack) or pattern.search(cleaned) for pattern in SHOPPING_PATTERNS):
+        return None
     if any(pattern.search(haystack) or pattern.search(cleaned) for pattern in FINTAX_PATTERNS):
         return None
     if any(domain == hint or domain.endswith("." + hint) for hint in PROMO_TRASH_DOMAINS):
@@ -704,8 +853,8 @@ def promoTrashReason(*, subject: str, text: str, fromEmail: str) -> str | None:
     local = (fromEmail.split("@", 1)[0] if "@" in fromEmail else "").lower()
     if local in {"editors-noreply", "creditreport+ratealert"}:
         return "promoLocal"
-    if domain in {"linkedin.com", "em.linkedin.com"} and re.search(
-        r"\b(replay|wrap-up|invited|networking|premium events)\b",
+    if ("linkedin.com" in domain or domain.endswith("linkedin.com")) and re.search(
+        r"\b(replay|wrap-up|invited|networking|premium events|messaged you|new message|invitation to connect|inmail)\b",
         haystack,
         re.I,
     ):
@@ -735,7 +884,32 @@ def isCompanySender(fromEmail: str) -> bool:
 
 
 def hasJobSignals(text: str) -> bool:
+    if isNonJobApplication(subject="", text=text):
+        return False
     return any(pattern.search(text) for pattern in JOB_SIGNAL_PATTERNS)
+
+
+def isNonJobApplication(*, subject: str = "", text: str = "") -> bool:
+    haystack = f"{subject or ''}\n{text or ''}"
+    if not haystack.strip():
+        return False
+    if not any(pattern.search(haystack) for pattern in NON_JOB_APPLICATION_PATTERNS):
+        return False
+    if any(pattern.search(haystack) for pattern in EMPLOYMENT_JOB_PATTERNS):
+        return False
+    return True
+
+
+def _demoteNonJobApplication(result: dict, *, subject: str, text: str) -> dict:
+    if result.get("category") not in {"pendingJobs", "oneSided", "baharMil", "jobAds"}:
+        return result
+    if not isNonJobApplication(subject=subject, text=text):
+        return result
+    demoted = dict(result)
+    demoted["category"] = None
+    demoted["isJobRelated"] = False
+    demoted["reason"] = f"nonJobApp:{result.get('reason') or result.get('category')}"
+    return demoted
 
 
 def _labelForCategory(category: str | None) -> str | None:
@@ -753,6 +927,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_FINTAX
     if category == "replySpam":
         return CLEAN_LABEL_REPLYSPAM
+    if category == "trash":
+        return CLEAN_LABEL_TRASH
     if category == "cicd":
         return CLEAN_LABEL_CICD
     return None
@@ -925,8 +1101,8 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
     )
     if spamReason:
         return _result(
-            "replySpam",
-            f"replySpam:{spamReason}",
+            "trash",
+            f"fakeReply:{spamReason}",
             isCompany=False,
             isJobRelated=False,
             source="regex",
@@ -942,10 +1118,20 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
             source="regex",
         )
 
+    mailtrackNag = mailtrackNagReason(subject=subjectLine, text=haystack, fromEmail=fromEmail)
+    if mailtrackNag:
+        return _result(
+            "replySpam",
+            f"replySpam:{mailtrackNag}",
+            isCompany=False,
+            isJobRelated=False,
+            source="regex",
+        )
+
     promoHit = promoTrashReason(subject=subjectLine, text=haystack, fromEmail=fromEmail)
     if promoHit:
         return _result(
-            "replySpam",
+            "trash",
             f"trashAds:{promoHit}",
             isCompany=False,
             isJobRelated=False,
@@ -965,6 +1151,12 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
     jobAdsMatch = _firstMatch(JOBADS_PATTERNS)
     shoppingMatch = _firstMatch(SHOPPING_PATTERNS)
     finTaxMatch = _firstMatch(FINTAX_PATTERNS)
+
+    if isNonJobApplication(subject=subjectLine, text=haystack):
+        pendingMatch = None
+        onesidedMatch = None
+        rejectionMatch = None
+        jobAdsMatch = None
 
     # Strong category hits can label even when sender is a personal Gmail (recruiter / shop / tax).
     strongHit = bool(
@@ -1018,7 +1210,7 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
             source="regex",
         )
 
-    if pendingMatch:
+    if pendingMatch and not isNonJobApplication(subject=subjectLine, text=haystack):
         return _result(
             "pendingJobs",
             f"pending:{pendingMatch.group(0)}",
@@ -1072,9 +1264,7 @@ def _truncate(text: str, limit: int = 1800) -> str:
 
 def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
     # High-confidence fake-reply spam: do not let the LLM relabel it.
-    if regexResult.get("category") == "replySpam":
-        return False
-    if regexResult.get("category") == "cicd":
+    if regexResult.get("category") in {"replySpam", "trash", "cicd"}:
         return False
     # Always LLM-classify ATS / job-application-looking mail; regex is fallback only.
     if isAtsSender(fromEmail):
@@ -1144,6 +1334,12 @@ def _normalizeLlmCategory(value: object) -> str | None:
         "shipping",
         "ecommerce",
         "retail",
+        "ticket",
+        "flight",
+        "itinerary",
+        "booking",
+        "boardingpass",
+        "eticket",
     }:
         return "shopping"
     if normalized in {
@@ -1163,12 +1359,23 @@ def _normalizeLlmCategory(value: object) -> str | None:
         return "finTax"
     if normalized in {
         "replyspam",
+        "noreply",
+        "noreplynag",
+        "mailtrack",
+        "mailtracknag",
+    }:
+        return "replySpam"
+    if normalized in {
+        "trash",
+        "junk",
+        "marketing",
+        "spam",
         "fakespam",
         "fakesreply",
         "scamreply",
         "replyphishing",
     }:
-        return "replySpam"
+        return "trash"
     if normalized in {
         "cicd",
         "ci",
@@ -1191,11 +1398,11 @@ def _normalizeLlmCategory(value: object) -> str | None:
     return None
 
 
-def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
+def _mergeLlmWithRegex(regexResult: dict, llmResult: dict, *, subject: str = "", text: str = "") -> dict:
     """
     Prefer LLM when it picks a real label. If LLM says none/skip but regex already
     matched a clean label, keep the regex label.
-    Never let the LLM add or remove replySpam — that is regex-only.
+    Never let the LLM add or remove replySpam (Mailtrack no-reply). Trash may come from regex or LLM.
     """
     llmCategory = llmResult.get("category")
     regexCategory = regexResult.get("category")
@@ -1203,14 +1410,17 @@ def _mergeLlmWithRegex(regexResult: dict, llmResult: dict) -> dict:
         return dict(regexResult)
     if llmCategory == "replySpam" and regexCategory != "replySpam":
         return dict(regexResult)
+    if regexCategory == "trash":
+        return dict(regexResult)
     if llmCategory is None and regexCategory in CLEAN_CATEGORIES:
         kept = dict(regexResult)
         kept["reason"] = (
             f"{regexResult.get('reason') or 'regex'}"
             f"|llmSaidNone:{llmResult.get('reason') or 'none'}"
         )
-        return kept
-    return llmResult
+        return _demoteNonJobApplication(kept, subject=subject, text=text)
+    merged = llmResult
+    return _demoteNonJobApplication(merged, subject=subject, text=text)
 
 
 def classifyBatchWithLlm(items: list[dict], *, provider: ClassifyProvider = "local") -> dict[str, dict]:
@@ -1235,19 +1445,25 @@ def classifyBatchWithLlm(items: list[dict], *, provider: ClassifyProvider = "loc
         "- baharMil — job rejection / not selected\n"
         "- oneSided — job application received / thanks for applying / Indeed-LinkedIn application digests "
         "(NOT retail orders, NOT bank/tax)\n"
-        "- pendingJobs — job portal sign-in / verify / OTP / incomplete profile\n"
+        "- pendingJobs — incomplete EMPLOYMENT/job-portal application only "
+        "(NOT rental/lease/housing, NOT personal proof docs, NOT OTP)\n"
         "- jobAds — recruiter staffing blasts / job openings (NOT shopping/bank)\n"
-        "- shopping — retail/food/entertainment/travel merchant orders, shipped, delivered, pickup, receipts\n"
+        "- shopping — orders, receipts, AND flight/bus/train tickets/itineraries/boarding passes\n"
         "- finTax — real statements, payments received/scheduled, Zelle, IRS/ITR/FBAR (NOT credit-score ads)\n"
-        "- replySpam — TRASH: fake Re: spam AND bank/credit/product ads, score alerts, offers, surveys\n"
+        "- replySpam — Mailtrack no-reply / last-reminder nags ONLY (label replySpam; do NOT Gmail-trash; "
+        "NOT ordinary mail that only has a Mailtrack footer)\n"
+        "- trash — TRASH: ads, surveys, insurance quotes, college/overseas admissions, LinkedIn messages, "
+        "Google Timeline, login/OTP/new-sign-in (NEVER trash real tickets; NEVER Mailtrack no-reply nags)\n"
         "- cicd — GitHub Actions / Checks / PR run failed, GitLab CI, Azure DevOps, Argo CD, "
         "Jenkins, CircleCI, Buildkite, Flux, Tekton, Vercel/Netlify deploys (pass/fail/verify)\n"
-        "- none — pure personal / unrelated\n\n"
-        "Important: TransUnion/BankBazaar/Experian score alerts and card offers = replySpam. "
-        "Actual payment/statement/tax = finTax. Merchant product orders = shopping. "
+        "- none — only real personal mail from people you know; if marketing/survey/login, use trash\n\n"
+        "Important: tickets/bookings = shopping. Score alerts/offers/surveys/OTP/login = trash. "
+        "Mailtrack no-reply nags = replySpam. "
+        "Actual payment/statement/tax = finTax. "
+        "Rental/lease/housing applications and sending docs to a landlord = none, never pendingJobs. "
         "notifications@github.com workflow/PR run mail = cicd, never none.\n"
         "Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|cicd|none","reason":"short"}]}\n\n'
+        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|trash|cicd|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -1316,7 +1532,7 @@ def classifyJobApplicationText(
         llmResult = batch.get("single")
         if llmResult is None:
             return regexResult
-        return _mergeLlmWithRegex(regexResult, llmResult)
+        return _mergeLlmWithRegex(regexResult, llmResult, subject="", text=text)
     except Exception as exc:
         fallback = dict(regexResult)
         fallback["reason"] = f"{regexResult.get('reason')}|llmFailed:{exc}"
@@ -1385,6 +1601,8 @@ def classifyManyUnreadEmails(
                 item["classification"] = _mergeLlmWithRegex(
                     item.get("classification") or {},
                     llmResult,
+                    subject=item.get("subject") or "",
+                    text=item.get("text") or "",
                 )
         except Exception as exc:
             for item in loaded:
@@ -1424,11 +1642,26 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - replySpam (UI: Trash): add label, mark read, move to Trash
+    - replySpam: add replySpam label, mark read, archive (do NOT Gmail-trash)
+    - trash: add Trash label, mark read, move to Gmail Trash
     - other clean labels: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
-    labels = resolveCleanLabels(createMissing=True)
+    neededLabels: list[str] = []
+    for raw in items:
+        category = raw.get("category")
+        if isinstance(category, str):
+            category = category.strip()
+        if category in ("", "none", None):
+            continue
+        labelName = _labelForCategory(category)
+        if labelName:
+            neededLabels.append(labelName)
+    labels = (
+        resolveCleanLabels(createMissing=True, onlyNames=tuple(dict.fromkeys(neededLabels)))
+        if neededLabels
+        else {}
+    )
     results: list[dict] = []
     counts = {
         "requested": len(items),
@@ -1439,6 +1672,7 @@ def applyEmailLabelActions(
         "shopping": 0,
         "finTax": 0,
         "replySpam": 0,
+        "trash": 0,
         "cicd": 0,
         "skipped": 0,
         "applied": 0,
@@ -1462,7 +1696,7 @@ def applyEmailLabelActions(
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, cicd, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, trash, cicd, or none",
                 }
             )
             continue
@@ -1492,7 +1726,7 @@ def applyEmailLabelActions(
 
         labelMeta = labels[labelName]
         addIds = [labelMeta["id"]]
-        if category == "replySpam":
+        if category == "trash":
             addIds.append("TRASH")
         removeIds: list[str] = []
         if markRead:
@@ -1657,6 +1891,8 @@ def _classifyLoadedMessages(
                 target["classification"] = _mergeLlmWithRegex(
                     target.get("classification") or {},
                     classification,
+                    subject=target.get("subject") or "",
+                    text=target.get("text") or "",
                 )
 
 
@@ -1676,7 +1912,6 @@ def cleanUnreadPrimaryInbox(
     then optionally archive + mark read.
     """
     gmail = getGmailService()
-    labels = resolveCleanLabels(createMissing=True)
     messageIds = _listUnreadPrimaryIds(gmail, maxResults=max(1, min(maxResults, 1000)))
 
     loaded: list[dict] = []
@@ -1690,6 +1925,7 @@ def cleanUnreadPrimaryInbox(
         "shopping": 0,
         "finTax": 0,
         "replySpam": 0,
+        "trash": 0,
         "cicd": 0,
         "skipped": 0,
         "applied": 0,
@@ -1708,6 +1944,19 @@ def cleanUnreadPrimaryInbox(
 
     resolved = resolveClassifyProvider(provider) if useLlm else "regex"
     _classifyLoadedMessages(loaded, forceLlm=resolved != "regex", provider=resolved)
+
+    neededLabels = [
+        (item.get("classification") or {}).get("labelName")
+        for item in loaded
+        if (item.get("classification") or {}).get("labelName")
+    ]
+    labels: dict[str, dict] = {}
+    if not dryRun and neededLabels:
+        gmail = getGmailService(needModify=True)
+        labels = resolveCleanLabels(
+            createMissing=True,
+            onlyNames=tuple(dict.fromkeys(name for name in neededLabels if name)),
+        )
 
     for item in loaded:
         classification = item.get("classification") or {}
@@ -1738,16 +1987,24 @@ def cleanUnreadPrimaryInbox(
         if category in counts:
             counts[category] += 1
 
-        labelMeta = labels[labelName]
-        entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}
-
         if dryRun:
+            entry["appliedLabel"] = {"id": None, "name": labelName}
             entry["action"] = "wouldApply"
             results.append(entry)
             continue
 
+        labelMeta = labels.get(labelName)
+        if not labelMeta:
+            entry["action"] = "error"
+            entry["error"] = f"label not resolved for {labelName}"
+            counts["errors"] += 1
+            results.append(entry)
+            continue
+
+        entry["appliedLabel"] = {"id": labelMeta["id"], "name": labelMeta["name"]}
+
         addIds = [labelMeta["id"]]
-        if classification.get("category") == "replySpam":
+        if classification.get("category") == "trash":
             addIds.append("TRASH")
         removeIds: list[str] = []
         if markRead:

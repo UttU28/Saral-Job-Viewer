@@ -26,7 +26,7 @@ from utils.gmailConfig import (
     gmailOAuthRedirectUri,
     gmailOAuthReturnPath,
 )
-from utils.gmailInbox import fetchUnreadPrimaryEmails
+from utils.gmailInbox import countUnreadPrimaryEmails, fetchUnreadPrimaryEmails, fetchUnreadPrimaryPage
 from utils.gmailCategoryTrash import countNoiseCategoryMail, trashNoiseCategoryMail
 from utils.gmailInboxClean import (
     applyEmailLabelActions,
@@ -254,9 +254,42 @@ def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = Fals
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
-@gmailRouter.get("/api/gmail/inbox/unread")
-def getGmailUnreadPrimary(maxResults: int = 1000) -> dict:
+@gmailRouter.get("/api/gmail/inbox/unread-count")
+def getGmailUnreadCount(pageSize: int = 400) -> dict:
+    """Total unread Primary count (Gmail estimate) for pagination."""
     _requireConnectedStatus()
+    if pageSize < 1 or pageSize > 500:
+        raise HTTPException(status_code=422, detail="pageSize must be between 1 and 500")
+    try:
+        return countUnreadPrimaryEmails(pageSize=pageSize)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.get("/api/gmail/inbox/unread")
+def getGmailUnreadPrimary(
+    maxResults: int = 1000,
+    pageSize: int | None = None,
+    pageToken: str | None = None,
+    idsOnly: bool = False,
+) -> dict:
+    _requireConnectedStatus()
+
+    if pageSize is not None:
+        if pageSize < 1 or pageSize > 500:
+            raise HTTPException(status_code=422, detail="pageSize must be between 1 and 500")
+        try:
+            return fetchUnreadPrimaryPage(
+                pageSize=pageSize,
+                pageToken=pageToken,
+                idsOnly=idsOnly,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     if maxResults < 1 or maxResults > 1000:
         raise HTTPException(status_code=422, detail="maxResults must be between 1 and 1000")
@@ -327,7 +360,8 @@ def postGmailInboxClean(
     - sign-in / verify / OTP / incomplete profile / action needed → pendingJobs
     - retail orders / shipping / receipts / bookings → shopping
     - banking / credit cards / tax / KYC / payments → finTax
-    - fake Re: impersonation spam and bank/product ads → Trash (Gmail Trash)
+    - fake Re: impersonation spam and bank/product ads → trash (Gmail Trash)
+    - Mailtrack no-reply nags → replySpam (label only, not Gmail Trash)
     - GitHub/GitLab/Azure/Argo/Jenkins pipeline mail → CICD
     Then optionally archive + mark read to clean the inbox.
     """
@@ -384,7 +418,7 @@ def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
 
 @gmailRouter.post("/api/gmail/inbox/apply-labels")
 def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
-    """Apply confirmed clean labels after UI review. replySpam is moved to Trash."""
+    """Apply confirmed clean labels after UI review. trash is moved to Gmail Trash; replySpam is not."""
     _requireConnectedStatus(needModify=True)
     if not body.items:
         raise HTTPException(status_code=422, detail="items required")

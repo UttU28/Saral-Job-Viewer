@@ -69,6 +69,7 @@ export type EmailCategory =
   | "shopping"
   | "finTax"
   | "replySpam"
+  | "trash"
   | "cicd"
   | "none";
 
@@ -118,6 +119,7 @@ export type ApplyLabelsResult = {
     shopping: number;
     finTax: number;
     replySpam: number;
+    trash: number;
     cicd: number;
     skipped: number;
     applied: number;
@@ -131,6 +133,22 @@ export type UnreadInboxResult = {
   fetchedAt?: string;
   count: number;
   emails: UnreadEmail[];
+  nextPageToken?: string | null;
+  pageSize?: number;
+  total?: number;
+  totalPages?: number;
+  totalIsEstimate?: boolean;
+  hasMore?: boolean;
+  ids?: string[];
+};
+
+export type UnreadCountResult = {
+  query: string;
+  fetchedAt?: string;
+  total: number;
+  totalIsEstimate: boolean;
+  pageSize: number;
+  totalPages: number;
 };
 
 export type GmailLabel = {
@@ -229,6 +247,7 @@ function normalizeCategory(value: unknown): EmailCategory {
     value === "shopping" ||
     value === "finTax" ||
     value === "replySpam" ||
+    value === "trash" ||
     value === "cicd"
   ) {
     return value;
@@ -258,12 +277,29 @@ function normalizeUnreadInbox(raw: Record<string, unknown>): UnreadInboxResult {
     .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
     .map(normalizeUnreadEmail)
     .filter((email) => email.id);
+  const idsRaw = Array.isArray(raw.ids) ? raw.ids : [];
+  const ids = idsRaw.map((item) => String(item)).filter(Boolean);
 
   return {
     query: typeof raw.query === "string" ? raw.query : "",
     fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
     count: typeof raw.count === "number" ? raw.count : emails.length,
     emails,
+    nextPageToken:
+      raw.nextPageToken == null && raw.next_page_token == null
+        ? null
+        : String(raw.nextPageToken ?? raw.next_page_token),
+    pageSize: typeof raw.pageSize === "number" ? raw.pageSize : typeof raw.page_size === "number" ? raw.page_size : undefined,
+    total: typeof raw.total === "number" ? raw.total : undefined,
+    totalPages:
+      typeof raw.totalPages === "number"
+        ? raw.totalPages
+        : typeof raw.total_pages === "number"
+          ? raw.total_pages
+          : undefined,
+    totalIsEstimate: Boolean(raw.totalIsEstimate ?? raw.total_is_estimate),
+    hasMore: Boolean(raw.hasMore ?? raw.has_more),
+    ids,
   };
 }
 
@@ -387,11 +423,43 @@ export async function fetchSentRecipients(options?: {
   return normalizeSentRecipients((await response.json()) as Record<string, unknown>);
 }
 
+export async function fetchUnreadPrimaryCount(options?: {
+  pageSize?: number;
+}): Promise<UnreadCountResult> {
+  const params = new URLSearchParams();
+  if (options?.pageSize != null) params.set("pageSize", String(options.pageSize));
+  const query = params.toString();
+  const response = await fetch(apiUrl(`/api/gmail/inbox/unread-count${query ? `?${query}` : ""}`));
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  const pageSize = Number(raw.pageSize ?? raw.page_size ?? 400);
+  const total = Number(raw.total ?? 0);
+  return {
+    query: typeof raw.query === "string" ? raw.query : "",
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    total,
+    totalIsEstimate: Boolean(raw.totalIsEstimate ?? raw.total_is_estimate ?? true),
+    pageSize,
+    totalPages: Number(raw.totalPages ?? raw.total_pages ?? (pageSize ? Math.ceil(total / pageSize) : 0)),
+  };
+}
+
 export async function fetchUnreadPrimaryEmails(options?: {
   maxResults?: number;
+  pageSize?: number;
+  pageToken?: string | null;
+  idsOnly?: boolean;
 }): Promise<UnreadInboxResult> {
   const params = new URLSearchParams();
-  if (options?.maxResults != null) params.set("maxResults", String(options.maxResults));
+  if (options?.pageSize != null) {
+    params.set("pageSize", String(options.pageSize));
+    if (options.pageToken) params.set("pageToken", options.pageToken);
+    if (options.idsOnly) params.set("idsOnly", "true");
+  } else if (options?.maxResults != null) {
+    params.set("maxResults", String(options.maxResults));
+  }
 
   const query = params.toString();
   const response = await fetch(apiUrl(`/api/gmail/inbox/unread${query ? `?${query}` : ""}`));
@@ -581,6 +649,7 @@ async function applyEmailLabelsOnce(options: {
       shopping: Number(countsRaw.shopping ?? 0),
       finTax: Number(countsRaw.finTax ?? 0),
       replySpam: Number(countsRaw.replySpam ?? 0),
+      trash: Number(countsRaw.trash ?? 0),
       cicd: Number(countsRaw.cicd ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
@@ -609,6 +678,7 @@ export async function applyEmailLabels(options: {
         shopping: 0,
         finTax: 0,
         replySpam: 0,
+        trash: 0,
         cicd: 0,
         skipped: 0,
         applied: 0,
@@ -630,6 +700,7 @@ export async function applyEmailLabels(options: {
         shopping: 0,
         finTax: 0,
         replySpam: 0,
+        trash: 0,
         cicd: 0,
         skipped: 0,
       applied: 0,
@@ -656,6 +727,7 @@ export async function applyEmailLabels(options: {
     merged.counts.shopping += batch.counts.shopping;
     merged.counts.finTax += batch.counts.finTax;
     merged.counts.replySpam += batch.counts.replySpam;
+    merged.counts.trash += batch.counts.trash;
     merged.counts.cicd += batch.counts.cicd;
     merged.counts.skipped += batch.counts.skipped;
     merged.counts.applied += batch.counts.applied;
