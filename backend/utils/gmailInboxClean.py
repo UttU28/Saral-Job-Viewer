@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import base64
 import re
+import time
 from datetime import datetime, timezone
 from email.utils import parseaddr
+
+from googleapiclient.errors import HttpError
 
 from utils.gmailAuth import getGmailService
 from utils.gmailLabels import (
@@ -1633,6 +1636,70 @@ def classifyManyUnreadEmails(
     return output
 
 
+GMAIL_MODIFY_MAX_ATTEMPTS = 5
+GMAIL_MODIFY_GAP_SEC = 0.08
+GMAIL_MODIFY_MAX_WAIT_SEC = 12.0
+
+
+def _gmailHttpStatus(exc: Exception) -> int:
+    if isinstance(exc, HttpError):
+        try:
+            return int(exc.resp.status)
+        except (TypeError, ValueError, AttributeError):
+            return 0
+    return 0
+
+
+def _isRetryableGmailError(exc: Exception) -> bool:
+    status = _gmailHttpStatus(exc)
+    if status in {429, 500, 502, 503}:
+        return True
+    text = str(exc).lower()
+    if status == 403 and any(
+        token in text
+        for token in ("ratelimit", "rate limit", "quotaexceeded", "userratelimit")
+    ):
+        return True
+    return "ratelimitexceeded" in text or "userratelimitexceeded" in text
+
+
+def _retryAfterSeconds(exc: Exception, fallback: float) -> float:
+    wait = fallback
+    if isinstance(exc, HttpError):
+        try:
+            raw = exc.resp.get("retry-after")
+        except Exception:
+            raw = None
+        if raw is not None:
+            try:
+                wait = max(wait, float(raw))
+            except (TypeError, ValueError):
+                pass
+    return min(wait, GMAIL_MODIFY_MAX_WAIT_SEC)
+
+
+def _modifyMessageWithRetry(gmail, messageId: str, body: dict) -> None:
+    delay = 1.0
+    lastExc: Exception | None = None
+    for attempt in range(1, GMAIL_MODIFY_MAX_ATTEMPTS + 1):
+        try:
+            gmail.users().messages().modify(
+                userId="me",
+                id=messageId,
+                body=body,
+            ).execute()
+            time.sleep(GMAIL_MODIFY_GAP_SEC)
+            return
+        except Exception as exc:
+            lastExc = exc
+            if attempt >= GMAIL_MODIFY_MAX_ATTEMPTS or not _isRetryableGmailError(exc):
+                raise
+            time.sleep(_retryAfterSeconds(exc, delay))
+            delay = min(delay * 2, GMAIL_MODIFY_MAX_WAIT_SEC)
+    if lastExc:
+        raise lastExc
+
+
 def applyEmailLabelActions(
     items: list[dict],
     *,
@@ -1738,11 +1805,11 @@ def applyEmailLabelActions(
         removeIds = list(dict.fromkeys(removeIds))
 
         try:
-            gmail.users().messages().modify(
-                userId="me",
-                id=messageId,
-                body={"addLabelIds": addIds, "removeLabelIds": removeIds},
-            ).execute()
+            _modifyMessageWithRetry(
+                gmail,
+                messageId,
+                {"addLabelIds": addIds, "removeLabelIds": removeIds},
+            )
             if category in counts:
                 counts[category] += 1
             counts["applied"] += 1

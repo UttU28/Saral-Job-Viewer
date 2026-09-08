@@ -38,13 +38,14 @@ export default function EmailsPage() {
           active
           gmailStatus={unreadInbox.gmailStatus}
           rows={unreadInbox.rows}
-          allRows={unreadInbox.allRows}
+          mixCounts={unreadInbox.mixCounts}
           fetchedAt={unreadInbox.fetchedAt}
           isLoading={unreadInbox.isLoading}
           isFetchingPage={unreadInbox.isFetchingPage}
           isCategorizing={unreadInbox.isCategorizing}
           isSubmitting={unreadInbox.isSubmitting}
           categorizeProgress={unreadInbox.categorizeProgress}
+          submitProgress={unreadInbox.submitProgress}
           currentPage={unreadInbox.currentPage}
           totalPages={unreadInbox.totalPages}
           total={unreadInbox.total}

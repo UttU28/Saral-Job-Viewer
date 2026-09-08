@@ -7,7 +7,7 @@ from utils.gmailAuth import getGmailService
 
 UNREAD_PRIMARY_QUERY = "is:unread in:inbox category:primary"
 HEADER_NAMES = ("From", "Subject", "Date", "To")
-UNREAD_PAGE_SIZE = 400
+UNREAD_PAGE_SIZE = 200
 GMAIL_LIST_MAX = 500
 
 
@@ -39,6 +39,8 @@ def _listUnreadPage(gmail, *, pageSize: int, pageToken: str | None = None) -> di
         "userId": "me",
         "q": UNREAD_PRIMARY_QUERY,
         "maxResults": size,
+        "fields": "nextPageToken,resultSizeEstimate,messages/id",
+        "includeSpamTrash": False,
     }
     if pageToken:
         kwargs["pageToken"] = pageToken
@@ -102,21 +104,31 @@ def _loadUnreadMetadata(gmail, msgId: str) -> dict:
 
 
 def countUnreadPrimaryEmails(*, pageSize: int = UNREAD_PAGE_SIZE) -> dict:
-    """Cheap total for pagination. Gmail resultSizeEstimate (not a full scan)."""
+    """Exact unread Primary total: walk ID-only list pages (no message bodies)."""
     size = max(1, min(int(pageSize), GMAIL_LIST_MAX))
     gmail = getGmailService()
-    page = _listUnreadPage(gmail, pageSize=1, pageToken=None)
-    estimate = int(page.get("resultSizeEstimate") or 0)
-    if estimate < 1 and page["ids"]:
-        estimate = 1
-    totalPages = (estimate + size - 1) // size if estimate else 0
+    total = 0
+    pageTokens: list[str | None] = []
+    token: str | None = None
+    while True:
+        listed = _listUnreadPage(gmail, pageSize=size, pageToken=token)
+        ids = listed["ids"]
+        if not ids:
+            break
+        pageTokens.append(token)
+        total += len(ids)
+        token = listed.get("nextPageToken")
+        if not token:
+            break
+    totalPages = len(pageTokens)
     return {
         "query": UNREAD_PRIMARY_QUERY,
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
-        "total": estimate,
-        "totalIsEstimate": True,
+        "total": total,
+        "totalIsEstimate": False,
         "pageSize": size,
         "totalPages": totalPages,
+        "pageTokens": pageTokens,
     }
 
 
@@ -126,7 +138,7 @@ def fetchUnreadPrimaryPage(
     pageToken: str | None = None,
     idsOnly: bool = False,
 ) -> dict:
-    """One Gmail list page (up to 400). idsOnly skips message.get for token walking."""
+    """One Gmail list page (up to 200). idsOnly skips message.get for token walking."""
     size = max(1, min(int(pageSize), GMAIL_LIST_MAX))
     gmail = getGmailService()
     listed = _listUnreadPage(gmail, pageSize=size, pageToken=pageToken or None)
@@ -134,13 +146,7 @@ def fetchUnreadPrimaryPage(
     if not idsOnly:
         for msgId in listed["ids"]:
             emails.append(_loadUnreadMetadata(gmail, msgId))
-    estimate = int(listed.get("resultSizeEstimate") or 0)
-    if estimate < len(listed["ids"]):
-        estimate = len(listed["ids"])
     nextToken = listed.get("nextPageToken")
-    totalPages = (estimate + size - 1) // size if estimate else (1 if listed["ids"] else 0)
-    if nextToken and totalPages < 2:
-        totalPages = 2
     return {
         "query": UNREAD_PRIMARY_QUERY,
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
@@ -149,9 +155,6 @@ def fetchUnreadPrimaryPage(
         "ids": listed["ids"],
         "nextPageToken": nextToken,
         "pageSize": size,
-        "total": estimate,
-        "totalIsEstimate": True,
-        "totalPages": totalPages,
         "hasMore": bool(nextToken),
     }
 

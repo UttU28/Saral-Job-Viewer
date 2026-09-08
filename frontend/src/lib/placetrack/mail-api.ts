@@ -128,6 +128,13 @@ export type ApplyLabelsResult = {
   results: Array<Record<string, unknown>>;
 };
 
+export type SubmitProgress = {
+  batch: number;
+  batches: number;
+  applied: number;
+  total: number;
+};
+
 export type UnreadInboxResult = {
   query: string;
   fetchedAt?: string;
@@ -149,6 +156,7 @@ export type UnreadCountResult = {
   totalIsEstimate: boolean;
   pageSize: number;
   totalPages: number;
+  pageTokens: Array<string | null>;
 };
 
 export type GmailLabel = {
@@ -434,15 +442,24 @@ export async function fetchUnreadPrimaryCount(options?: {
     throw new MailApiError(await parseError(response), response.status);
   }
   const raw = (await response.json()) as Record<string, unknown>;
-  const pageSize = Number(raw.pageSize ?? raw.page_size ?? 400);
+  const pageSize = Number(raw.pageSize ?? raw.page_size ?? 200);
   const total = Number(raw.total ?? 0);
+  const tokensRaw = Array.isArray(raw.pageTokens)
+    ? raw.pageTokens
+    : Array.isArray(raw.page_tokens)
+      ? raw.page_tokens
+      : [];
+  const pageTokens = tokensRaw.map((item) => (item == null || item === "" ? null : String(item)));
   return {
     query: typeof raw.query === "string" ? raw.query : "",
     fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
     total,
-    totalIsEstimate: Boolean(raw.totalIsEstimate ?? raw.total_is_estimate ?? true),
+    totalIsEstimate: Boolean(raw.totalIsEstimate ?? raw.total_is_estimate),
     pageSize,
-    totalPages: Number(raw.totalPages ?? raw.total_pages ?? (pageSize ? Math.ceil(total / pageSize) : 0)),
+    totalPages: Number(
+      raw.totalPages ?? raw.total_pages ?? (pageSize ? Math.ceil(total / pageSize) : 0),
+    ),
+    pageTokens,
   };
 }
 
@@ -611,7 +628,39 @@ export async function classifyEmailBatch(
     .filter((item) => item.id);
 }
 
-const APPLY_LABELS_BATCH_SIZE = 200;
+const APPLY_LABELS_BATCH_SIZE = 25;
+const APPLY_LABELS_GAP_MS = 500;
+const APPLY_LABELS_MAX_ATTEMPTS = 5;
+
+function emptyApplyCounts(): ApplyLabelsResult["counts"] {
+  return {
+    requested: 0,
+    baharMil: 0,
+    oneSided: 0,
+    jobAds: 0,
+    pendingJobs: 0,
+    shopping: 0,
+    finTax: 0,
+    replySpam: 0,
+    trash: 0,
+    cicd: 0,
+    skipped: 0,
+    applied: 0,
+    errors: 0,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableMailStatus(status: number): boolean {
+  return status === 429 || status === 500 || status === 502 || status === 503;
+}
+
+function backoffMs(attempt: number): number {
+  return Math.min(1000 * 2 ** (attempt - 1), 12_000);
+}
 
 async function applyEmailLabelsOnce(options: {
   items: Array<{ messageId: string; category: EmailCategory }>;
@@ -659,31 +708,39 @@ async function applyEmailLabelsOnce(options: {
   };
 }
 
+async function applyEmailLabelsOnceWithRetry(options: {
+  items: Array<{ messageId: string; category: EmailCategory }>;
+  archive?: boolean;
+  markRead?: boolean;
+}): Promise<ApplyLabelsResult> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= APPLY_LABELS_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await applyEmailLabelsOnce(options);
+    } catch (err) {
+      lastError = err;
+      const status = err instanceof MailApiError ? err.status : 0;
+      if (!isRetryableMailStatus(status) || attempt >= APPLY_LABELS_MAX_ATTEMPTS) {
+        throw err;
+      }
+      await sleep(backoffMs(attempt));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Could not apply labels.");
+}
+
 export async function applyEmailLabels(options: {
   items: Array<{ messageId: string; category: EmailCategory }>;
   archive?: boolean;
   markRead?: boolean;
+  onProgress?: (progress: SubmitProgress) => void;
 }): Promise<ApplyLabelsResult> {
   const items = options.items;
   if (!items.length) {
     return {
       archive: options.archive ?? true,
       markRead: options.markRead ?? true,
-      counts: {
-        requested: 0,
-        baharMil: 0,
-        oneSided: 0,
-        jobAds: 0,
-        pendingJobs: 0,
-        shopping: 0,
-        finTax: 0,
-        replySpam: 0,
-        trash: 0,
-        cicd: 0,
-        skipped: 0,
-        applied: 0,
-        errors: 0,
-      },
+      counts: emptyApplyCounts(),
       results: [],
     };
   }
@@ -691,49 +748,71 @@ export async function applyEmailLabels(options: {
   const merged: ApplyLabelsResult = {
     archive: options.archive ?? true,
     markRead: options.markRead ?? true,
-    counts: {
-      requested: 0,
-      baharMil: 0,
-      oneSided: 0,
-      jobAds: 0,
-      pendingJobs: 0,
-        shopping: 0,
-        finTax: 0,
-        replySpam: 0,
-        trash: 0,
-        cicd: 0,
-        skipped: 0,
-      applied: 0,
-      errors: 0,
-    },
+    counts: emptyApplyCounts(),
     results: [],
   };
 
+  const batches = Math.ceil(items.length / APPLY_LABELS_BATCH_SIZE);
   for (let start = 0; start < items.length; start += APPLY_LABELS_BATCH_SIZE) {
+    const batchIndex = Math.floor(start / APPLY_LABELS_BATCH_SIZE) + 1;
     const chunk = items.slice(start, start + APPLY_LABELS_BATCH_SIZE);
-    const batch = await applyEmailLabelsOnce({
-      items: chunk,
-      archive: options.archive,
-      markRead: options.markRead,
+    options.onProgress?.({
+      batch: batchIndex,
+      batches,
+      applied: merged.counts.applied,
+      total: items.length,
     });
-    merged.fetchedAt = batch.fetchedAt ?? merged.fetchedAt;
-    merged.archive = batch.archive;
-    merged.markRead = batch.markRead;
-    merged.counts.requested += batch.counts.requested;
-    merged.counts.baharMil += batch.counts.baharMil;
-    merged.counts.oneSided += batch.counts.oneSided;
-    merged.counts.jobAds += batch.counts.jobAds;
-    merged.counts.pendingJobs += batch.counts.pendingJobs;
-    merged.counts.shopping += batch.counts.shopping;
-    merged.counts.finTax += batch.counts.finTax;
-    merged.counts.replySpam += batch.counts.replySpam;
-    merged.counts.trash += batch.counts.trash;
-    merged.counts.cicd += batch.counts.cicd;
-    merged.counts.skipped += batch.counts.skipped;
-    merged.counts.applied += batch.counts.applied;
-    merged.counts.errors += batch.counts.errors;
-    merged.results.push(...batch.results);
+
+    try {
+      const batch = await applyEmailLabelsOnceWithRetry({
+        items: chunk,
+        archive: options.archive,
+        markRead: options.markRead,
+      });
+      merged.fetchedAt = batch.fetchedAt ?? merged.fetchedAt;
+      merged.archive = batch.archive;
+      merged.markRead = batch.markRead;
+      merged.counts.requested += batch.counts.requested;
+      merged.counts.baharMil += batch.counts.baharMil;
+      merged.counts.oneSided += batch.counts.oneSided;
+      merged.counts.jobAds += batch.counts.jobAds;
+      merged.counts.pendingJobs += batch.counts.pendingJobs;
+      merged.counts.shopping += batch.counts.shopping;
+      merged.counts.finTax += batch.counts.finTax;
+      merged.counts.replySpam += batch.counts.replySpam;
+      merged.counts.trash += batch.counts.trash;
+      merged.counts.cicd += batch.counts.cicd;
+      merged.counts.skipped += batch.counts.skipped;
+      merged.counts.applied += batch.counts.applied;
+      merged.counts.errors += batch.counts.errors;
+      merged.results.push(...batch.results);
+    } catch (err) {
+      const message =
+        err instanceof MailApiError ? err.message : "Could not apply labels for this batch.";
+      for (const item of chunk) {
+        merged.counts.requested += 1;
+        merged.counts.errors += 1;
+        merged.results.push({
+          messageId: item.messageId,
+          category: item.category,
+          action: "error",
+          error: `batch ${batchIndex}/${batches}: ${message}`,
+        });
+      }
+      break;
+    }
+
+    if (start + APPLY_LABELS_BATCH_SIZE < items.length) {
+      await sleep(APPLY_LABELS_GAP_MS);
+    }
   }
+
+  options.onProgress?.({
+    batch: batches,
+    batches,
+    applied: merged.counts.applied,
+    total: items.length,
+  });
 
   return merged;
 }

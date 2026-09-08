@@ -1,5 +1,5 @@
 import { Check, ChevronLeft, ChevronRight, Cpu, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2, WandSparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -14,7 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import type { EmailReviewRow } from "@/hooks/use-unread-emails";
+import type { CategorizeProgress, EmailReviewRow, InboxMixCounts, SubmitProgress } from "@/hooks/use-unread-emails";
 import {
   startGmailAuth,
   type ApplyLabelsResult,
@@ -32,13 +32,14 @@ type PlaceTrackEmailsPanelProps = {
   active: boolean;
   gmailStatus: GmailStatus | null;
   rows: EmailReviewRow[];
-  allRows: EmailReviewRow[];
+  mixCounts: InboxMixCounts;
   fetchedAt: string | null;
   isLoading: boolean;
   isFetchingPage?: boolean;
   isCategorizing: boolean;
   isSubmitting: boolean;
-  categorizeProgress: { done: number; total: number } | null;
+  categorizeProgress: CategorizeProgress | null;
+  submitProgress?: SubmitProgress | null;
   currentPage?: number;
   totalPages?: number;
   total?: number;
@@ -82,51 +83,43 @@ const CATEGORY_SEGMENTS: Array<{
 ];
 
 function CategoryBreakdownBar({
-  rows,
+  counts,
   isCategorizing,
   categorizeProgress,
   usingProvider,
   inboxTotal = 0,
 }: {
-  rows: EmailReviewRow[];
+  counts: InboxMixCounts;
   isCategorizing: boolean;
-  categorizeProgress: { done: number; total: number } | null;
+  categorizeProgress: CategorizeProgress | null;
   usingProvider?: ClassifyProvider;
   inboxTotal?: number;
 }) {
-  const counts = useMemo(() => {
-    const next: Record<string, number> = {
-      baharMil: 0,
-      oneSided: 0,
-      jobAds: 0,
-      pendingJobs: 0,
-      shopping: 0,
-      finTax: 0,
-      cicd: 0,
-      replySpam: 0,
-      trash: 0,
-      none: 0,
-      pending: 0,
-    };
-    for (const row of rows) {
-      if (row.classifyStatus === "idle" || row.classifyStatus === "loading") {
-        next.pending += 1;
-        continue;
-      }
-      next[row.category] = (next[row.category] ?? 0) + 1;
-    }
-    return next;
-  }, [rows]);
-
-  const categorizedKnown = Object.entries(counts).reduce(
-    (sum, [key, count]) => (key === "pending" ? sum : sum + count),
-    0,
-  );
-  const done = categorizeProgress?.done ?? categorizedKnown;
-  const barTotal = Math.max(categorizeProgress?.total ?? 0, inboxTotal, rows.length, done);
+  const categorizedKnown =
+    counts.baharMil +
+    counts.oneSided +
+    counts.jobAds +
+    counts.pendingJobs +
+    counts.shopping +
+    counts.finTax +
+    counts.cicd +
+    counts.replySpam +
+    counts.trash +
+    counts.none;
+  const done = categorizeProgress?.done ?? counts.classified;
+  const barTotal = Math.max(categorizeProgress?.total ?? 0, inboxTotal, counts.loaded, done);
   if (!barTotal) return null;
-  const displayCounts = {
-    ...counts,
+  const displayCounts: Record<string, number> = {
+    baharMil: counts.baharMil,
+    oneSided: counts.oneSided,
+    jobAds: counts.jobAds,
+    pendingJobs: counts.pendingJobs,
+    shopping: counts.shopping,
+    finTax: counts.finTax,
+    cicd: counts.cicd,
+    replySpam: counts.replySpam,
+    trash: counts.trash,
+    none: counts.none,
     pending: Math.max(0, barTotal - categorizedKnown),
   };
   const progressPct = Math.round((done / barTotal) * 100);
@@ -142,7 +135,9 @@ function CategoryBreakdownBar({
         </p>
         {isCategorizing && categorizeProgress ? (
           <p className="text-[11px] tabular-nums text-muted-foreground">
-            Running {categorizeProgress.done}/{categorizeProgress.total}
+            {categorizeProgress.phase === "fetching"
+              ? `Fetching page ${categorizeProgress.page}`
+              : `Page ${categorizeProgress.page} · ${categorizeProgress.done}/${categorizeProgress.total}`}
             {usingProvider ? ` · ${providerLabel(usingProvider)}` : ""}
           </p>
         ) : usingProvider ? (
@@ -324,17 +319,18 @@ export function PlaceTrackEmailsPanel({
   active,
   gmailStatus,
   rows,
-  allRows,
+  mixCounts,
   fetchedAt,
   isLoading,
   isFetchingPage = false,
   isCategorizing,
   isSubmitting,
   categorizeProgress,
+  submitProgress = null,
   currentPage = 1,
   totalPages = 0,
   total = 0,
-  pageSize = 400,
+  pageSize = 200,
   canSubmitAll = false,
   error,
   lastApply,
@@ -358,19 +354,8 @@ export function PlaceTrackEmailsPanel({
 
   if (!active) return null;
 
-  const labeledCount = allRows.filter(
-    (row) =>
-      row.category === "baharMil" ||
-      row.category === "oneSided" ||
-      row.category === "jobAds" ||
-      row.category === "pendingJobs" ||
-      row.category === "shopping" ||
-      row.category === "finTax" ||
-      row.category === "replySpam" ||
-      row.category === "trash" ||
-      row.category === "cicd",
-  ).length;
-  const classifiedCount = allRows.filter((row) => row.classifyStatus === "done").length;
+  const labeledCount = mixCounts.labeled;
+  const classifiedCount = mixCounts.classified;
   const noiseTotal = noiseCount?.total ?? 0;
 
   const handleSubmit = async () => {
@@ -459,11 +444,19 @@ export function PlaceTrackEmailsPanel({
             variant="secondary"
             className="gap-2"
             onClick={() => void onCategorize()}
-            disabled={isLoading || isCategorizing || isSubmitting || !rows.length || !gmailStatus?.connected}
+            disabled={
+              isLoading ||
+              isCategorizing ||
+              isSubmitting ||
+              !gmailStatus?.connected ||
+              (rows.length === 0 && total < 1)
+            }
           >
             {isCategorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isCategorizing && categorizeProgress
-              ? `${categorizeProgress.done}/${categorizeProgress.total}`
+              ? categorizeProgress.phase === "fetching"
+                ? `Fetching page ${categorizeProgress.page}`
+                : `${categorizeProgress.done}/${categorizeProgress.total}`
               : "Categorize"}
           </Button>
           {canSubmitAll ? (
@@ -474,7 +467,9 @@ export function PlaceTrackEmailsPanel({
             disabled={isLoading || isCategorizing || isSubmitting || labeledCount === 0}
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Submit ({labeledCount})
+            {isSubmitting && submitProgress
+              ? `Submitting ${submitProgress.batch}/${submitProgress.batches}`
+              : `Submit (${labeledCount})`}
           </Button>
           ) : null}
           {onDeleteNoise ? (
@@ -586,9 +581,9 @@ export function PlaceTrackEmailsPanel({
         </div>
       ) : null}
 
-      {gmailStatus?.connected && (allRows.length > 0 || total > 0) ? (
+      {gmailStatus?.connected && (mixCounts.loaded > 0 || total > 0) ? (
         <CategoryBreakdownBar
-          rows={allRows}
+          counts={mixCounts}
           isCategorizing={isCategorizing}
           categorizeProgress={categorizeProgress}
           usingProvider={effectiveProvider}
@@ -596,10 +591,12 @@ export function PlaceTrackEmailsPanel({
         />
       ) : null}
 
-      {gmailStatus?.connected && (allRows.length > 0 || total > 0) ? (
+      {gmailStatus?.connected && (mixCounts.loaded > 0 || total > 0) ? (
         <div className="mb-4 text-xs text-muted-foreground">
           {categorizeProgress
-            ? `${categorizeProgress.done}/${categorizeProgress.total} categorized`
+            ? categorizeProgress.phase === "fetching"
+              ? `Fetching page ${categorizeProgress.page} of ${Math.max(totalPages, 1)}`
+              : `${categorizeProgress.done}/${categorizeProgress.total} categorized · page ${categorizeProgress.page}/${Math.max(totalPages, 1)}`
             : `${classifiedCount} categorized`}
           {" · "}
           {total.toLocaleString()} unread · page {currentPage}/{Math.max(totalPages, 1)} · {labeledCount} ready
@@ -652,7 +649,11 @@ export function PlaceTrackEmailsPanel({
         </div>
       ) : null}
 
-      {isLoading && rows.length === 0 && !error && gmailStatus?.connected !== false ? (
+      {isLoading && total === 0 && !error && gmailStatus?.connected ? (
+        <p className="mb-4 text-sm text-muted-foreground">Counting all unread Primary mail…</p>
+      ) : null}
+
+      {isFetchingPage && !error && total > 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 6 }).map((_, index) => (
             <Skeleton key={index} className="h-[88px] w-full rounded-xl bg-muted/40" />
@@ -660,7 +661,15 @@ export function PlaceTrackEmailsPanel({
         </div>
       ) : null}
 
-      {!isLoading && gmailStatus?.connected && rows.length === 0 && !error ? (
+      {isLoading && rows.length === 0 && total === 0 && !error && gmailStatus?.connected !== false ? (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <Skeleton key={index} className="h-[88px] w-full rounded-xl bg-muted/40" />
+          ))}
+        </div>
+      ) : null}
+
+      {!isLoading && !isFetchingPage && !isCategorizing && gmailStatus?.connected && rows.length === 0 && !error && total === 0 ? (
         <div className="glass-card rounded-xl border border-border/60 p-10 text-center">
           <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-muted/40 text-muted-foreground">
             <Inbox className="h-5 w-5" />
@@ -670,7 +679,7 @@ export function PlaceTrackEmailsPanel({
         </div>
       ) : null}
 
-      {rows.length > 0 ? (
+      {!isFetchingPage && rows.length > 0 ? (
         <ul className="divide-y divide-border/60 overflow-hidden rounded-xl border border-border/60 bg-card/40">
           {rows.map((row) => (
             <li key={row.id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-start sm:gap-3 sm:px-4">

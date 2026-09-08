@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyEmailLabels,
   classifyOneEmail,
@@ -9,16 +9,19 @@ import {
   MailApiError,
   type ApplyLabelsResult,
   type ClassifyAiStatus,
+  type SubmitProgress,
   type ClassifyProvider,
   type EmailCategory,
   type GmailStatus,
   type UnreadEmail,
+  type UnreadInboxResult,
 } from "@/lib/placetrack/mail-api";
 
 /** Keep at most this many classify-one requests in flight. */
 const CLASSIFY_CONCURRENCY = 8;
+const UI_FLUSH_MS = 160;
 const PROVIDER_STORAGE_KEY = "sjv-email-classify-provider";
-export const UNREAD_PAGE_SIZE = 400;
+export const UNREAD_PAGE_SIZE = 200;
 
 export type EmailReviewRow = UnreadEmail & {
   category: EmailCategory;
@@ -28,25 +31,43 @@ export type EmailReviewRow = UnreadEmail & {
   classifyError?: string | null;
 };
 
-export type PageClassifyProgress = {
-  page: number;
-  status: "idle" | "fetching" | "categorizing" | "done" | "error";
+export type CategorizeProgress = {
   done: number;
   total: number;
-  error?: string | null;
+  page: number;
+  phase: "fetching" | "categorizing";
 };
+
+export type InboxMixCounts = {
+  baharMil: number;
+  oneSided: number;
+  jobAds: number;
+  pendingJobs: number;
+  shopping: number;
+  finTax: number;
+  cicd: number;
+  replySpam: number;
+  trash: number;
+  none: number;
+  pending: number;
+  classified: number;
+  labeled: number;
+  loaded: number;
+};
+
+export type { SubmitProgress };
 
 type UnreadEmailsState = {
   gmailStatus: GmailStatus | null;
   rows: EmailReviewRow[];
-  allRows: EmailReviewRow[];
+  mixCounts: InboxMixCounts;
   fetchedAt: string | null;
   isLoading: boolean;
   isFetchingPage: boolean;
   isCategorizing: boolean;
   isSubmitting: boolean;
-  categorizeProgress: { done: number; total: number } | null;
-  pageProgress: PageClassifyProgress[];
+  categorizeProgress: CategorizeProgress | null;
+  submitProgress: SubmitProgress | null;
   currentPage: number;
   totalPages: number;
   total: number;
@@ -73,6 +94,25 @@ function readStoredProvider(): ClassifyProvider | null {
     // ignore
   }
   return null;
+}
+
+function emptyMix(): InboxMixCounts {
+  return {
+    baharMil: 0,
+    oneSided: 0,
+    jobAds: 0,
+    pendingJobs: 0,
+    shopping: 0,
+    finTax: 0,
+    cicd: 0,
+    replySpam: 0,
+    trash: 0,
+    none: 0,
+    pending: 0,
+    classified: 0,
+    labeled: 0,
+    loaded: 0,
+  };
 }
 
 function toReviewRow(email: UnreadEmail): EmailReviewRow {
@@ -108,9 +148,9 @@ function flattenPages(pages: Record<number, EmailReviewRow[]>): EmailReviewRow[]
 
 export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   const [gmailStatus, setGmailStatus] = useState<GmailStatus | null>(null);
-  const [pageRows, setPageRows] = useState<Record<number, EmailReviewRow[]>>({});
-  const [pageTokens, setPageTokens] = useState<Record<number, string | null>>({ 1: null });
-  const [currentPage, setCurrentPage] = useState(1);
+  const [visibleRows, setVisibleRows] = useState<EmailReviewRow[]>([]);
+  const [mixCounts, setMixCounts] = useState<InboxMixCounts>(() => emptyMix());
+  const [currentPage, setCurrentPageState] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
   const [total, setTotal] = useState(0);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
@@ -118,10 +158,9 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   const [isFetchingPage, setIsFetchingPage] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [categorizeProgress, setCategorizeProgress] = useState<{ done: number; total: number } | null>(
-    null,
-  );
-  const [pageProgress, setPageProgress] = useState<PageClassifyProgress[]>([]);
+  const [categorizeProgress, setCategorizeProgress] = useState<CategorizeProgress | null>(null);
+  const [submitProgress, setSubmitProgress] = useState<SubmitProgress | null>(null);
+  const [canSubmitAll, setCanSubmitAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastApply, setLastApply] = useState<ApplyLabelsResult | null>(null);
   const [classifyProvider, setClassifyProviderState] = useState<ClassifyProvider>(
@@ -129,13 +168,17 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   );
   const [classifyAiStatus, setClassifyAiStatus] = useState<ClassifyAiStatus | null>(null);
 
-  const pageRowsRef = useRef(pageRows);
-  const pageTokensRef = useRef(pageTokens);
-  const totalPagesRef = useRef(totalPages);
+  const pageRowsRef = useRef<Record<number, EmailReviewRow[]>>({});
+  const pageTokensRef = useRef<Record<number, string | null>>({ 1: null });
+  const totalPagesRef = useRef(0);
+  const currentPageRef = useRef(1);
   const classifyDoneRef = useRef(0);
-  pageRowsRef.current = pageRows;
-  pageTokensRef.current = pageTokens;
-  totalPagesRef.current = totalPages;
+  const isCategorizingRef = useRef(false);
+  const inflightPagesRef = useRef(new Map<number, Promise<UnreadInboxResult | null>>());
+  const mixRef = useRef<InboxMixCounts>(emptyMix());
+  const countedPagesRef = useRef(new Set<number>());
+  const progressRef = useRef<CategorizeProgress | null>(null);
+  const flushTimerRef = useRef<number | null>(null);
 
   const effectiveProvider: ClassifyProvider = (() => {
     if (classifyProvider === "regex") return "regex";
@@ -156,6 +199,66 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     }
   }, []);
 
+  const computeCanSubmit = useCallback(() => {
+    if (isCategorizingRef.current) return false;
+    if (mixRef.current.labeled < 1) return false;
+    const last = Math.max(totalPagesRef.current, 1);
+    for (let page = 1; page <= last; page += 1) {
+      const list = pageRowsRef.current[page];
+      if (!list?.length) return false;
+      for (const row of list) {
+        if (row.classifyStatus !== "done" && row.classifyStatus !== "error") return false;
+      }
+    }
+    return true;
+  }, []);
+
+  const flushUi = useCallback(
+    (immediate = false) => {
+      const paint = () => {
+        flushTimerRef.current = null;
+        setVisibleRows(pageRowsRef.current[currentPageRef.current] ?? []);
+        setMixCounts({ ...mixRef.current });
+        setCategorizeProgress(progressRef.current);
+        if (!isCategorizingRef.current) {
+          setCanSubmitAll(computeCanSubmit());
+        }
+      };
+      if (immediate) {
+        if (flushTimerRef.current != null) {
+          window.clearTimeout(flushTimerRef.current);
+          flushTimerRef.current = null;
+        }
+        paint();
+        return;
+      }
+      if (flushTimerRef.current != null) return;
+      flushTimerRef.current = window.setTimeout(paint, UI_FLUSH_MS);
+    },
+    [computeCanSubmit],
+  );
+
+  const setCurrentPage = useCallback(
+    (page: number) => {
+      currentPageRef.current = page;
+      setCurrentPageState(page);
+      flushUi(true);
+    },
+    [flushUi],
+  );
+
+  const noteLoadedPage = useCallback((page: number, rows: EmailReviewRow[]) => {
+    if (countedPagesRef.current.has(page) || !rows.length) return;
+    countedPagesRef.current.add(page);
+    mixRef.current.pending += rows.length;
+    mixRef.current.loaded += rows.length;
+  }, []);
+
+  const applyCategoryDelta = useCallback((row: EmailReviewRow, direction: 1 | -1) => {
+    mixRef.current[row.category] += direction;
+    if (labeledCategory(row)) mixRef.current.labeled += direction;
+  }, []);
+
   const refreshAiStatus = useCallback(async () => {
     try {
       setClassifyAiStatus(await fetchClassifyAiStatus());
@@ -174,30 +277,18 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
 
   const applyPageResult = useCallback(
     (page: number, inbox: Awaited<ReturnType<typeof fetchUnreadPrimaryEmails>>) => {
-      setPageRows((prev) => {
-        const next = { ...prev, [page]: inbox.emails.map(toReviewRow) };
-        pageRowsRef.current = next;
-        return next;
-      });
+      const mapped = inbox.emails.map(toReviewRow);
+      pageRowsRef.current = { ...pageRowsRef.current, [page]: mapped };
+      noteLoadedPage(page, mapped);
       setFetchedAt(inbox.fetchedAt ?? null);
-      if (typeof inbox.total === "number" && inbox.total > 0) {
-        setTotal(inbox.total);
-      }
       const nextToken = inbox.nextPageToken || null;
-      setPageTokens((prev) => {
-        const next = { ...prev };
-        if (page === 1) next[1] = null;
-        if (nextToken) next[page + 1] = nextToken;
-        pageTokensRef.current = next;
-        return next;
-      });
-      setTotalPages((prev) => {
-        const fromApi = inbox.totalPages ?? 0;
-        if (!nextToken) return Math.max(page, fromApi ? Math.min(fromApi, page) : page);
-        return Math.max(prev, page + 1, fromApi);
-      });
+      const nextTokens = { ...pageTokensRef.current };
+      if (page === 1) nextTokens[1] = null;
+      if (nextToken) nextTokens[page + 1] = nextToken;
+      pageTokensRef.current = nextTokens;
+      flushUi(page === currentPageRef.current);
     },
-    [],
+    [flushUi, noteLoadedPage],
   );
 
   const fetchPage = useCallback(
@@ -216,11 +307,6 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
             idsOnly: true,
           });
           const walkedNext = walked.nextPageToken || null;
-          setPageTokens((prev) => {
-            const next = { ...prev };
-            if (walkedNext) next[walk + 1] = walkedNext;
-            return next;
-          });
           pageTokensRef.current = {
             ...pageTokensRef.current,
             ...(walkedNext ? { [walk + 1]: walkedNext } : {}),
@@ -245,11 +331,6 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       if (!idsOnly) applyPageResult(page, inbox);
       else {
         const nextToken = inbox.nextPageToken || null;
-        setPageTokens((prev) => {
-          const next = { ...prev };
-          if (nextToken) next[page + 1] = nextToken;
-          return next;
-        });
         pageTokensRef.current = {
           ...pageTokensRef.current,
           ...(nextToken ? { [page + 1]: nextToken } : {}),
@@ -260,16 +341,63 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     [applyPageResult],
   );
 
+  const ensurePageLoaded = useCallback(
+    async (page: number): Promise<EmailReviewRow[]> => {
+      const existing = pageRowsRef.current[page];
+      if (existing?.length) return existing;
+
+      let pending = inflightPagesRef.current.get(page);
+      if (!pending) {
+        pending = fetchPage(page).finally(() => {
+          inflightPagesRef.current.delete(page);
+        });
+        inflightPagesRef.current.set(page, pending);
+      }
+
+      const inbox = await pending;
+      return pageRowsRef.current[page] ?? inbox?.emails?.map(toReviewRow) ?? [];
+    },
+    [fetchPage],
+  );
+
+  const prefetchPage = useCallback(
+    (page: number) => {
+      if (page < 2) return;
+      if (page > Math.max(totalPagesRef.current, 1)) return;
+      if (pageRowsRef.current[page]?.length) return;
+      if (inflightPagesRef.current.has(page)) return;
+      void ensurePageLoaded(page);
+    },
+    [ensurePageLoaded],
+  );
+
+  const patchRow = useCallback((page: number, messageId: string, patch: Partial<EmailReviewRow>) => {
+    const list = pageRowsRef.current[page];
+    if (!list?.length) return null;
+    const index = list.findIndex((row) => row.id === messageId);
+    if (index < 0) return null;
+    const prev = list[index];
+    const nextRow = { ...prev, ...patch };
+    const nextList = list.slice();
+    nextList[index] = nextRow;
+    pageRowsRef.current[page] = nextList;
+    return { prev, next: nextRow };
+  }, []);
+
   const refresh = useCallback(async () => {
+    if (isCategorizingRef.current) return;
     setIsLoading(true);
     setError(null);
     setLastApply(null);
+    progressRef.current = null;
     setCategorizeProgress(null);
-    setPageProgress([]);
-    setPageRows({});
-    setPageTokens({ 1: null });
     pageRowsRef.current = {};
     pageTokensRef.current = { 1: null };
+    mixRef.current = emptyMix();
+    countedPagesRef.current = new Set();
+    setMixCounts(emptyMix());
+    setVisibleRows([]);
+    setCanSubmitAll(false);
     setCurrentPage(1);
     try {
       const status = await fetchGmailStatus();
@@ -277,33 +405,45 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       if (!status.connected) {
         setTotal(0);
         setTotalPages(0);
+        totalPagesRef.current = 0;
         setFetchedAt(null);
         return;
       }
 
       const summary = await fetchUnreadPrimaryCount({ pageSize: UNREAD_PAGE_SIZE });
+      const tokenMap: Record<number, string | null> = { 1: null };
+      summary.pageTokens.forEach((token, index) => {
+        tokenMap[index + 1] = token;
+      });
+      pageTokensRef.current = tokenMap;
       setTotal(summary.total);
       setTotalPages(summary.totalPages);
       totalPagesRef.current = summary.totalPages;
       setFetchedAt(summary.fetchedAt ?? null);
+      setIsLoading(false);
 
       if (summary.totalPages < 1 || summary.total < 1) {
         return;
       }
 
+      setIsFetchingPage(true);
       await fetchPage(1);
       setCurrentPage(1);
     } catch (err) {
       const message = err instanceof MailApiError ? err.message : "Could not load unread emails.";
       setError(message);
-      setPageRows({});
+      pageRowsRef.current = {};
+      setVisibleRows([]);
     } finally {
       setIsLoading(false);
+      setIsFetchingPage(false);
+      flushUi(true);
     }
-  }, [fetchPage]);
+  }, [fetchPage, flushUi, setCurrentPage]);
 
   const goToPage = useCallback(
     async (page: number) => {
+      if (isCategorizingRef.current) return;
       if (page < 1) return;
       const last = Math.max(totalPagesRef.current, 1);
       if (page > last) return;
@@ -311,59 +451,52 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
         setCurrentPage(page);
         return;
       }
+      setCurrentPage(page);
       setIsFetchingPage(true);
       setError(null);
       try {
         await fetchPage(page);
-        setCurrentPage(page);
       } catch (err) {
         const message = err instanceof MailApiError ? err.message : "Could not load that page.";
         setError(message);
       } finally {
         setIsFetchingPage(false);
+        flushUi(true);
       }
     },
-    [fetchPage],
+    [fetchPage, flushUi, setCurrentPage],
   );
 
-  const setRowCategory = useCallback((messageId: string, category: EmailCategory) => {
-    setPageRows((prev) => {
-      const next: Record<number, EmailReviewRow[]> = {};
-      for (const [key, rows] of Object.entries(prev)) {
-        next[Number(key)] = rows.map((row) =>
-          row.id === messageId
-            ? {
-                ...row,
-                category,
-                reason: row.reason ? `${row.reason} · edited` : "edited",
-                source: "user",
-              }
-            : row,
-        );
+  const setRowCategory = useCallback(
+    (messageId: string, category: EmailCategory) => {
+      if (isCategorizingRef.current) return;
+      for (const [key, list] of Object.entries(pageRowsRef.current)) {
+        const page = Number(key);
+        const found = list.find((row) => row.id === messageId);
+        if (!found) continue;
+        applyCategoryDelta(found, -1);
+        const patched = patchRow(page, messageId, {
+          category,
+          reason: found.reason ? `${found.reason} · edited` : "edited",
+          source: "user",
+        });
+        if (patched) applyCategoryDelta(patched.next, 1);
+        flushUi(true);
+        return;
       }
-      return next;
-    });
-  }, []);
+    },
+    [applyCategoryDelta, flushUi, patchRow],
+  );
 
   const classifyPageRows = useCallback(
     async (page: number, rows: EmailReviewRow[]) => {
       const ids = rows.map((row) => row.id);
       const total = ids.length;
       let nextIndex = 0;
-      let done = 0;
-      setPageProgress((prev) =>
-        prev.map((item) =>
-          item.page === page ? { ...item, status: "categorizing", done: 0, total } : item,
-        ),
-      );
 
       const classifyOne = async (messageId: string) => {
-        setPageRows((prev) => ({
-          ...prev,
-          [page]: (prev[page] ?? []).map((row) =>
-            row.id === messageId ? { ...row, classifyStatus: "loading", classifyError: null } : row,
-          ),
-        }));
+        patchRow(page, messageId, { classifyStatus: "loading", classifyError: null });
+        if (page === currentPageRef.current) flushUi();
 
         try {
           const result = await classifyOneEmail(
@@ -371,41 +504,42 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
             effectiveProvider !== "regex",
             effectiveProvider,
           );
-          setPageRows((prev) => ({
-            ...prev,
-            [page]: (prev[page] ?? []).map((row) =>
-              row.id === messageId
-                ? {
-                    ...row,
-                    category: result.category,
-                    reason: result.reason ?? null,
-                    source: result.source ?? null,
-                    classifyStatus: "done",
-                    classifyError: null,
-                  }
-                : row,
-            ),
-          }));
+          const patched = patchRow(page, messageId, {
+            category: result.category,
+            reason: result.reason ?? null,
+            source: result.source ?? null,
+            classifyStatus: "done",
+            classifyError: null,
+          });
+          if (patched) {
+            const mix = mixRef.current;
+            if (patched.prev.classifyStatus === "idle" || patched.prev.classifyStatus === "loading") {
+              mix.pending = Math.max(0, mix.pending - 1);
+            }
+            mix.classified += 1;
+            applyCategoryDelta(patched.next, 1);
+          }
         } catch (err) {
           const message = err instanceof MailApiError ? err.message : "Classify failed";
-          setPageRows((prev) => ({
-            ...prev,
-            [page]: (prev[page] ?? []).map((row) =>
-              row.id === messageId
-                ? { ...row, classifyStatus: "error", classifyError: message }
-                : row,
-            ),
-          }));
+          const patched = patchRow(page, messageId, {
+            classifyStatus: "error",
+            classifyError: message,
+          });
+          if (patched && (patched.prev.classifyStatus === "idle" || patched.prev.classifyStatus === "loading")) {
+            mixRef.current.pending = Math.max(0, mixRef.current.pending - 1);
+          }
         } finally {
-          done += 1;
           classifyDoneRef.current += 1;
-          const globalDone = classifyDoneRef.current;
-          setPageProgress((prev) =>
-            prev.map((item) => (item.page === page ? { ...item, done, total } : item)),
-          );
-          setCategorizeProgress((prev) =>
-            prev ? { ...prev, done: globalDone, total: Math.max(prev.total, globalDone) } : { done: globalDone, total: globalDone },
-          );
+          if (progressRef.current) {
+            progressRef.current = {
+              ...progressRef.current,
+              done: classifyDoneRef.current,
+              total: Math.max(progressRef.current.total, classifyDoneRef.current),
+              page,
+              phase: "categorizing",
+            };
+          }
+          flushUi();
         }
       };
 
@@ -421,83 +555,80 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       await Promise.all(
         Array.from({ length: Math.min(CLASSIFY_CONCURRENCY, total) }, () => worker()),
       );
-      setPageProgress((prev) =>
-        prev.map((item) => (item.page === page ? { ...item, status: "done", done: total, total } : item)),
-      );
+      flushUi(true);
     },
-    [effectiveProvider],
+    [applyCategoryDelta, effectiveProvider, flushUi, patchRow],
   );
 
   const categorizeAll = useCallback(async () => {
+    if (isCategorizingRef.current) return;
     if (totalPagesRef.current < 1 && !pageRowsRef.current[1]?.length) return;
+    isCategorizingRef.current = true;
     setIsCategorizing(true);
+    setCanSubmitAll(false);
     setError(null);
-    setPageProgress([]);
     classifyDoneRef.current = 0;
-    setCategorizeProgress({ done: 0, total: Math.max(total, 0) });
+    const inboxTotal = Math.max(total, 0);
+    progressRef.current = { done: 0, total: inboxTotal, page: 1, phase: "categorizing" };
+    flushUi(true);
 
     try {
       let page = 1;
-      for (;;) {
-        setCurrentPage(page);
-        setPageProgress((prev) => {
-          if (prev.some((item) => item.page === page)) return prev;
-          return [
-            ...prev,
-            { page, status: "fetching", done: 0, total: pageRowsRef.current[page]?.length ?? UNREAD_PAGE_SIZE },
-          ];
-        });
+      while (true) {
+        const last = Math.max(totalPagesRef.current, 1);
+        if (page > last) break;
 
-        if (!pageRowsRef.current[page]?.length) {
+        let rows = pageRowsRef.current[page] ?? [];
+        if (!rows.length) {
+          setCurrentPage(page);
           setIsFetchingPage(true);
-          const inbox = await fetchPage(page);
-          setIsFetchingPage(false);
-          if (!inbox || !inbox.emails.length) {
-            setTotalPages(Math.max(1, page - 1));
-            break;
+          progressRef.current = {
+            done: classifyDoneRef.current,
+            total: Math.max(progressRef.current?.total ?? inboxTotal, inboxTotal),
+            page,
+            phase: "fetching",
+          };
+          flushUi(true);
+          try {
+            rows = await ensurePageLoaded(page);
+            if (rows.length && !pageRowsRef.current[page]?.length) {
+              pageRowsRef.current = { ...pageRowsRef.current, [page]: rows };
+              noteLoadedPage(page, rows);
+            }
+            if (!rows.length) break;
+          } finally {
+            setIsFetchingPage(false);
           }
+        } else {
+          setCurrentPage(page);
         }
 
-        const rows = pageRowsRef.current[page] ?? [];
-        if (!rows.length) break;
-        await classifyPageRows(page, rows);
+        prefetchPage(page + 1);
 
-        const nextToken = pageTokensRef.current[page + 1];
-        if (!nextToken) {
-          setTotalPages(page);
-          totalPagesRef.current = page;
-          break;
+        const pending = rows.filter((row) => row.classifyStatus !== "done");
+        if (pending.length) {
+          progressRef.current = {
+            done: classifyDoneRef.current,
+            total: Math.max(progressRef.current?.total ?? inboxTotal, inboxTotal),
+            page,
+            phase: "categorizing",
+          };
+          flushUi(true);
+          await classifyPageRows(page, pending);
         }
+
         page += 1;
-        setTotalPages((prev) => Math.max(prev, page));
-        totalPagesRef.current = Math.max(totalPagesRef.current, page);
       }
     } catch (err) {
       const message = err instanceof MailApiError ? err.message : "Categorize failed.";
       setError(message);
     } finally {
-      setIsFetchingPage(false);
+      isCategorizingRef.current = false;
       setIsCategorizing(false);
+      setIsFetchingPage(false);
+      flushUi(true);
     }
-  }, [classifyPageRows, fetchPage, total]);
-
-  const allRows = useMemo(() => flattenPages(pageRows), [pageRows]);
-  const rows = pageRows[currentPage] ?? [];
-
-  const canSubmitAll = useMemo(() => {
-    if (isCategorizing || isLoading) return false;
-    if (!allRows.length) return false;
-    const pagesNeeded = Math.max(totalPages, Object.keys(pageRows).length);
-    if (pagesNeeded < 1) return false;
-    for (let page = 1; page <= pagesNeeded; page += 1) {
-      const pageList = pageRows[page];
-      if (!pageList?.length) return false;
-      if (pageList.some((row) => row.classifyStatus !== "done" && row.classifyStatus !== "error")) {
-        return false;
-      }
-    }
-    return allRows.some(labeledCategory);
-  }, [allRows, isCategorizing, isLoading, pageRows, totalPages]);
+  }, [classifyPageRows, ensurePageLoaded, flushUi, noteLoadedPage, prefetchPage, setCurrentPage, total]);
 
   const submitLabels = useCallback(async (): Promise<ApplyLabelsResult | null> => {
     const toApply = flattenPages(pageRowsRef.current).filter(labeledCategory);
@@ -511,9 +642,15 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     }
 
     setIsSubmitting(true);
+    setSubmitProgress({ batch: 1, batches: 1, applied: 0, total: items.length });
     setError(null);
     try {
-      const result = await applyEmailLabels({ items, archive: true, markRead: true });
+      const result = await applyEmailLabels({
+        items,
+        archive: true,
+        markRead: true,
+        onProgress: setSubmitProgress,
+      });
       setLastApply(result);
 
       const appliedIds = new Set(
@@ -527,17 +664,14 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
           .map((row) => String(row.messageId ?? "")),
       );
 
-      setPageRows((prev) => {
-        const next: Record<number, EmailReviewRow[]> = {};
-        for (const [key, list] of Object.entries(prev)) {
-          next[Number(key)] = list.filter((row) => {
-            if (row.category === "none") return true;
-            if (appliedIds.has(row.id)) return false;
-            return true;
-          });
-        }
-        return next;
-      });
+      for (const [key, list] of Object.entries(pageRowsRef.current)) {
+        pageRowsRef.current[Number(key)] = list.filter((row) => {
+          if (row.category === "none") return true;
+          if (appliedIds.has(row.id)) return false;
+          return true;
+        });
+      }
+      flushUi(true);
 
       if (result.counts.errors > 0) {
         const firstError = result.results.find((row) => row.action === "error");
@@ -559,8 +693,9 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
       return null;
     } finally {
       setIsSubmitting(false);
+      setSubmitProgress(null);
     }
-  }, [refresh]);
+  }, [flushUi, refresh]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -569,10 +704,17 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     const timer = window.setInterval(() => {
       void refreshAiStatus();
     }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [enabled, refresh, refreshAiStatus]);
+    return () => {
+      window.clearInterval(timer);
+      if (flushTimerRef.current != null) window.clearTimeout(flushTimerRef.current);
+    };
+    // Only when the emails view is opened. Do not re-run when fetch helpers change
+    // or categorization would wipe and reload the inbox mid-run.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
 
   useEffect(() => {
+    if (isCategorizingRef.current) return;
     if (!classifyAiStatus) return;
     if (readStoredProvider()) return;
     if (classifyAiStatus.recommended !== classifyProvider) {
@@ -582,15 +724,15 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
 
   return {
     gmailStatus,
-    rows,
-    allRows,
+    rows: visibleRows,
+    mixCounts,
     fetchedAt,
     isLoading,
     isFetchingPage,
     isCategorizing,
     isSubmitting,
     categorizeProgress,
-    pageProgress,
+    submitProgress,
     currentPage,
     totalPages,
     total,

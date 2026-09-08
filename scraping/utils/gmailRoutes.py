@@ -26,7 +26,12 @@ from utils.gmailConfig import (
     gmailOAuthRedirectUri,
     gmailOAuthReturnPath,
 )
-from utils.gmailInbox import countUnreadPrimaryEmails, fetchUnreadPrimaryEmails, fetchUnreadPrimaryPage
+from utils.gmailInbox import (
+    UNREAD_PAGE_SIZE,
+    countUnreadPrimaryEmails,
+    fetchUnreadPrimaryEmails,
+    fetchUnreadPrimaryPage,
+)
 from utils.gmailCategoryTrash import countNoiseCategoryMail, trashNoiseCategoryMail
 from utils.gmailInboxClean import (
     applyEmailLabelActions,
@@ -255,7 +260,7 @@ def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = Fals
 
 
 @gmailRouter.get("/api/gmail/inbox/unread-count")
-def getGmailUnreadCount(pageSize: int = 400) -> dict:
+def getGmailUnreadCount(pageSize: int = UNREAD_PAGE_SIZE) -> dict:
     """Total unread Primary count (Gmail estimate) for pagination."""
     _requireConnectedStatus()
     if pageSize < 1 or pageSize > 500:
@@ -422,8 +427,8 @@ def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
     _requireConnectedStatus(needModify=True)
     if not body.items:
         raise HTTPException(status_code=422, detail="items required")
-    if len(body.items) > 200:
-        raise HTTPException(status_code=422, detail="at most 200 items")
+    if len(body.items) > 40:
+        raise HTTPException(status_code=422, detail="at most 40 items")
 
     try:
         return applyEmailLabelActions(
