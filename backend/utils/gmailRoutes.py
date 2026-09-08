@@ -327,7 +327,7 @@ def postGmailInboxClean(
     - sign-in / verify / OTP / incomplete profile / action needed → pendingJobs
     - retail orders / shipping / receipts / bookings → shopping
     - banking / credit cards / tax / KYC / payments → finTax
-    - fake Re: person-impersonation spam → replySpam (moved to Trash)
+    - fake Re: impersonation spam and bank/product ads → Trash (Gmail Trash)
     - GitHub/GitLab/Azure/Argo/Jenkins pipeline mail → CICD
     Then optionally archive + mark read to clean the inbox.
     """

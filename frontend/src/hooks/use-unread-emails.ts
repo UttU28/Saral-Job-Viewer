@@ -240,7 +240,7 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
 
     if (!items.length) {
       setError(
-        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, or CICD.",
+        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, finTax, Trash, or CICD.",
       );
       return null;
     }

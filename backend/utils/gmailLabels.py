@@ -9,7 +9,8 @@ CLEAN_LABEL_JOBADS = "jobAds"
 CLEAN_LABEL_PENDINGJOBS = "pendingJobs"
 CLEAN_LABEL_SHOPPING = "shopping"
 CLEAN_LABEL_FINTAX = "finTax"
-CLEAN_LABEL_REPLYSPAM = "replySpam"
+CLEAN_LABEL_REPLYSPAM = "Trash"
+CLEAN_LABEL_REPLYSPAM_ALIASES = ("Trash", "replySpam")
 CLEAN_LABEL_CICD = "CICD"
 CLEAN_LABEL_NAMES = (
     CLEAN_LABEL_ONESIDED,
@@ -79,7 +80,12 @@ def resolveCleanLabels(*, createMissing: bool = True) -> dict[str, dict]:
     resolved: dict[str, dict] = {}
 
     for name in CLEAN_LABEL_NAMES:
-        existing = findLabelByName(listed, name)
+        aliases = CLEAN_LABEL_REPLYSPAM_ALIASES if name == CLEAN_LABEL_REPLYSPAM else (name,)
+        existing = None
+        for alias in aliases:
+            existing = findLabelByName(listed, alias)
+            if existing and existing.get("id"):
+                break
         if existing and existing.get("id"):
             resolved[name] = {
                 "id": existing["id"],

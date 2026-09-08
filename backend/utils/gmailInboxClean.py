@@ -362,14 +362,15 @@ SHOPPING_PATTERNS = [
 FINTAX_PATTERNS = [
     re.compile(p, re.I)
     for p in (
-        # Tax
+        # Actual tax filing / payments (not TurboTax ads)
         r"\bfbar\b",
+        r"\bw-?2\b",
         r"\bitr\b",
         r"file\s+your\s+itr",
         r"income\s+tax\s+return",
         r"e-?verif(?:y|ication)\s+of\s+income\s+tax",
         r"tax\s+return\s+accepted",
-        r"tax\s+(estimates?|filing|return|payment)",
+        r"tax\s+estimates?\s*-?\s*ty",
         r"consent\s+to\s+e-?\s*file\s+your\s+taxes",
         r"individual\s+tax\s+filing",
         r"pay1040",
@@ -378,35 +379,103 @@ FINTAX_PATTERNS = [
         r"incometax\.gov\.in",
         r"shoonyatax|saadvitax|icontaxfilers|drake\s*software",
         r"assessment\s+year|ay\s*20\d{2}",
-        r"ty\s*20\d{2}",
-        # Banking / statements / credit
+        r"ty\s*20\d{2}\s+(payment|individual)",
+        # Real statements / money movement
+        r"statement\s+of\s+your\s+(nj\s+india\s+invest\s+)?(demat\s+)?account",
         r"account\s+statement",
-        r"statement\s+of\s+your\s+account",
-        r"credit\s+report",
-        r"credit\s+score",
-        r"bankbazaar|bank\s+of\s+baroda|capital\s+one|american\s+express|synchrony",
+        r"monthly\s+account\s+statement",
+        r"we['’`]?ve\s+received\s+your\s+payment",
+        r"your\s+payment\s+of\s+\$",
+        r"payment\s+of\s+\$[\d,]+\.?\d*\s+is\s+scheduled",
+        r"your\s+payment\s+has\s+(been\s+)?(received|processed)",
+        r"payment\s+has\s+processed",
+        r"you\s+scheduled\s+a\s+payment",
+        r"thank\s+you\s+for\s+scheduling\s+your\s+payment",
+        r"credit\s+card\s+payment\s+is\s+due",
+        r"don['’`]?t\s+forget\s+to\s+pay\s+your",
+        r"reminder\s+for\s+your\s+.+account",
+        r"you\s+sent\s+.+\s+\$",
+        r"you\s+sent\s+money\s+with\s+zelle",
+        r"you\s+received\s+money\s+with\s+zelle",
+        r"sendmoney@zelle",
+        r"new\s+bill\s+from\s+.+\s+pay\s+now",
+        r"standard\s+overdraft\s+coverage",
         r"visions\s+federal\s+credit\s+union|visionsfcu",
-        r"overdraft\s+coverage",
-        r"demat\s+account",
-        r"nj\s+india\s*(invest|demat)",
-        r"update\s+your\s+kyc",
-        r"\bkyc\s+information\b",
-        r"binance",
-        r"your\s+card\s+is\s+ready\s+to\s+ship",
-        r"card\s+approved",
-        r"account\s+ending\s*:",
-        r"don'?t\s+live\s+life\s+without\s+it",
-        r"americanexpress|member\.americanexpress",
-        r"resy\s+profile",
-        r"card\s+membership",
-        r"payment\s+confirmation",
-        r"your\s+payment\s+has\s+been\s+received",
-        r"paymentus\.com",
-        r"city\s+of\s+.+\s+utilities",
-        r"zelle",
         r"estatement@",
-        r"online\s+registration.*store\s+card|store\s+card.*registration",
-        r"amazon\s+store\s+card",
+        r"your\s+card\s+is\s+ready\s+to\s+ship",
+        r"important\s+notice:\s+your\s+.+\s+statement",
+        r"payment\s+confirmation-?\s*irs",
+        r"returned\s+mail",
+    )
+]
+
+PROMO_TRASH_DOMAINS = frozenset(
+    {
+        "updates.transunion.com",
+        "alerts.transunion.com",
+        "transunion.com",
+        "bankbazaar.com",
+        "offer.capitalone.com",
+        "experience.capitalone.com",
+        "hello.klarna.com",
+        "mailsuite.com",
+        "splitwise.com",
+        "njwealth.co.in",
+        "legal.spotify.com",
+        "business.amazon.com",
+        "emails.synchrony.com",
+    }
+)
+
+PROMO_TRASH_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"credit\s+monitoring\s+alert",
+        r"your\s+(fico|credit)\W*score",
+        r"fico\W*score\s+went\s+(up|down)",
+        r"credit\s+score\s+has\s+(changed|improved|a\s+band)",
+        r"credit\s+score\s+went\s+(up|down)",
+        r"keep\s+it\s+up,?\s+\w+",
+        r"see\s+your\s+recent\s+changes",
+        r"experian\s+(alerts?|header)",
+        r"time\s+to\s+check\s+your\s+credit\s+report",
+        r"your\s+(september|august|july|june|may|april|march|february|january)\s+report\s+is\s+in",
+        r"your\s+credit\s+profile\s+has\s+been\s+updated",
+        r"your\s+credit\s+report\s+is\s+here",
+        r"which\s+factor\s+is\s+holding\s+your\s+credit",
+        r"you\s+may\s+have\s+offers",
+        r"amex\s+offers",
+        r"new\s+amex\s+offers",
+        r"earn\s+even\s+more\s+rewards",
+        r"add\s+an\s+additional\s+card",
+        r"create\s+a\s+resy\s+profile",
+        r"bonus\s+up\s+to\s+\$",
+        r"creditwise",
+        r"your\s+credit\s+usage\s+went",
+        r"my\s+wells\s+fargo\s+deals",
+        r"your\s+new\s+fico",
+        r"fico®?\s+score\*?\s+has\s+increased",
+        r"using\s+klarna\?",
+        r"you\s+need\s+to\s+see\s+this",
+        r"built-in\s+protection\s+for\s+your\s+purchase",
+        r"you\s+did\s+not\s+start\s+a\s+business\s+to\s+compare",
+        r"update\s+your\s+kyc\s+information\s+to\s+ensure",
+        r"\[reminder\]\s+update\s+your\s+kyc",
+        r"cyber\s+security\s+alert",
+        r"enjoy\s+safe\s+banking",
+        r"demat\s+&\s+trading\s+account\s+services\s+offered",
+        r"bond\s+offerings",
+        r"your\s+feedback\s+is\s+important",
+        r"capital\s+one\s+survey",
+        r"premium\s+events\s+wrap-up",
+        r"exclusive\s+replay",
+        r"networking\s+without\s+the",
+        r"update\s+to\s+the\s+spotify\s+terms",
+        r"monthly\s+email\s+productivity\s+report",
+        r"your\s+balance\s+for\s+(january|february|march|april|may|june|july|august|september|october|november|december)",
+        r"introducing\s+intelligent\s+transcription",
+        r"get\s+unstuck!?\s+import\s+your\s+tax\s+forms",
+        r"transactions\s+with\s+certain\s+crypto\s+platforms",
     )
 ]
 
@@ -450,21 +519,21 @@ Labels (choose exactly one per email):
 - "pendingJobs": action still needed on a job application/portal — sign-in, verify account, OTP, incomplete profile, additional info needed.
 - "jobAds": recruiter/staffing job pitches and job digests. Not shopping. Not banking.
 - "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / delivered, pickup, merchant receipts (Banggood, Best Buy, Uber Eats, Epic, AMC, Shopify). Not bank statements or tax.
-- "finTax": banking, credit cards, payments, tax, and finance compliance — bank/credit-union statements, overdraft notices, credit reports/scores, Amex/Capital One/card shipping & card marketing, crypto KYC (Binance), demat/broker statements, IRS/ITR/FBAR/tax preparer mail, tax payment confirmations, utility bill payment confirmations, Zelle. Not job mail. Not merchant product orders (those are shopping).
-- "replySpam": fake reply-chain spam impersonating a person (First Last @ random multi-part domain, "Re:" + marketing/insurance/quote/summary, SMTP dumps like smail.com / SSL: Active). NOT a real Re: thread from Gmail/Outlook or a known company/ATS.
+- "finTax": REAL money / tax / account operations only — monthly statements, payment received/scheduled/processed, payment due, Zelle sent/received, IRS/ITR/FBAR/tax-preparer mail, utility bill pay now. NOT credit-score nags, credit-monitoring alerts, card offers, bank ads, surveys, KYC reminders, Amex Offers, Klarna ads.
+- "replySpam": TRASH. Fake Re: impersonation spam AND marketing/ads (credit score changed, offers waiting, TransUnion/BankBazaar/Experian alerts, Capital One/Amex offers, LinkedIn event wrap-ups, product newsletters). Submit moves these to Gmail Trash.
 - "cicd": CI/CD and GitOps notifications — GitHub Actions / Checks / Dependabot workflow mail, GitLab CI, Azure DevOps / Pipelines, Argo CD / Flux / Tekton / Jenkins / CircleCI / Buildkite / Travis / Harness / Spinnaker, Vercel/Netlify/Cloudflare deploy status, Cloud Build, CodePipeline. Pass, fail, cancelled, skipped, verification, OpenAPI/ABI checks. NOT job applications. NOT personal GitHub social mail that is not a workflow.
 - "none": pure personal mail, unrelated newsletters, or anything that is not the above.
 
 Rules:
 1. Prefer baharMil when both thanks-for-applying AND rejection language appear.
 2. oneSided is ONLY for job-application receipts — never for orders, bank, or tax.
-3. Shopping = merchant orders/shipments/receipts. finTax = banks/cards/tax/KYC/payments/statements.
-4. Amex/Capital One/card/bank/tax/KYC mail is finTax (not none, not shopping).
+3. Shopping = merchant orders/shipments/receipts. finTax = actual payments/statements/tax filings only.
+4. Credit monitoring, FICO/score alerts, card offers, bank ads, surveys, KYC nags = replySpam (trash), never finTax.
 5. Sign-in / OTP / verify for job portals are pendingJobs.
-6. Recruiter cold outreach is jobAds.
-7. If unsure between finTax and none for clear bank/tax/payment mail, prefer finTax.
-8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax/KYC = finTax.
-9. Real job-thread Re: from a known company or personal mailbox is none/job category — never replySpam.
+6. Recruiter cold outreach is jobAds. LinkedIn event/replay/invite mail is replySpam (trash), not jobAds.
+7. If unsure between finTax and replySpam for bank mail: money moved or a real statement = finTax; offer/score/ad = replySpam.
+8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax payment = finTax.
+9. Real job-thread Re: from a known company or personal mailbox is none/job category — never replySpam unless it is fake impersonation spam.
 10. GitHub/GitLab/Azure/Argo/Jenkins/CircleCI pipeline and workflow mail is cicd — including notifications@github.com "PR run failed" / "Run failed" / "workflow run". Never none for those.
 11. If unsure otherwise, use none.
 """
@@ -607,6 +676,40 @@ def replySpamReason(
         reasons.append("smtpDump")
     if score >= 4:
         return "+".join(reasons)
+    return None
+
+
+def promoTrashReason(*, subject: str, text: str, fromEmail: str) -> str | None:
+    """Bank/credit/product ads and score nags — trash. Real payments/statements are finTax."""
+    domain = _domainOf(fromEmail)
+    haystack = f"{subject or ''}\n{text or ''}"
+    cleaned = (
+        haystack.replace("®", " ")
+        .replace("™", " ")
+        .replace("©", " ")
+        .replace("*", " ")
+    )
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if any(pattern.search(haystack) or pattern.search(cleaned) for pattern in FINTAX_PATTERNS):
+        return None
+    if any(domain == hint or domain.endswith("." + hint) for hint in PROMO_TRASH_DOMAINS):
+        return f"promoDomain:{domain}"
+    if domain.endswith("experian.com") or domain.endswith("transunion.com") or domain.endswith("equifax.com"):
+        if re.search(r"\b(fico|credit\s+score|alert|nice work|keep it up|recent changes)\b", cleaned, re.I):
+            return f"creditAlert:{domain}"
+    for pattern in PROMO_TRASH_PATTERNS:
+        match = pattern.search(haystack) or pattern.search(cleaned)
+        if match:
+            return f"promo:{match.group(0)[:80]}"
+    local = (fromEmail.split("@", 1)[0] if "@" in fromEmail else "").lower()
+    if local in {"editors-noreply", "creditreport+ratealert"}:
+        return "promoLocal"
+    if domain in {"linkedin.com", "em.linkedin.com"} and re.search(
+        r"\b(replay|wrap-up|invited|networking|premium events)\b",
+        haystack,
+        re.I,
+    ):
+        return "linkedinPromo"
     return None
 
 
@@ -835,6 +938,16 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
             "cicd",
             f"cicd:{cicdHit}",
             isCompany=True,
+            isJobRelated=False,
+            source="regex",
+        )
+
+    promoHit = promoTrashReason(subject=subjectLine, text=haystack, fromEmail=fromEmail)
+    if promoHit:
+        return _result(
+            "replySpam",
+            f"trashAds:{promoHit}",
+            isCompany=False,
             isJobRelated=False,
             source="regex",
         )
@@ -1125,14 +1238,13 @@ def classifyBatchWithLlm(items: list[dict], *, provider: ClassifyProvider = "loc
         "- pendingJobs — job portal sign-in / verify / OTP / incomplete profile\n"
         "- jobAds — recruiter staffing blasts / job openings (NOT shopping/bank)\n"
         "- shopping — retail/food/entertainment/travel merchant orders, shipped, delivered, pickup, receipts\n"
-        "- finTax — banking, credit cards, credit reports, KYC, demat statements, tax/ITR/FBAR/IRS, "
-        "tax preparer mail, utility/tax payment confirmations, Amex/Capital One card mail\n"
-        "- replySpam — fake Re: person-impersonation spam on random domains / SMTP dumps "
-        "(NOT real company or Gmail reply threads)\n"
+        "- finTax — real statements, payments received/scheduled, Zelle, IRS/ITR/FBAR (NOT credit-score ads)\n"
+        "- replySpam — TRASH: fake Re: spam AND bank/credit/product ads, score alerts, offers, surveys\n"
         "- cicd — GitHub Actions / Checks / PR run failed, GitLab CI, Azure DevOps, Argo CD, "
         "Jenkins, CircleCI, Buildkite, Flux, Tekton, Vercel/Netlify deploys (pass/fail/verify)\n"
         "- none — pure personal / unrelated\n\n"
-        "Important: bank statements, Amex, Binance KYC, tax filing = finTax. Merchant product orders = shopping. "
+        "Important: TransUnion/BankBazaar/Experian score alerts and card offers = replySpam. "
+        "Actual payment/statement/tax = finTax. Merchant product orders = shopping. "
         "notifications@github.com workflow/PR run mail = cicd, never none.\n"
         "Respond with JSON only:\n"
         '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|cicd|none","reason":"short"}]}\n\n'
@@ -1312,7 +1424,7 @@ def applyEmailLabelActions(
     """
     Apply confirmed categories to Gmail messages.
     - none: leave untouched in Primary / Inbox
-    - replySpam: add label, mark read, move to Trash
+    - replySpam (UI: Trash): add label, mark read, move to Trash
     - other clean labels: add that label, mark read, remove from Inbox (leaves Primary)
     """
     gmail = getGmailService(needModify=True)
