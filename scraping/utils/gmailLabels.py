@@ -10,6 +10,7 @@ CLEAN_LABEL_PENDINGJOBS = "pendingJobs"
 CLEAN_LABEL_SHOPPING = "shopping"
 CLEAN_LABEL_FINTAX = "finTax"
 CLEAN_LABEL_REPLYSPAM = "replySpam"
+CLEAN_LABEL_CICD = "CICD"
 CLEAN_LABEL_NAMES = (
     CLEAN_LABEL_ONESIDED,
     CLEAN_LABEL_BAHARMIL,
@@ -18,6 +19,7 @@ CLEAN_LABEL_NAMES = (
     CLEAN_LABEL_SHOPPING,
     CLEAN_LABEL_FINTAX,
     CLEAN_LABEL_REPLYSPAM,
+    CLEAN_LABEL_CICD,
 )
 CLEAN_CATEGORIES = (
     "baharMil",
@@ -27,6 +29,7 @@ CLEAN_CATEGORIES = (
     "shopping",
     "finTax",
     "replySpam",
+    "cicd",
 )
 
 

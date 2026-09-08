@@ -44,7 +44,8 @@ def localLlmApiKey() -> str:
 
 
 def openaiApiKey() -> str:
-    return (os.getenv("OPENAI_API_KEY") or "").strip()
+    key = (os.getenv("OPENAI_API_KEY") or "").strip().strip('"').strip("'")
+    return key
 
 
 def openaiEnabled() -> bool:
@@ -149,14 +150,27 @@ def probeOpenAi() -> dict[str, Any]:
         "label": "OpenAI",
     }
     if not openaiEnabled():
-        payload["error"] = "OPENAI_API_KEY is not set"
+        payload["error"] = "OPENAI_API_KEY is not set on the API server"
         return payload
     try:
-        response = requests.get(
-            f"{openaiBaseUrl()}/models",
+        # Chat probe: some project keys cannot list GET /v1/models.
+        response = requests.post(
+            f"{openaiBaseUrl()}/chat/completions",
             headers=_headersFor("openai"),
-            timeout=5.0,
+            json={
+                "model": openaiModel(),
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 1,
+            },
+            timeout=20.0,
         )
+        if response.status_code == 429:
+            payload["available"] = True
+            payload["error"] = "rate limited (key is valid)"
+            return payload
+        if response.status_code in {401, 403}:
+            payload["error"] = (response.text or response.reason)[:400]
+            return payload
         response.raise_for_status()
         payload["available"] = True
     except Exception as exc:

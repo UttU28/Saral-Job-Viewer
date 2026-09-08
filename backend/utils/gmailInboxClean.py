@@ -15,6 +15,7 @@ from utils.gmailLabels import (
     CLEAN_LABEL_PENDINGJOBS,
     CLEAN_LABEL_REPLYSPAM,
     CLEAN_LABEL_SHOPPING,
+    CLEAN_LABEL_CICD,
     resolveCleanLabels,
 )
 from utils.localLlm import (
@@ -451,6 +452,7 @@ Labels (choose exactly one per email):
 - "shopping": retail / ecommerce / food / entertainment / travel purchase mail — order confirmations, shipped / delivered, pickup, merchant receipts (Banggood, Best Buy, Uber Eats, Epic, AMC, Shopify). Not bank statements or tax.
 - "finTax": banking, credit cards, payments, tax, and finance compliance — bank/credit-union statements, overdraft notices, credit reports/scores, Amex/Capital One/card shipping & card marketing, crypto KYC (Binance), demat/broker statements, IRS/ITR/FBAR/tax preparer mail, tax payment confirmations, utility bill payment confirmations, Zelle. Not job mail. Not merchant product orders (those are shopping).
 - "replySpam": fake reply-chain spam impersonating a person (First Last @ random multi-part domain, "Re:" + marketing/insurance/quote/summary, SMTP dumps like smail.com / SSL: Active). NOT a real Re: thread from Gmail/Outlook or a known company/ATS.
+- "cicd": CI/CD and GitOps notifications — GitHub Actions / Checks / Dependabot workflow mail, GitLab CI, Azure DevOps / Pipelines, Argo CD / Flux / Tekton / Jenkins / CircleCI / Buildkite / Travis / Harness / Spinnaker, Vercel/Netlify/Cloudflare deploy status, Cloud Build, CodePipeline. Pass, fail, cancelled, skipped, verification, OpenAPI/ABI checks. NOT job applications. NOT personal GitHub social mail that is not a workflow.
 - "none": pure personal mail, unrelated newsletters, or anything that is not the above.
 
 Rules:
@@ -463,7 +465,8 @@ Rules:
 7. If unsure between finTax and none for clear bank/tax/payment mail, prefer finTax.
 8. If unsure between shopping and finTax: product order from a store = shopping; card/bank/tax/KYC = finTax.
 9. Real job-thread Re: from a known company or personal mailbox is none/job category — never replySpam.
-10. If unsure otherwise, use none.
+10. GitHub/GitLab/Azure/Argo/Jenkins/CircleCI pipeline and workflow mail is cicd — including notifications@github.com "PR run failed" / "Run failed" / "workflow run". Never none for those.
+11. If unsure otherwise, use none.
 """
 
 
@@ -647,6 +650,8 @@ def _labelForCategory(category: str | None) -> str | None:
         return CLEAN_LABEL_FINTAX
     if category == "replySpam":
         return CLEAN_LABEL_REPLYSPAM
+    if category == "cicd":
+        return CLEAN_LABEL_CICD
     return None
 
 
@@ -659,6 +664,139 @@ def _result(category: str | None, reason: str, *, isCompany: bool, isJobRelated:
         "isJobRelated": isJobRelated,
         "source": source,
     }
+
+
+CICD_SENDER_DOMAINS = frozenset(
+    {
+        "github.com",
+        "githubactions.com",
+        "githubusercontent.com",
+        "gitlab.com",
+        "gitlab.io",
+        "bitbucket.org",
+        "atlassian.com",
+        "atlassian.net",
+        "dev.azure.com",
+        "visualstudio.com",
+        "vsengsaas.visualstudio.com",
+        "circleci.com",
+        "travis-ci.com",
+        "travis-ci.org",
+        "buildkite.com",
+        "buildkiteusercontent.com",
+        "jenkins.io",
+        "cloudbees.com",
+        "harness.io",
+        "codefresh.io",
+        "argoproj.io",
+        "webhooks.argoproj.io",
+        "spinnaker.io",
+        "fluxcd.io",
+        "tekton.dev",
+        "concourse-ci.org",
+        "drone.io",
+        "semaphoreci.com",
+        "appveyor.com",
+        "buddy.works",
+        "codemagic.io",
+        "woodpecker-ci.org",
+        "sr.ht",
+        "sourcehut.org",
+        "gitea.com",
+        "gitea.io",
+        "codeberg.org",
+        "vercel.com",
+        "netlify.com",
+        "cloudflare.com",
+        "heroku.com",
+        "render.com",
+        "railway.app",
+        "fly.io",
+        "bitrise.io",
+        "codecov.io",
+        "coveralls.io",
+        "sonarcloud.io",
+        "sonarsource.com",
+        "snyk.io",
+        "dependabot.com",
+        "renovatebot.com",
+        "mergify.io",
+        "gitpod.io",
+        "earthly.dev",
+        "dagger.io",
+        "jetbrains.com",
+        "octopus.com",
+        "pulumi.com",
+        "hashicorp.com",
+    }
+)
+
+CICD_SUBJECT_PATTERNS = [
+    re.compile(p, re.I)
+    for p in (
+        r"\bworkflow run\b",
+        r"\bgithub actions\b",
+        r"\bpr run failed\b",
+        r"\brun failed\b",
+        r"\brun succeeded\b",
+        r"\bci (?:run|build|pipeline)\b",
+        r"\bci/cd\b",
+        r"\bpipeline (?:failed|succeeded|passed|canceled|cancelled|skipped)\b",
+        r"\bbuild (?:failed|succeeded|passed|broken|fixed)\b",
+        r"\bdeploy(?:ment)? (?:failed|succeeded|ready|preview)\b",
+        r"\bazure (?:pipelines?|devops)\b",
+        r"\bargo ?cd\b",
+        r"\bgitlab ci\b",
+        r"\bcircleci\b",
+        r"\bjenkins\b",
+        r"\bopenapi check\b",
+        r"\babi compatibility\b",
+        r"\bproject automation\b",
+        r"\bno jobs were run\b",
+        r"\bview workflow run\b",
+    )
+]
+
+
+def isCicdSender(fromEmail: str) -> bool:
+    domain = _domainOf(fromEmail)
+    if not domain:
+        return False
+    return any(domain == hint or domain.endswith("." + hint) for hint in CICD_SENDER_DOMAINS)
+
+
+def cicdReason(*, subject: str, text: str, fromEmail: str) -> str | None:
+    haystack = f"{subject or ''}\n{text or ''}"
+    if isCicdSender(fromEmail):
+        if any(pattern.search(haystack) for pattern in CICD_SUBJECT_PATTERNS):
+            return "cicdSender+subject"
+        local = (fromEmail.split("@", 1)[0] if "@" in fromEmail else "").lower()
+        if local in {
+            "notifications",
+            "noreply",
+            "no-reply",
+            "builds",
+            "ci",
+            "pipelines",
+            "actions",
+            "gitlab",
+            "dependabot",
+        }:
+            return "cicdSender"
+        if re.search(
+            r"\b(workflow|pipeline|github actions|azure devops|argo ?cd|gitlab ci|check suite|failed|succeeded)\b",
+            haystack,
+            re.I,
+        ):
+            return "cicdSender+body"
+        return "cicdSender"
+    if any(pattern.search(haystack) for pattern in CICD_SUBJECT_PATTERNS) and re.search(
+        r"\b(github|gitlab|azure devops|azure pipelines|argo ?cd|jenkins|circleci|buildkite|travis|harness|spinnaker|tekton|flux|vercel|netlify)\b",
+        haystack,
+        re.I,
+    ):
+        return "cicdSubject"
+    return None
 
 
 def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", subject: str = "") -> dict:
@@ -687,6 +825,16 @@ def classifyWithRegex(text: str, *, fromEmail: str = "", fromName: str = "", sub
             "replySpam",
             f"replySpam:{spamReason}",
             isCompany=False,
+            isJobRelated=False,
+            source="regex",
+        )
+
+    cicdHit = cicdReason(subject=subjectLine, text=haystack, fromEmail=fromEmail)
+    if cicdHit:
+        return _result(
+            "cicd",
+            f"cicd:{cicdHit}",
+            isCompany=True,
             isJobRelated=False,
             source="regex",
         )
@@ -813,6 +961,8 @@ def _shouldAskLlm(regexResult: dict, text: str, fromEmail: str) -> bool:
     # High-confidence fake-reply spam: do not let the LLM relabel it.
     if regexResult.get("category") == "replySpam":
         return False
+    if regexResult.get("category") == "cicd":
+        return False
     # Always LLM-classify ATS / job-application-looking mail; regex is fallback only.
     if isAtsSender(fromEmail):
         return True
@@ -906,6 +1056,23 @@ def _normalizeLlmCategory(value: object) -> str | None:
         "replyphishing",
     }:
         return "replySpam"
+    if normalized in {
+        "cicd",
+        "ci",
+        "pipeline",
+        "pipelines",
+        "githubactions",
+        "githubaction",
+        "workflow",
+        "argocd",
+        "azuredevops",
+        "azurepipelines",
+        "gitlabci",
+        "jenkins",
+        "circleci",
+        "gitops",
+    }:
+        return "cicd"
     if normalized in {"none", "skip", "other", "ignore", "untouched", "unrelated"}:
         return None
     return None
@@ -962,10 +1129,13 @@ def classifyBatchWithLlm(items: list[dict], *, provider: ClassifyProvider = "loc
         "tax preparer mail, utility/tax payment confirmations, Amex/Capital One card mail\n"
         "- replySpam — fake Re: person-impersonation spam on random domains / SMTP dumps "
         "(NOT real company or Gmail reply threads)\n"
+        "- cicd — GitHub Actions / Checks / PR run failed, GitLab CI, Azure DevOps, Argo CD, "
+        "Jenkins, CircleCI, Buildkite, Flux, Tekton, Vercel/Netlify deploys (pass/fail/verify)\n"
         "- none — pure personal / unrelated\n\n"
-        "Important: bank statements, Amex, Binance KYC, tax filing = finTax. Merchant product orders = shopping.\n"
+        "Important: bank statements, Amex, Binance KYC, tax filing = finTax. Merchant product orders = shopping. "
+        "notifications@github.com workflow/PR run mail = cicd, never none.\n"
         "Respond with JSON only:\n"
-        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|none","reason":"short"}]}\n\n'
+        '{"results":[{"id":"...","label":"baharMil|oneSided|pendingJobs|jobAds|shopping|finTax|replySpam|cicd|none","reason":"short"}]}\n\n'
         + "\n\n".join(lines)
     )
 
@@ -1157,6 +1327,7 @@ def applyEmailLabelActions(
         "shopping": 0,
         "finTax": 0,
         "replySpam": 0,
+        "cicd": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,
@@ -1179,7 +1350,7 @@ def applyEmailLabelActions(
                     "messageId": messageId,
                     "category": category,
                     "action": "error",
-                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, or none",
+                    "error": "category must be baharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, cicd, or none",
                 }
             )
             continue
@@ -1407,6 +1578,7 @@ def cleanUnreadPrimaryInbox(
         "shopping": 0,
         "finTax": 0,
         "replySpam": 0,
+        "cicd": 0,
         "skipped": 0,
         "applied": 0,
         "errors": 0,

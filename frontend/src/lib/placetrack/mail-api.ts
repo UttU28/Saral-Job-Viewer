@@ -69,6 +69,7 @@ export type EmailCategory =
   | "shopping"
   | "finTax"
   | "replySpam"
+  | "cicd"
   | "none";
 
 export type ClassifyProvider = "local" | "openai" | "regex";
@@ -117,6 +118,7 @@ export type ApplyLabelsResult = {
     shopping: number;
     finTax: number;
     replySpam: number;
+    cicd: number;
     skipped: number;
     applied: number;
     errors: number;
@@ -226,7 +228,8 @@ function normalizeCategory(value: unknown): EmailCategory {
     value === "pendingJobs" ||
     value === "shopping" ||
     value === "finTax" ||
-    value === "replySpam"
+    value === "replySpam" ||
+    value === "cicd"
   ) {
     return value;
   }
@@ -578,6 +581,7 @@ async function applyEmailLabelsOnce(options: {
       shopping: Number(countsRaw.shopping ?? 0),
       finTax: Number(countsRaw.finTax ?? 0),
       replySpam: Number(countsRaw.replySpam ?? 0),
+      cicd: Number(countsRaw.cicd ?? 0),
       skipped: Number(countsRaw.skipped ?? 0),
       applied: Number(countsRaw.applied ?? 0),
       errors: Number(countsRaw.errors ?? 0),
@@ -605,6 +609,7 @@ export async function applyEmailLabels(options: {
         shopping: 0,
         finTax: 0,
         replySpam: 0,
+        cicd: 0,
         skipped: 0,
         applied: 0,
         errors: 0,
@@ -625,6 +630,7 @@ export async function applyEmailLabels(options: {
         shopping: 0,
         finTax: 0,
         replySpam: 0,
+        cicd: 0,
         skipped: 0,
       applied: 0,
       errors: 0,
@@ -650,6 +656,7 @@ export async function applyEmailLabels(options: {
     merged.counts.shopping += batch.counts.shopping;
     merged.counts.finTax += batch.counts.finTax;
     merged.counts.replySpam += batch.counts.replySpam;
+    merged.counts.cicd += batch.counts.cicd;
     merged.counts.skipped += batch.counts.skipped;
     merged.counts.applied += batch.counts.applied;
     merged.counts.errors += batch.counts.errors;

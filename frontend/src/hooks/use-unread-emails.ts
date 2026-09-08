@@ -106,13 +106,14 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     try {
       setClassifyAiStatus(await fetchClassifyAiStatus());
     } catch {
+      // Old API without /ai-status — do not paint OpenAI as offline.
       setClassifyAiStatus((prev) =>
         prev ?? {
           local: { available: false, enabled: true, label: "Local AI", error: "status unavailable" },
-          openai: { available: false, enabled: true, label: "OpenAI", error: "status unavailable" },
+          openai: { available: true, enabled: true, label: "OpenAI" },
           regex: { available: true, enabled: true, label: "Regex" },
-          recommended: "regex",
-          running: "regex",
+          recommended: "openai",
+          running: "openai",
         },
       );
     }
@@ -232,13 +233,14 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
         row.category === "pendingJobs" ||
         row.category === "shopping" ||
         row.category === "finTax" ||
-        row.category === "replySpam",
+        row.category === "replySpam" ||
+        row.category === "cicd",
     );
     const items = toApply.map((row) => ({ messageId: row.id, category: row.category }));
 
     if (!items.length) {
       setError(
-        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, finTax, or replySpam.",
+        "Nothing to submit — set at least one email to BaharMil, oneSided, jobAds, pendingJobs, shopping, finTax, replySpam, or CICD.",
       );
       return null;
     }
