@@ -27,6 +27,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+          logout: false
 
       - name: buildAndPush
         run: |
@@ -35,8 +36,7 @@ jobs:
           image="${{ env.REGISTRY }}/${ownerLower}/saral-api"
           docker build -f docker/Dockerfile.api \
             -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push "${image}:${shortSha}"
-          docker push "${image}:latest"
+          docker push --all-tags "${image}"
 
   buildUi:
     runs-on: self-hosted
@@ -53,6 +53,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+          logout: false
 
       - name: buildAndPush
         run: |
@@ -62,8 +63,7 @@ jobs:
           docker build -f docker/Dockerfile.frontend \
             --build-arg "VITE_API_URL=${{ env.VITE_API_URL }}" \
             -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push "${image}:${shortSha}"
-          docker push "${image}:latest"
+          docker push --all-tags "${image}"
 
   buildRedis:
     runs-on: self-hosted
@@ -80,6 +80,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.repository_owner }}
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
+          logout: false
 
       - name: buildAndPush
         run: |
@@ -88,8 +89,7 @@ jobs:
           image="${{ env.REGISTRY }}/${ownerLower}/saral-redis"
           docker build -f docker/Dockerfile.redis \
             -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push "${image}:${shortSha}"
-          docker push "${image}:latest"
+          docker push --all-tags "${image}"
 
   bumpGitOps:
     needs: [buildApi, buildUi, buildRedis]
