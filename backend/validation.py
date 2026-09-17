@@ -75,7 +75,7 @@ EXIT_CONSECUTIVE_CHECK_ABORT = 3
 
 
 class ConsecutiveCheckFailureAbort(Exception):
-    """Raised when the same check API failure repeats enough times to stop the batch."""
+    """Raised after enough consecutive transport errors (timeout, connection, API down)."""
 
     def __init__(self, message: str, *, count: int, limit: int):
         super().__init__(message)
@@ -110,7 +110,25 @@ def extractCheckFailureMessage(parsed: object, checkResp) -> str:
     return f"HTTP {checkResp.status_code} non-JSON or empty body"
 
 
+def _networkErrorMessage(exc: BaseException) -> str:
+    if isinstance(exc, requests.Timeout):
+        return f"timeout: {exc}"
+    if isinstance(exc, requests.ConnectionError):
+        return f"connection: {exc}"
+    return f"network: {exc}"
+
+
+def _transportCheckErrorMessage(parsed: object, checkResp) -> str | None:
+    """Hard failures only (API down / auth / rate-limit). Job-level ok=false is not this."""
+    status = int(getattr(checkResp, "status_code", 0) or 0)
+    if status >= 500 or status in (401, 403, 408, 429):
+        return extractCheckFailureMessage(parsed, checkResp)
+    return None
+
+
 class _ConsecutiveFailureTracker:
+    """Abort only after N consecutive transport errors; warnings/successes reset the streak."""
+
     def __init__(self, limit: int):
         self.limit = limit
         self._last: str | None = None
@@ -121,15 +139,12 @@ class _ConsecutiveFailureTracker:
         self._count = 0
 
     def record(self, message: str) -> None:
-        if message == self._last:
-            self._count += 1
-        else:
-            self._last = message
-            self._count = 1
+        self._last = message
+        self._count += 1
         if self._count >= self.limit:
             raise ConsecutiveCheckFailureAbort(
-                f"Aborting after {self._count} consecutive identical check failure(s): "
-                f"{message!r}",
+                f"Aborting after {self._count} consecutive network/check error(s) "
+                f"(timeout, connection, or API down): {message!r}",
                 count=self._count,
                 limit=self.limit,
             )
@@ -276,8 +291,9 @@ def syncEmptyApplyStatuses() -> None:
     """
     FIFO (oldest timestamp first): every job in jobData with applyStatus IS NULL,
     all platforms. Optional delay between requests: MIDHTECH_SYNC_DELAY_SEC in .env.
-    Aborts early when the same /check/ failure repeats
-    MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS times (default 3).
+    Job-level /check/ warnings (ok=false, bad URL, etc.) are skipped and do not abort.
+    Aborts early only after MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS consecutive
+    transport errors (timeout, connection, HTTP 5xx / auth / rate-limit; default 3).
     """
     log = ScraperRunLog(PLATFORM_MIDHTECH, "validate", mirrorToScrapeLog=False)
     delaySec = _parseDelay(os.getenv("MIDHTECH_SYNC_DELAY_SEC"))
@@ -317,10 +333,17 @@ def syncEmptyApplyStatuses() -> None:
                     continue
 
                 checkResp, parsed = postJobCheck(session, checkUrl, suggestUrl, csrfToken, job)
+                transportMsg = _transportCheckErrorMessage(parsed, checkResp)
+                if transportMsg:
+                    log.error(
+                        f"{head} → check HTTP {checkResp.status_code} — {transportMsg}"
+                    )
+                    failureTracker.record(transportMsg)
+                    continue
                 if not isinstance(parsed, dict):
                     failMsg = extractCheckFailureMessage(parsed, checkResp)
                     log.warning(f"{head} → non-JSON HTTP {checkResp.status_code} — {failMsg}")
-                    failureTracker.record(failMsg)
+                    failureTracker.reset()
                     continue
                 if not bool(parsed.get("ok")):
                     ex_ok, ex_st = maybePersistExistingFromMaasErrors(job, parsed, quiet=True)
@@ -349,7 +372,7 @@ def syncEmptyApplyStatuses() -> None:
                     failMsg = extractCheckFailureMessage(parsed, checkResp)
                     err_blob = failMsg if len(failMsg) <= 160 else failMsg[:157] + "…"
                     log.warning(f"{head} → check ok=false: {err_blob!r}")
-                    failureTracker.record(failMsg)
+                    failureTracker.reset()
                     continue
                 cl_ok, cl_st = maybePersistClassifierApplyStatus(job, parsed, quiet=True)
                 if cl_ok:
@@ -360,15 +383,17 @@ def syncEmptyApplyStatuses() -> None:
                 else:
                     failMsg = "ok response but no applyStatus written (no decision?)"
                     log.warning(f"{head} → {failMsg}")
-                    failureTracker.record(failMsg)
+                    failureTracker.reset()
             except ConsecutiveCheckFailureAbort:
                 raise
             except KeyboardInterrupt:
                 raise
             except requests.RequestException as exc:
                 log.error(f"{head} → network error: {exc}")
+                failureTracker.record(_networkErrorMessage(exc))
             except Exception as exc:
                 log.error(f"{head} → exception: {exc}")
+                failureTracker.reset()
             if delaySec > 0:
                 time.sleep(delaySec)
     except ConsecutiveCheckFailureAbort as exc:
@@ -394,8 +419,9 @@ def _logConsecutiveCheckAbort(log: ScraperRunLog, exc: ConsecutiveCheckFailureAb
     log.error(
         f"Stopped validation early ({processed}/{total} processed, {remaining} skipped). "
         f"Classifier writes={written}; local REJECTED={rejectedPrecheck}. "
-        f"Fix the Midhtech check API or set MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS "
-        f"to change the abort threshold (current limit={exc.limit})."
+        f"Job-level check warnings are skipped; abort is timeout/connection/API-down only. "
+        f"Set MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS to change the abort threshold "
+        f"(current limit={exc.limit})."
     )
 
 
@@ -531,8 +557,8 @@ def _parseCliChoice(argv: list[str]) -> str | None:
             "  -3  Cleanup: Delete Unwanted + NULL (keep APPLY only) and "
             "delete pastData older than 48h\n\n"
             "With no arguments, an interactive menu is shown.\n\n"
-            "Exit code 3: validation (-1) aborted after consecutive identical check failures "
-            "(see MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS)."
+            "Exit code 3: validation (-1) aborted after consecutive network/check errors "
+            "(timeout, connection, API down; see MIDHTECH_CHECK_ABORT_AFTER_CONSECUTIVE_ERRORS)."
         )
         raise SystemExit(0)
     mapping = {

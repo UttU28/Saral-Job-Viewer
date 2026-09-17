@@ -293,10 +293,13 @@ JOBADS_PATTERNS = [
         r"reaching\s+out\s+.+\s+(job|role|opportunity)",
         r"contract\s+to\s+hire",
         r"\bw2\s*/\s*1099\b",
+        r"\bw2\s+only\b",
         r"\bw2\b.+\b(usc|gc|ead)\b",
         r"visa:\s*(gc|usc|h1b|ead)",
         r"position\s+description\s+required\s+skills",
+        r"position\s*:\s*.+location\s*:",
         r"duration:\s*\d+\s+months?",
+        r"duration\s*:\s*long[\s-]*term",
         r"role\s*[:-]\s*",
         r"req(uest)?\s*id\s*[:-]",
         r"share\s+a\s+great\s+job\s+opportunity",
@@ -1038,6 +1041,11 @@ CICD_SUBJECT_PATTERNS = [
         r"\bview workflow run\b",
     )
 ]
+CICD_TOOL_RE = re.compile(
+    r"\b(github|gitlab|azure devops|azure pipelines|argo ?cd|jenkins|circleci|"
+    r"buildkite|travis|harness|spinnaker|tekton|flux|vercel|netlify)\b",
+    re.I,
+)
 
 
 def isCicdSender(fromEmail: str) -> bool:
@@ -1049,6 +1057,7 @@ def isCicdSender(fromEmail: str) -> bool:
 
 def cicdReason(*, subject: str, text: str, fromEmail: str) -> str | None:
     haystack = f"{subject or ''}\n{text or ''}"
+    subjectLine = subject or ""
     if isCicdSender(fromEmail):
         if any(pattern.search(haystack) for pattern in CICD_SUBJECT_PATTERNS):
             return "cicdSender+subject"
@@ -1072,10 +1081,13 @@ def cicdReason(*, subject: str, text: str, fromEmail: str) -> str | None:
         ):
             return "cicdSender+body"
         return "cicdSender"
-    if any(pattern.search(haystack) for pattern in CICD_SUBJECT_PATTERNS) and re.search(
-        r"\b(github|gitlab|azure devops|azure pipelines|argo ?cd|jenkins|circleci|buildkite|travis|harness|spinnaker|tekton|flux|vercel|netlify)\b",
-        haystack,
-        re.I,
+    # Recruiter JDs talk about Jenkins/GitHub/CI-CD. That is not pipeline mail.
+    if any(pattern.search(haystack) for pattern in JOBADS_PATTERNS):
+        return None
+    # Match pipeline phrasing on the subject only. Scanning the body false-positives
+    # DevOps / React job ads that mention GitHub, Vercel, or CI/CD in the JD.
+    if any(pattern.search(subjectLine) for pattern in CICD_SUBJECT_PATTERNS) and CICD_TOOL_RE.search(
+        haystack
     ):
         return "cicdSubject"
     return None
