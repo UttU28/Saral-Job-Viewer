@@ -1,4 +1,4 @@
-import { Check, ChevronLeft, ChevronRight, Cpu, ExternalLink, Inbox, Loader2, Mail, RefreshCw, Sparkles, Trash2, WandSparkles } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Cpu, ExternalLink, Inbox, Loader2, Mail, MailOpen, RefreshCw, Sparkles, Trash2, Unplug, WandSparkles } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,6 +24,7 @@ import {
   type GmailStatus,
   type NoiseCategoryCounts,
   type NoiseDeleteResult,
+  type MarkUnreadResult,
 } from "@/lib/placetrack/mail-api";
 import { EMAILS_PATH } from "@/lib/placetrack/routing";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,10 @@ type PlaceTrackEmailsPanelProps = {
   noiseDeleting?: boolean;
   noiseError?: string | null;
   onDeleteNoise?: () => Promise<NoiseDeleteResult | null>;
+  isDisconnecting?: boolean;
+  isMarkingUnread?: boolean;
+  onDisconnect?: () => Promise<boolean>;
+  onMarkAllUnread?: () => Promise<MarkUnreadResult | null>;
 };
 
 const CATEGORY_SEGMENTS: Array<{
@@ -348,15 +353,22 @@ export function PlaceTrackEmailsPanel({
   noiseDeleting = false,
   noiseError = null,
   onDeleteNoise,
+  isDisconnecting = false,
+  isMarkingUnread = false,
+  onDisconnect,
+  onMarkAllUnread,
 }: PlaceTrackEmailsPanelProps) {
   const { toast } = useToast();
   const [noiseConfirmOpen, setNoiseConfirmOpen] = useState(false);
+  const [unreadConfirmOpen, setUnreadConfirmOpen] = useState(false);
 
   if (!active) return null;
 
   const labeledCount = mixCounts.labeled;
   const classifiedCount = mixCounts.classified;
   const noiseTotal = noiseCount?.total ?? 0;
+  const busy =
+    isLoading || isCategorizing || isSubmitting || noiseDeleting || isDisconnecting || isMarkingUnread;
 
   const handleSubmit = async () => {
     const result = await onSubmit();
@@ -396,6 +408,32 @@ export function PlaceTrackEmailsPanel({
     });
   };
 
+  const handleDisconnect = async () => {
+    if (!onDisconnect) return;
+    const ok = await onDisconnect();
+    if (!ok) return;
+    toast({
+      title: "Gmail disconnected",
+      description: "Token removed. Connect another account or log in again.",
+    });
+  };
+
+  const handleMarkAllUnread = async () => {
+    if (!onMarkAllUnread) return;
+    const result = await onMarkAllUnread();
+    setUnreadConfirmOpen(false);
+    if (!result) return;
+    toast({
+      title: result.markedUnread > 0 ? "Marked emails unread" : "Nothing to mark unread",
+      description: result.errors.length
+        ? result.errors[0]
+        : `Marked ${result.markedUnread.toLocaleString()} messages unread${
+            result.email ? ` for ${result.email}` : ""
+          }${result.truncated ? " (stopped at 50,000)" : ""}`,
+      variant: result.errors.length && result.markedUnread === 0 ? "destructive" : "default",
+    });
+  };
+
   return (
     <div className="mx-auto w-full max-w-[1100px] px-3 py-4 sm:px-6 sm:py-6">
       <div className="mb-4 flex flex-col gap-3">
@@ -419,7 +457,7 @@ export function PlaceTrackEmailsPanel({
             selected={classifyProvider}
             effective={effectiveProvider}
             status={classifyAiStatus}
-            disabled={isLoading || isCategorizing || isSubmitting}
+            disabled={isCategorizing || isSubmitting}
             onChange={onClassifyProviderChange}
           />
         ) : null}
@@ -430,7 +468,7 @@ export function PlaceTrackEmailsPanel({
             variant="outline"
             className="gap-2"
             onClick={onRefresh}
-            disabled={isLoading || isCategorizing || isSubmitting || noiseDeleting}
+            disabled={busy}
           >
             {isLoading || noiseLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -439,18 +477,36 @@ export function PlaceTrackEmailsPanel({
             )}
             <span className="hidden sm:inline">Refresh</span>
           </Button>
+          {onDisconnect ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => void handleDisconnect()}
+              disabled={!gmailStatus?.connected || busy}
+            >
+              {isDisconnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
+              Disconnect Gmail
+            </Button>
+          ) : null}
+          {onMarkAllUnread ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => setUnreadConfirmOpen(true)}
+              disabled={!gmailStatus?.connected || gmailStatus.canModify === false || busy}
+            >
+              {isMarkingUnread ? <Loader2 className="h-4 w-4 animate-spin" /> : <MailOpen className="h-4 w-4" />}
+              Mark all unread
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="secondary"
             className="gap-2"
             onClick={() => void onCategorize()}
-            disabled={
-              isLoading ||
-              isCategorizing ||
-              isSubmitting ||
-              !gmailStatus?.connected ||
-              (rows.length === 0 && total < 1)
-            }
+            disabled={busy || !gmailStatus?.connected || (rows.length === 0 && total < 1)}
           >
             {isCategorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {isCategorizing && categorizeProgress
@@ -464,7 +520,7 @@ export function PlaceTrackEmailsPanel({
             size="sm"
             className="gap-2"
             onClick={() => void handleSubmit()}
-            disabled={isLoading || isCategorizing || isSubmitting || labeledCount === 0}
+            disabled={busy || labeledCount === 0}
           >
             {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {isSubmitting && submitProgress
@@ -478,14 +534,7 @@ export function PlaceTrackEmailsPanel({
               variant="destructive"
               className="gap-2"
               onClick={() => setNoiseConfirmOpen(true)}
-              disabled={
-                !gmailStatus?.connected ||
-                noiseLoading ||
-                noiseDeleting ||
-                isCategorizing ||
-                isSubmitting ||
-                noiseTotal === 0
-              }
+              disabled={!gmailStatus?.connected || busy || noiseLoading || noiseTotal === 0}
             >
               {noiseDeleting || noiseLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -786,6 +835,31 @@ export function PlaceTrackEmailsPanel({
               }}
             >
               {noiseDeleting ? "Trashing…" : "Move to Trash"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={unreadConfirmOpen} onOpenChange={setUnreadConfirmOpen}>
+        <AlertDialogContent className="rounded-2xl border-border bg-card sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display text-lg">Mark all emails unread?</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              This adds the Unread flag to every read message in{" "}
+              <span className="font-medium text-foreground">{gmailStatus?.email || "this Gmail account"}</span>
+              , except Trash and Spam. It cannot be undone from here.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMarkingUnread}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isMarkingUnread}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleMarkAllUnread();
+              }}
+            >
+              {isMarkingUnread ? "Marking…" : "Mark all unread"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

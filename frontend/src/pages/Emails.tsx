@@ -48,6 +48,10 @@ export default function EmailsPage() {
           noiseDeleting={noiseTrash.isDeleting}
           noiseError={noiseTrash.error}
           onDeleteNoise={() => noiseTrash.deleteAll()}
+          isDisconnecting={unreadInbox.isDisconnecting}
+          isMarkingUnread={unreadInbox.isMarkingUnread}
+          onDisconnect={() => unreadInbox.disconnectAccount()}
+          onMarkAllUnread={() => unreadInbox.markAllUnread()}
         />
         <Footer />
       </div>

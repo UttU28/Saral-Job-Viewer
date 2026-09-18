@@ -36,6 +36,7 @@ from utils.gmailInbox import (
     fetchUnreadPrimaryPage,
 )
 from utils.gmailCategoryTrash import countNoiseCategoryMail, trashNoiseCategoryMail
+from utils.gmailMarkUnread import markAllMailUnread
 from utils.gmailInboxClean import (
     applyEmailLabelActions,
     classifyManyUnreadEmails,
@@ -377,6 +378,18 @@ def postGmailNoiseCategoryDelete(
     _requireConnectedStatus(needModify=True)
     try:
         return trashNoiseCategoryMail(permanent=permanent)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@gmailRouter.post("/api/gmail/inbox/mark-unread")
+def postGmailMarkAllUnread() -> dict:
+    """Mark all mail outside Trash/Spam as unread (gmail.modify)."""
+    _requireConnectedStatus(needModify=True)
+    try:
+        return markAllMailUnread()
     except HTTPException:
         raise
     except Exception as exc:

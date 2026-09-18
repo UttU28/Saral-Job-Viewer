@@ -549,6 +549,33 @@ export async function fetchNoiseCategoryCount(): Promise<NoiseCategoryCounts> {
   };
 }
 
+export type MarkUnreadResult = {
+  fetchedAt?: string;
+  email?: string | null;
+  query?: string;
+  requested: number;
+  markedUnread: number;
+  truncated?: boolean;
+  errors: string[];
+};
+
+export async function markAllMailUnread(): Promise<MarkUnreadResult> {
+  const response = await fetch(apiUrl("/api/gmail/inbox/mark-unread"), { method: "POST" });
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const raw = (await response.json()) as Record<string, unknown>;
+  return {
+    fetchedAt: (raw.fetchedAt ?? raw.fetched_at) as string | undefined,
+    email: typeof raw.email === "string" ? raw.email : null,
+    query: typeof raw.query === "string" ? raw.query : undefined,
+    requested: Number(raw.requested ?? 0),
+    markedUnread: Number(raw.markedUnread ?? raw.marked_unread ?? 0),
+    truncated: Boolean(raw.truncated),
+    errors: Array.isArray(raw.errors) ? (raw.errors as string[]) : [],
+  };
+}
+
 export async function deleteNoiseCategoryMail(permanent = false): Promise<NoiseDeleteResult> {
   const params = new URLSearchParams({ permanent: permanent ? "true" : "false" });
   const response = await gmailRequest(`/api/gmail/inbox/noise-delete?${params}`, {

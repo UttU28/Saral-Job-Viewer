@@ -2,17 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   applyEmailLabels,
   classifyOneEmail,
+  disconnectGmail,
   fetchClassifyAiStatus,
   fetchGmailStatus,
   fetchUnreadPrimaryCount,
   fetchUnreadPrimaryEmails,
   MailApiError,
+  markAllMailUnread,
   type ApplyLabelsResult,
   type ClassifyAiStatus,
   type SubmitProgress,
   type ClassifyProvider,
   type EmailCategory,
   type GmailStatus,
+  type MarkUnreadResult,
   type UnreadEmail,
   type UnreadInboxResult,
 } from "@/lib/placetrack/mail-api";
@@ -78,12 +81,16 @@ type UnreadEmailsState = {
   classifyProvider: ClassifyProvider;
   classifyAiStatus: ClassifyAiStatus | null;
   effectiveProvider: ClassifyProvider;
+  isDisconnecting: boolean;
+  isMarkingUnread: boolean;
   setClassifyProvider: (provider: ClassifyProvider) => void;
   refresh: () => Promise<void>;
   goToPage: (page: number) => Promise<void>;
   categorizeAll: () => Promise<void>;
   setRowCategory: (messageId: string, category: EmailCategory) => void;
   submitLabels: () => Promise<ApplyLabelsResult | null>;
+  disconnectAccount: () => Promise<boolean>;
+  markAllUnread: () => Promise<MarkUnreadResult | null>;
 };
 
 function readStoredProvider(): ClassifyProvider | null {
@@ -163,6 +170,8 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
   const [canSubmitAll, setCanSubmitAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastApply, setLastApply] = useState<ApplyLabelsResult | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [isMarkingUnread, setIsMarkingUnread] = useState(false);
   const [classifyProvider, setClassifyProviderState] = useState<ClassifyProvider>(
     () => readStoredProvider() ?? "local",
   );
@@ -697,6 +706,36 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     }
   }, [flushUi, refresh]);
 
+  const disconnectAccount = useCallback(async (): Promise<boolean> => {
+    setIsDisconnecting(true);
+    setError(null);
+    try {
+      await disconnectGmail();
+      await refresh();
+      return true;
+    } catch (err) {
+      setError(err instanceof MailApiError ? err.message : "Could not disconnect Gmail.");
+      return false;
+    } finally {
+      setIsDisconnecting(false);
+    }
+  }, [refresh]);
+
+  const markAllUnread = useCallback(async (): Promise<MarkUnreadResult | null> => {
+    setIsMarkingUnread(true);
+    setError(null);
+    try {
+      const result = await markAllMailUnread();
+      await refresh();
+      return result;
+    } catch (err) {
+      setError(err instanceof MailApiError ? err.message : "Could not mark emails unread.");
+      return null;
+    } finally {
+      setIsMarkingUnread(false);
+    }
+  }, [refresh]);
+
   useEffect(() => {
     if (!enabled) return;
     void refresh();
@@ -744,10 +783,14 @@ export function useUnreadPrimaryEmails(enabled: boolean): UnreadEmailsState {
     classifyAiStatus,
     effectiveProvider,
     setClassifyProvider,
+    isDisconnecting,
+    isMarkingUnread,
     refresh,
     goToPage,
     categorizeAll,
     setRowCategory,
     submitLabels,
+    disconnectAccount,
+    markAllUnread,
   };
 }
