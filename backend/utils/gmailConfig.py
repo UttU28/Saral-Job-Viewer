@@ -28,7 +28,7 @@ GMAIL_SCOPES = [
 
 DEFAULT_SENT_SINCE = os.getenv("GMAIL_SENT_SINCE") or "2026-07-20"
 GMAIL_CALLBACK_PATH = "/api/gmail/auth/callback"
-GMAIL_DEFAULT_RETURN_PATH = "/placetrack"
+GMAIL_DEFAULT_RETURN_PATH = "/emails"
 
 
 def gmailCredentialsPath() -> Path:

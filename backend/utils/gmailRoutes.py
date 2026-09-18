@@ -5,11 +5,13 @@ import os
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from utils.authService import getUserFromToken
 from utils.gmailAuth import (
+    bindGmailUserId,
     clearCredentials,
     clearOAuthSession,
     createOAuthFlow,
@@ -17,6 +19,7 @@ from utils.gmailAuth import (
     inspectGmailStatus,
     loadCredentials,
     loadOAuthSession,
+    resetGmailUserId,
     saveCredentials,
     saveOAuthSession,
 )
@@ -46,6 +49,27 @@ from utils.gmailService import AttachmentInput, MailPayload, createDraft, sendMe
 from utils.localLlm import classifyProviderStatus
 
 gmailRouter = APIRouter(tags=["gmail"])
+
+
+def _requireSaralUser(authorization: str | None = Header(default=None)) -> dict:
+    value = str(authorization or "").strip()
+    if not value or not value.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Authorization token missing")
+    token = value[7:].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authorization token missing")
+    try:
+        return getUserFromToken(token)
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+def requireGmailUser(currentUser: dict = Depends(_requireSaralUser)):
+    bound = bindGmailUserId(str(currentUser.get("userId") or ""))
+    try:
+        yield currentUser
+    finally:
+        resetGmailUserId(bound)
 
 
 # Request bodies for inbox classify / apply (camelCase JSON)
@@ -136,12 +160,16 @@ def _requireConnectedStatus(*, needModify: bool = False) -> dict:
 
 
 @gmailRouter.get("/api/gmail/status")
-def getGmailStatus() -> dict:
+def getGmailStatus(_user: dict = Depends(requireGmailUser)) -> dict:
     return inspectGmailStatus()
 
 
 @gmailRouter.get("/api/gmail/auth/start")
-def startGmailAuth(request: Request, returnTo: str | None = None):
+def startGmailAuth(
+    request: Request,
+    returnTo: str | None = None,
+    currentUser: dict = Depends(requireGmailUser),
+):
     if not credentialsConfigured():
         raise HTTPException(
             status_code=503,
@@ -160,15 +188,26 @@ def startGmailAuth(request: Request, returnTo: str | None = None):
         include_granted_scopes="true",
         prompt="consent",
     )
-    saveOAuthSession(state, flow.code_verifier, safeReturn, redirectUri=redirectUri)
-    return RedirectResponse(authorizationUrl)
+    saveOAuthSession(
+        state,
+        flow.code_verifier,
+        safeReturn,
+        redirectUri=redirectUri,
+        userId=str(currentUser.get("userId") or ""),
+    )
+    return {"authorizationUrl": authorizationUrl}
 
 
 @gmailRouter.get("/api/gmail/auth/callback")
 def gmailAuthCallback(request: Request, code: str, state: str):
-    session = loadOAuthSession()
+    session = loadOAuthSession(state)
     if not session or session.get("state") != state:
         raise HTTPException(status_code=400, detail="Invalid OAuth state. Try Connect Gmail again.")
+
+    userId = str(session.get("userId") or "").strip()
+    if not userId:
+        clearOAuthSession(state)
+        raise HTTPException(status_code=400, detail="OAuth session is missing the Saral user. Connect Gmail again.")
 
     redirectUri = session.get("redirectUri") or session.get("redirect_uri") or gmailOAuthRedirectUri(request)
     flow = createOAuthFlow(redirectUri)
@@ -176,16 +215,16 @@ def gmailAuthCallback(request: Request, code: str, state: str):
     if codeVerifier:
         flow.code_verifier = codeVerifier
 
+    bound = bindGmailUserId(userId)
     try:
-        # Reconnect may add gmail.modify on top of older readonly scopes.
         os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
         flow.fetch_token(code=code)
+        saveCredentials(flow.credentials)
     except Exception as exc:
-        clearOAuthSession()
         raise HTTPException(status_code=400, detail=f"Gmail auth failed: {exc}") from exc
-
-    saveCredentials(flow.credentials)
-    clearOAuthSession()
+    finally:
+        resetGmailUserId(bound)
+        clearOAuthSession(state)
 
     returnTo = session.get("returnTo") or session.get("return_to") or gmailOAuthReturnPath()
     if not isinstance(returnTo, str) or not returnTo.startswith("/"):
@@ -195,18 +234,18 @@ def gmailAuthCallback(request: Request, code: str, state: str):
 
 
 @gmailRouter.post("/api/gmail/disconnect")
-def disconnectGmail() -> dict:
+def disconnectGmail(_user: dict = Depends(requireGmailUser)) -> dict:
     clearCredentials()
     return {"connected": False}
 
 
 @gmailRouter.get("/api/gmail/resume")
-def getGmailResumeStatus() -> dict:
+def getGmailResumeStatus(_user: dict = Depends(requireGmailUser)) -> dict:
     return getResumeInfo()
 
 
 @gmailRouter.get("/api/gmail/resume/download")
-def downloadGmailResume() -> Response:
+def downloadGmailResume(_user: dict = Depends(requireGmailUser)) -> Response:
     result = loadResumeDownload()
     if not result:
         raise HTTPException(status_code=404, detail="No resume saved.")
@@ -220,7 +259,10 @@ def downloadGmailResume() -> Response:
 
 
 @gmailRouter.post("/api/gmail/resume")
-async def uploadGmailResume(file: Annotated[UploadFile, File()]) -> dict:
+async def uploadGmailResume(
+    file: Annotated[UploadFile, File()],
+    _user: dict = Depends(requireGmailUser),
+) -> dict:
     if not file.filename:
         raise HTTPException(status_code=422, detail="Resume file required.")
 
@@ -237,13 +279,17 @@ async def uploadGmailResume(file: Annotated[UploadFile, File()]) -> dict:
 
 
 @gmailRouter.delete("/api/gmail/resume")
-def deleteGmailResume() -> dict:
+def deleteGmailResume(_user: dict = Depends(requireGmailUser)) -> dict:
     deleteResume()
     return {"success": True, "saved": False}
 
 
 @gmailRouter.get("/api/gmail/sent-recipients")
-def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = False) -> dict:
+def getGmailSentRecipients(
+    since: str = DEFAULT_SENT_SINCE,
+    refresh: bool = False,
+    _user: dict = Depends(requireGmailUser),
+) -> dict:
     _requireConnectedStatus()
 
     try:
@@ -260,7 +306,10 @@ def getGmailSentRecipients(since: str = DEFAULT_SENT_SINCE, refresh: bool = Fals
 
 
 @gmailRouter.get("/api/gmail/inbox/unread-count")
-def getGmailUnreadCount(pageSize: int = UNREAD_PAGE_SIZE) -> dict:
+def getGmailUnreadCount(
+    pageSize: int = UNREAD_PAGE_SIZE,
+    _user: dict = Depends(requireGmailUser),
+) -> dict:
     """Exact unread Primary count and page tokens (ID-only scan, no message bodies)."""
     _requireConnectedStatus()
     if pageSize < 1 or pageSize > 500:
@@ -279,6 +328,7 @@ def getGmailUnreadPrimary(
     pageSize: int | None = None,
     pageToken: str | None = None,
     idsOnly: bool = False,
+    _user: dict = Depends(requireGmailUser),
 ) -> dict:
     _requireConnectedStatus()
 
@@ -308,7 +358,7 @@ def getGmailUnreadPrimary(
 
 
 @gmailRouter.get("/api/gmail/inbox/noise-count")
-def getGmailNoiseCategoryCount() -> dict:
+def getGmailNoiseCategoryCount(_user: dict = Depends(requireGmailUser)) -> dict:
     """Count messages in Promotions + Social (read or unread)."""
     _requireConnectedStatus()
     try:
@@ -320,7 +370,10 @@ def getGmailNoiseCategoryCount() -> dict:
 
 
 @gmailRouter.post("/api/gmail/inbox/noise-delete")
-def postGmailNoiseCategoryDelete(permanent: bool = False) -> dict:
+def postGmailNoiseCategoryDelete(
+    permanent: bool = False,
+    _user: dict = Depends(requireGmailUser),
+) -> dict:
     """Move all Promotions and Social mail to Trash (gmail.modify)."""
     _requireConnectedStatus(needModify=True)
     try:
@@ -332,7 +385,7 @@ def postGmailNoiseCategoryDelete(permanent: bool = False) -> dict:
 
 
 @gmailRouter.get("/api/gmail/labels")
-def getGmailLabels() -> dict:
+def getGmailLabels(_user: dict = Depends(requireGmailUser)) -> dict:
     _requireConnectedStatus()
     try:
         return listGmailLabels()
@@ -343,7 +396,7 @@ def getGmailLabels() -> dict:
 
 
 @gmailRouter.get("/api/gmail/inbox/ai-status")
-def getGmailClassifyAiStatus() -> dict:
+def getGmailClassifyAiStatus(_user: dict = Depends(requireGmailUser)) -> dict:
     """Probe Local AI and OpenAI so the Emails UI can show which backend is live."""
     return classifyProviderStatus()
 
@@ -356,6 +409,7 @@ def postGmailInboxClean(
     markRead: bool = True,
     useLlm: bool = True,
     provider: str | None = None,
+    _user: dict = Depends(requireGmailUser),
 ) -> dict:
     """
     Categorize unread Primary job-application mail via local LLM (+ regex fallback):
@@ -391,7 +445,7 @@ def postGmailInboxClean(
 
 
 @gmailRouter.post("/api/gmail/inbox/classify-one")
-def postGmailClassifyOne(body: ClassifyOneBody) -> dict:
+def postGmailClassifyOne(body: ClassifyOneBody, _user: dict = Depends(requireGmailUser)) -> dict:
     """Classify a single unread email (LLM when enabled). Does not change Gmail labels."""
     _requireConnectedStatus()
     try:
@@ -403,7 +457,7 @@ def postGmailClassifyOne(body: ClassifyOneBody) -> dict:
 
 
 @gmailRouter.post("/api/gmail/inbox/classify-batch")
-def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
+def postGmailClassifyBatch(body: ClassifyBatchBody, _user: dict = Depends(requireGmailUser)) -> dict:
     """Classify up to 3 emails in one LLM call. Does not change Gmail labels."""
     _requireConnectedStatus()
     messageIds = [mid.strip() for mid in body.messageIds if isinstance(mid, str) and mid.strip()]
@@ -422,7 +476,7 @@ def postGmailClassifyBatch(body: ClassifyBatchBody) -> dict:
 
 
 @gmailRouter.post("/api/gmail/inbox/apply-labels")
-def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
+def postGmailApplyLabels(body: ApplyLabelsBody, _user: dict = Depends(requireGmailUser)) -> dict:
     """Apply confirmed clean labels after UI review. trash is moved to Gmail Trash; replySpam is not."""
     _requireConnectedStatus(needModify=True)
     if not body.items:
@@ -446,6 +500,7 @@ def postGmailApplyLabels(body: ApplyLabelsBody) -> dict:
 async def postGmailDraft(
     payload: Annotated[str, Form()],
     attachments: Annotated[list[UploadFile] | None, File()] = None,
+    _user: dict = Depends(requireGmailUser),
 ) -> dict:
     if loadCredentials() is None:
         raise HTTPException(status_code=401, detail="Gmail not connected.")
@@ -470,6 +525,7 @@ async def postGmailDraft(
 async def postGmailSend(
     payload: Annotated[str, Form()],
     attachments: Annotated[list[UploadFile] | None, File()] = None,
+    _user: dict = Depends(requireGmailUser),
 ) -> dict:
     if loadCredentials() is None:
         raise HTTPException(status_code=401, detail="Gmail not connected.")

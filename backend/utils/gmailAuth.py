@@ -12,6 +12,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
+from contextvars import ContextVar, Token
+
 from utils.gmailConfig import (
     GMAIL_SCOPE_COMPOSE,
     GMAIL_SCOPE_MODIFY,
@@ -20,14 +22,35 @@ from utils.gmailConfig import (
     GMAIL_SCOPES,
     gmailCredentialsPath,
 )
+from utils.gmailUserStore import (
+    clearUserGmailToken,
+    clearUserOAuthSession,
+    loadUserGmailToken,
+    loadUserOAuthSession,
+    saveUserGmailEmail,
+    saveUserGmailToken,
+    saveUserOAuthSession,
+)
 from utils.placetrackStore import (
-    clearGmailOAuthSession as clearOAuthSessionInStore,
     clearGmailToken,
-    loadGmailOAuthSession as loadOAuthSessionFromStore,
     loadGmailTokenDict,
-    saveGmailOAuthSession as saveOAuthSessionInStore,
     saveGmailTokenDict,
 )
+
+_gmailUserId: ContextVar[str | None] = ContextVar("gmailUserId", default=None)
+
+
+def bindGmailUserId(userId: str) -> Token:
+    return _gmailUserId.set(str(userId or "").strip() or None)
+
+
+def resetGmailUserId(token: Token) -> None:
+    _gmailUserId.reset(token)
+
+
+def currentGmailUserId() -> str | None:
+    value = _gmailUserId.get()
+    return str(value).strip() if value else None
 
 
 def credentialsConfigured() -> bool:
@@ -66,7 +89,8 @@ def _readStoredCredentials() -> tuple[Credentials | None, list[str]]:
     Do not pass GMAIL_SCOPES into from_authorized_user_info — that overwrites
     granted scopes and falsely reports gmail.modify as present.
     """
-    data = loadGmailTokenDict()
+    userId = currentGmailUserId()
+    data = loadUserGmailToken(userId) if userId else loadGmailTokenDict()
     if not data:
         return None, []
     try:
@@ -78,10 +102,19 @@ def _readStoredCredentials() -> tuple[Credentials | None, list[str]]:
 
 
 def saveCredentials(creds: Credentials) -> None:
-    saveGmailTokenDict(json.loads(creds.to_json()))
+    payload = json.loads(creds.to_json())
+    userId = currentGmailUserId()
+    if userId:
+        saveUserGmailToken(userId, payload)
+        return
+    saveGmailTokenDict(payload)
 
 
 def clearCredentials() -> None:
+    userId = currentGmailUserId()
+    if userId:
+        clearUserGmailToken(userId)
+        return
     clearGmailToken()
 
 
@@ -151,6 +184,9 @@ def inspectGmailStatus() -> dict:
             userId="me",
         ).execute()
         email = profile.get("emailAddress")
+        userId = currentGmailUserId()
+        if userId and email:
+            saveUserGmailEmail(userId, str(email))
     except Exception:
         return {
             "configured": True,
@@ -204,16 +240,26 @@ def saveOAuthSession(
     codeVerifier: str | None,
     returnTo: str = "/",
     redirectUri: str | None = None,
+    userId: str | None = None,
 ) -> None:
-    saveOAuthSessionInStore(state, codeVerifier, returnTo, redirectUri=redirectUri)
+    ownerId = str(userId or currentGmailUserId() or "").strip()
+    if not ownerId:
+        raise ValueError("Gmail OAuth session requires a signed-in user.")
+    saveUserOAuthSession(
+        state=state,
+        userId=ownerId,
+        codeVerifier=codeVerifier,
+        returnTo=returnTo,
+        redirectUri=redirectUri,
+    )
 
 
-def loadOAuthSession() -> dict | None:
-    return loadOAuthSessionFromStore()
+def loadOAuthSession(state: str | None = None) -> dict | None:
+    return loadUserOAuthSession(str(state or "").strip())
 
 
-def clearOAuthSession() -> None:
-    clearOAuthSessionInStore()
+def clearOAuthSession(state: str | None = None) -> None:
+    clearUserOAuthSession(str(state or "").strip())
 
 
 def getGmailService(*, needModify: bool = False):

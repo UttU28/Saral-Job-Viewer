@@ -116,6 +116,9 @@ def _mongoEnsureIndexes(recreate: bool) -> None:
         job_col.create_index("platform")
         job_col.create_index("category")
         past_col.create_index("platform")
+        from utils.gmailUserStore import ensureGmailUserStores
+
+        ensureGmailUserStores(recreate=False)
     except (MongoUnavailableError, PyMongoError) as exc:
         appendScrapeLog(
             f"Mongo index ensure skipped due to transient error: {type(exc).__name__}: {exc}",

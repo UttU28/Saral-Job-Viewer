@@ -1,3 +1,5 @@
+import { readAuthToken } from "@/lib/authStorage";
+
 export type GmailStatus = {
   configured: boolean;
   connected: boolean;
@@ -175,6 +177,22 @@ function apiUrl(path: string): string {
   return base ? `${base}${path}` : path;
 }
 
+function gmailAuthHeaders(extra?: HeadersInit): Headers {
+  const headers = new Headers(extra);
+  const token = readAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  return headers;
+}
+
+function gmailRequest(path: string, init: RequestInit = {}): Promise<Response> {
+  return fetch(apiUrl(path), {
+    ...init,
+    headers: gmailAuthHeaders(init.headers),
+  });
+}
+
 async function parseError(response: Response): Promise<string> {
   try {
     const body = await response.json();
@@ -312,27 +330,35 @@ function normalizeUnreadInbox(raw: Record<string, unknown>): UnreadInboxResult {
 }
 
 export async function fetchGmailStatus(): Promise<GmailStatus> {
-  const response = await fetch(apiUrl("/api/gmail/status"));
+  const response = await gmailRequest("/api/gmail/status");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
   return normalizeGmailStatus((await response.json()) as Record<string, unknown>);
 }
 
-export function startGmailAuth(returnTo = "/placetrack"): void {
+export async function startGmailAuth(returnTo = "/emails"): Promise<void> {
   const params = new URLSearchParams({ returnTo });
-  window.location.href = apiUrl(`/api/gmail/auth/start?${params}`);
+  const response = await gmailRequest(`/api/gmail/auth/start?${params}`);
+  if (!response.ok) {
+    throw new MailApiError(await parseError(response), response.status);
+  }
+  const body = (await response.json()) as { authorizationUrl?: string };
+  if (!body.authorizationUrl) {
+    throw new MailApiError("Gmail authorization URL missing.", 500);
+  }
+  window.location.href = body.authorizationUrl;
 }
 
 export async function disconnectGmail(): Promise<void> {
-  const response = await fetch(apiUrl("/api/gmail/disconnect"), { method: "POST" });
+  const response = await gmailRequest("/api/gmail/disconnect", { method: "POST" });
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
 }
 
 export async function fetchResumeInfo(): Promise<ResumeInfo> {
-  const response = await fetch(apiUrl("/api/gmail/resume"));
+  const response = await gmailRequest("/api/gmail/resume");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -343,7 +369,7 @@ export async function uploadResume(file: File): Promise<ResumeInfo> {
   const form = new FormData();
   form.append("file", file);
 
-  const response = await fetch(apiUrl("/api/gmail/resume"), {
+  const response = await gmailRequest("/api/gmail/resume", {
     method: "POST",
     body: form,
   });
@@ -357,14 +383,14 @@ export async function uploadResume(file: File): Promise<ResumeInfo> {
 }
 
 export async function deleteResume(): Promise<void> {
-  const response = await fetch(apiUrl("/api/gmail/resume"), { method: "DELETE" });
+  const response = await gmailRequest("/api/gmail/resume", { method: "DELETE" });
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
 }
 
 export async function downloadResume(fallbackFilename = "Resume.pdf"): Promise<void> {
-  const response = await fetch(apiUrl("/api/gmail/resume/download"));
+  const response = await gmailRequest("/api/gmail/resume/download");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -393,7 +419,7 @@ async function postMail(
     form.append("attachments", file);
   }
 
-  const response = await fetch(apiUrl(endpoint), {
+  const response = await gmailRequest(endpoint, {
     method: "POST",
     body: form,
   });
@@ -422,7 +448,7 @@ export async function fetchSentRecipients(options?: {
   if (options?.refresh) params.set("refresh", "true");
 
   const query = params.toString();
-  const response = await fetch(apiUrl(`/api/gmail/sent-recipients${query ? `?${query}` : ""}`));
+  const response = await gmailRequest(`/api/gmail/sent-recipients${query ? `?${query}` : ""}`);
 
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
@@ -437,7 +463,7 @@ export async function fetchUnreadPrimaryCount(options?: {
   const params = new URLSearchParams();
   if (options?.pageSize != null) params.set("pageSize", String(options.pageSize));
   const query = params.toString();
-  const response = await fetch(apiUrl(`/api/gmail/inbox/unread-count${query ? `?${query}` : ""}`));
+  const response = await gmailRequest(`/api/gmail/inbox/unread-count${query ? `?${query}` : ""}`);
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -479,7 +505,7 @@ export async function fetchUnreadPrimaryEmails(options?: {
   }
 
   const query = params.toString();
-  const response = await fetch(apiUrl(`/api/gmail/inbox/unread${query ? `?${query}` : ""}`));
+  const response = await gmailRequest(`/api/gmail/inbox/unread${query ? `?${query}` : ""}`);
 
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
@@ -507,7 +533,7 @@ export type NoiseDeleteResult = {
 };
 
 export async function fetchNoiseCategoryCount(): Promise<NoiseCategoryCounts> {
-  const response = await fetch(apiUrl("/api/gmail/inbox/noise-count"));
+  const response = await gmailRequest("/api/gmail/inbox/noise-count");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -525,7 +551,7 @@ export async function fetchNoiseCategoryCount(): Promise<NoiseCategoryCounts> {
 
 export async function deleteNoiseCategoryMail(permanent = false): Promise<NoiseDeleteResult> {
   const params = new URLSearchParams({ permanent: permanent ? "true" : "false" });
-  const response = await fetch(apiUrl(`/api/gmail/inbox/noise-delete?${params}`), {
+  const response = await gmailRequest(`/api/gmail/inbox/noise-delete?${params}`, {
     method: "POST",
   });
   if (!response.ok) {
@@ -543,7 +569,7 @@ export async function deleteNoiseCategoryMail(permanent = false): Promise<NoiseD
 }
 
 export async function fetchGmailLabels(): Promise<GmailLabelsResult> {
-  const response = await fetch(apiUrl("/api/gmail/labels"));
+  const response = await gmailRequest("/api/gmail/labels");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -565,7 +591,7 @@ export async function fetchGmailLabels(): Promise<GmailLabelsResult> {
 }
 
 export async function fetchClassifyAiStatus(): Promise<ClassifyAiStatus> {
-  const response = await fetch(apiUrl("/api/gmail/inbox/ai-status"));
+  const response = await gmailRequest("/api/gmail/inbox/ai-status");
   if (!response.ok) {
     throw new MailApiError(await parseError(response), response.status);
   }
@@ -596,7 +622,7 @@ export async function classifyOneEmail(
   useLlm = true,
   provider: ClassifyProvider = "local",
 ): Promise<ClassifyOneResult> {
-  const response = await fetch(apiUrl("/api/gmail/inbox/classify-one"), {
+  const response = await gmailRequest("/api/gmail/inbox/classify-one", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messageId, useLlm, provider }),
@@ -612,7 +638,7 @@ export async function classifyEmailBatch(
   useLlm = true,
   provider: ClassifyProvider = "local",
 ): Promise<ClassifyOneResult[]> {
-  const response = await fetch(apiUrl("/api/gmail/inbox/classify-batch"), {
+  const response = await gmailRequest("/api/gmail/inbox/classify-batch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messageIds, useLlm, provider }),
@@ -667,7 +693,7 @@ async function applyEmailLabelsOnce(options: {
   archive?: boolean;
   markRead?: boolean;
 }): Promise<ApplyLabelsResult> {
-  const response = await fetch(apiUrl("/api/gmail/inbox/apply-labels"), {
+  const response = await gmailRequest("/api/gmail/inbox/apply-labels", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
