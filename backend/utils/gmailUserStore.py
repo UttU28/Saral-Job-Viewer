@@ -36,6 +36,12 @@ def ensureGmailUserStores(*, recreate: bool = False) -> None:
         sessions = db[GMAIL_OAUTH_SESSIONS_COLLECTION]
         creds.create_index("userId", unique=True)
         sessions.create_index("expiresAt", expireAfterSeconds=0)
+        try:
+            from utils.placetrackStore import clearGmailToken
+
+            clearGmailToken()
+        except Exception:
+            pass
         _indexesEnsured = True
     except MongoUnavailableError:
         _indexesEnsured = False

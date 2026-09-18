@@ -13,6 +13,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
 from contextvars import ContextVar, Token
+import threading
 
 from utils.gmailConfig import (
     GMAIL_SCOPE_COMPOSE,
@@ -31,26 +32,28 @@ from utils.gmailUserStore import (
     saveUserGmailToken,
     saveUserOAuthSession,
 )
-from utils.placetrackStore import (
-    clearGmailToken,
-    loadGmailTokenDict,
-    saveGmailTokenDict,
-)
 
 _gmailUserId: ContextVar[str | None] = ContextVar("gmailUserId", default=None)
+_gmailUserIdThread = threading.local()
 
 
 def bindGmailUserId(userId: str) -> Token:
-    return _gmailUserId.set(str(userId or "").strip() or None)
+    uid = str(userId or "").strip() or None
+    _gmailUserIdThread.userId = uid
+    return _gmailUserId.set(uid)
 
 
 def resetGmailUserId(token: Token) -> None:
+    _gmailUserIdThread.userId = None
     _gmailUserId.reset(token)
 
 
 def currentGmailUserId() -> str | None:
     value = _gmailUserId.get()
-    return str(value).strip() if value else None
+    if value:
+        return str(value).strip()
+    threadValue = getattr(_gmailUserIdThread, "userId", None)
+    return str(threadValue).strip() if threadValue else None
 
 
 def credentialsConfigured() -> bool:
@@ -90,7 +93,11 @@ def _readStoredCredentials() -> tuple[Credentials | None, list[str]]:
     granted scopes and falsely reports gmail.modify as present.
     """
     userId = currentGmailUserId()
-    data = loadUserGmailToken(userId) if userId else loadGmailTokenDict()
+    if userId:
+        data = loadUserGmailToken(userId)
+    else:
+        # Never use the old shared workspace token for HTTP users.
+        data = None
     if not data:
         return None, []
     try:
@@ -104,18 +111,16 @@ def _readStoredCredentials() -> tuple[Credentials | None, list[str]]:
 def saveCredentials(creds: Credentials) -> None:
     payload = json.loads(creds.to_json())
     userId = currentGmailUserId()
-    if userId:
-        saveUserGmailToken(userId, payload)
-        return
-    saveGmailTokenDict(payload)
+    if not userId:
+        raise RuntimeError("Refusing to save Gmail credentials without a Saral userId.")
+    saveUserGmailToken(userId, payload)
 
 
 def clearCredentials() -> None:
     userId = currentGmailUserId()
-    if userId:
-        clearUserGmailToken(userId)
-        return
-    clearGmailToken()
+    if not userId:
+        raise RuntimeError("Refusing to clear Gmail credentials without a Saral userId.")
+    clearUserGmailToken(userId)
 
 
 def _refreshCredentials(creds: Credentials) -> Credentials | None:

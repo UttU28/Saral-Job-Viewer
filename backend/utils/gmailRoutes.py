@@ -64,12 +64,11 @@ def _requireSaralUser(authorization: str | None = Header(default=None)) -> dict:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
 
-def requireGmailUser(currentUser: dict = Depends(_requireSaralUser)):
-    bound = bindGmailUserId(str(currentUser.get("userId") or ""))
-    try:
-        yield currentUser
-    finally:
-        resetGmailUserId(bound)
+def requireGmailUser(currentUser: dict = Depends(_requireSaralUser)) -> dict:
+    # Bind on this same thread as the sync route (do not use yield — FastAPI
+    # can run yield setup on a different thread than the handler).
+    bindGmailUserId(str(currentUser.get("userId") or ""))
+    return currentUser
 
 
 # Request bodies for inbox classify / apply (camelCase JSON)
