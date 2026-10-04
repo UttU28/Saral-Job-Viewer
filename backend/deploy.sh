@@ -20,6 +20,29 @@ BACKEND_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${BACKEND_ROOT}/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Change-aware builds via the shared Desktop helper (~/Desktop/dktp/deployLib.sh).
+# --build forces a rebuild; without the helper (e.g. a bare checkout) we always build.
+for arg in "$@"; do [[ "$arg" == "--build" ]] && export DEPLOY_FORCE_BUILD=1; done
+DEPLOY_LIB="${REPO_ROOT}/../dktp/deployLib.sh"
+if [[ -f "$DEPLOY_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$DEPLOY_LIB"
+else
+  buildInputsHash() { echo "noDeployLib"; }
+  needsBuild() { return 0; }
+  markBuilt() { :; }
+fi
+
+# buildUiImage — saral-ui only when frontend/ or VITE_API_URL changed.
+buildUiImage() {
+  local uiHash
+  uiHash="$(buildInputsHash "$REPO_ROOT" docker/Dockerfile.frontend docker/nginx.frontend.conf frontend -- "VITE_API_URL=${VITE_API_URL:-}")"
+  if needsBuild saral-ui "$uiHash" image:saral-ui:latest; then
+    docker compose build frontend
+    markBuilt saral-ui "$uiHash" image:saral-ui:latest
+  fi
+}
+
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -217,9 +240,23 @@ if [[ "$USE_HOST_NGINX" -eq 1 ]]; then
 fi
 
 banner "Docker build"
-step "Building images…"
-docker compose build
-docker build -f docker/Dockerfile.validation -t saral-dvalidate:latest .
+step "Building changed images…"
+redisHash="$(buildInputsHash "$REPO_ROOT" docker/Dockerfile.redis docker/redis.conf)"
+if needsBuild saral-redis "$redisHash" image:saral-redis:latest; then
+  docker compose build sjv-redis
+  markBuilt saral-redis "$redisHash" image:saral-redis:latest
+fi
+apiHash="$(buildInputsHash "$REPO_ROOT" docker/Dockerfile.api backend/app.py backend/utils)"
+if needsBuild saral-api "$apiHash" image:saral-api:latest; then
+  docker compose build api
+  markBuilt saral-api "$apiHash" image:saral-api:latest
+fi
+buildUiImage
+validationHash="$(buildInputsHash "$REPO_ROOT" docker/Dockerfile.validation backend/utils backend/validation.py)"
+if needsBuild saral-dvalidate "$validationHash" image:saral-dvalidate:latest; then
+  docker build -f docker/Dockerfile.validation -t saral-dvalidate:latest .
+  markBuilt saral-dvalidate "$validationHash" image:saral-dvalidate:latest
+fi
 
 banner "Docker services"
 step "Starting Redis, API, and frontend…"

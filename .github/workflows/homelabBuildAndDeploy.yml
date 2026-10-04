@@ -17,6 +17,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
     steps:
       - name: checkoutApp
         uses: actions/checkout@v4
@@ -29,20 +31,33 @@ jobs:
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
           logout: false
 
-      - name: buildAndPush
+      - name: buildAndPushIfChanged
+        id: build
         run: |
           ownerLower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           shortSha="${GITHUB_SHA::7}"
           image="${{ env.REGISTRY }}/${ownerLower}/saral-api"
+          # Tag = hash of exactly what goes into this image; an existing tag means nothing changed.
+          inputsHash=$( { git ls-files -s -- docker/Dockerfile.api backend/app.py backend/utils; echo "args:"; } | sha256sum | cut -c1-12)
+          tag="src-${inputsHash}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if docker manifest inspect "${image}:${tag}" >/dev/null 2>&1; then
+            echo "No changes for saral-api — reusing ${image}:${tag}"
+            exit 0
+          fi
           docker build -f docker/Dockerfile.api \
-            -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push --all-tags "${image}"
+            -t "${image}:${tag}" -t "${image}:${shortSha}" -t "${image}:latest" .
+          docker push "${image}:${tag}"
+          docker push "${image}:${shortSha}"
+          docker push "${image}:latest"
 
   buildUi:
     runs-on: self-hosted
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
     steps:
       - name: checkoutApp
         uses: actions/checkout@v4
@@ -55,21 +70,34 @@ jobs:
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
           logout: false
 
-      - name: buildAndPush
+      - name: buildAndPushIfChanged
+        id: build
         run: |
           ownerLower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           shortSha="${GITHUB_SHA::7}"
           image="${{ env.REGISTRY }}/${ownerLower}/saral-ui"
+          # Tag = hash of exactly what goes into this image; an existing tag means nothing changed.
+          inputsHash=$( { git ls-files -s -- docker/Dockerfile.frontend docker/nginx.frontend.conf frontend; echo "args:VITE_API_URL=${{ env.VITE_API_URL }}"; } | sha256sum | cut -c1-12)
+          tag="src-${inputsHash}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if docker manifest inspect "${image}:${tag}" >/dev/null 2>&1; then
+            echo "No changes for saral-ui — reusing ${image}:${tag}"
+            exit 0
+          fi
           docker build -f docker/Dockerfile.frontend \
             --build-arg "VITE_API_URL=${{ env.VITE_API_URL }}" \
-            -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push --all-tags "${image}"
+            -t "${image}:${tag}" -t "${image}:${shortSha}" -t "${image}:latest" .
+          docker push "${image}:${tag}"
+          docker push "${image}:${shortSha}"
+          docker push "${image}:latest"
 
   buildRedis:
     runs-on: self-hosted
     permissions:
       contents: read
       packages: write
+    outputs:
+      tag: ${{ steps.build.outputs.tag }}
     steps:
       - name: checkoutApp
         uses: actions/checkout@v4
@@ -82,14 +110,25 @@ jobs:
           password: ${{ secrets.HOMELABOPS_GIT_TOKEN }}
           logout: false
 
-      - name: buildAndPush
+      - name: buildAndPushIfChanged
+        id: build
         run: |
           ownerLower=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           shortSha="${GITHUB_SHA::7}"
           image="${{ env.REGISTRY }}/${ownerLower}/saral-redis"
+          # Tag = hash of exactly what goes into this image; an existing tag means nothing changed.
+          inputsHash=$( { git ls-files -s -- docker/Dockerfile.redis docker/redis.conf; echo "args:"; } | sha256sum | cut -c1-12)
+          tag="src-${inputsHash}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          if docker manifest inspect "${image}:${tag}" >/dev/null 2>&1; then
+            echo "No changes for saral-redis — reusing ${image}:${tag}"
+            exit 0
+          fi
           docker build -f docker/Dockerfile.redis \
-            -t "${image}:${shortSha}" -t "${image}:latest" .
-          docker push --all-tags "${image}"
+            -t "${image}:${tag}" -t "${image}:${shortSha}" -t "${image}:latest" .
+          docker push "${image}:${tag}"
+          docker push "${image}:${shortSha}"
+          docker push "${image}:latest"
 
   bumpGitOps:
     needs: [buildApi, buildUi, buildRedis]
@@ -115,12 +154,17 @@ jobs:
         working-directory: homeLabOps
         env:
           IMAGE_OWNER: ${{ github.repository_owner }}
+          API_TAG: ${{ needs.buildApi.outputs.tag }}
+          UI_TAG: ${{ needs.buildUi.outputs.tag }}
+          REDIS_TAG: ${{ needs.buildRedis.outputs.tag }}
         run: |
           ownerLower=$(echo "${IMAGE_OWNER}" | tr '[:upper:]' '[:lower:]')
-          shortSha="${GITHUB_SHA::7}"
           kustomization="apps/saralJobViewer/kustomization.yaml"
-          for image in saral-api saral-ui saral-redis; do
-            awk -v img="ghcr.io/${ownerLower}/${image}" -v tag="${shortSha}" '
+          # Unchanged images keep the same src-<hash> tag, so they are not redeployed.
+          for pair in "saral-api=${API_TAG}" "saral-ui=${UI_TAG}" "saral-redis=${REDIS_TAG}"; do
+            image="${pair%%=*}"
+            tag="${pair#*=}"
+            awk -v img="ghcr.io/${ownerLower}/${image}" -v tag="${tag}" '
               $0 ~ "name: " img { inBlock=1 }
               inBlock && $0 ~ /^[[:space:]]*newTag:/ {
                 sub(/newTag:.*/, "newTag: \"" tag "\"")
@@ -145,5 +189,5 @@ jobs:
             echo "No tag changes to commit."
             exit 0
           fi
-          git commit -m "chore(saral): bump images to ${GITHUB_SHA::7}"
+          git commit -m "chore(saral): deploy changed images from ${GITHUB_SHA::7}"
           git push origin HEAD

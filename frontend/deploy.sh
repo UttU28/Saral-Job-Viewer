@@ -13,6 +13,29 @@ FRONTEND_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${FRONTEND_ROOT}/.." && pwd)"
 BACKEND_ROOT="${REPO_ROOT}/backend"
 
+# Change-aware builds via the shared Desktop helper (~/Desktop/dktp/deployLib.sh).
+# --build forces a rebuild; without the helper (e.g. a bare checkout) we always build.
+for arg in "$@"; do [[ "$arg" == "--build" ]] && export DEPLOY_FORCE_BUILD=1; done
+DEPLOY_LIB="${REPO_ROOT}/../dktp/deployLib.sh"
+if [[ -f "$DEPLOY_LIB" ]]; then
+  # shellcheck source=/dev/null
+  source "$DEPLOY_LIB"
+else
+  buildInputsHash() { echo "noDeployLib"; }
+  needsBuild() { return 0; }
+  markBuilt() { :; }
+fi
+
+# buildUiImage — saral-ui only when frontend/ or VITE_API_URL changed.
+buildUiImage() {
+  local uiHash
+  uiHash="$(buildInputsHash "$REPO_ROOT" docker/Dockerfile.frontend docker/nginx.frontend.conf frontend -- "VITE_API_URL=${VITE_API_URL:-}")"
+  if needsBuild saral-ui "$uiHash" image:saral-ui:latest; then
+    docker compose build frontend
+    markBuilt saral-ui "$uiHash" image:saral-ui:latest
+  fi
+}
+
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -36,6 +59,7 @@ BUILD_ONLY=0
 for arg in "$@"; do
   case "$arg" in
     --build-only) BUILD_ONLY=1 ;;
+    --build) ;;
     -h|--help)
       cat <<EOF
 Usage: $(basename "$0") [--build-only]
@@ -114,8 +138,8 @@ fi
 cd "$REPO_ROOT"
 
 banner "Docker frontend"
-step "Building saral-ui image…"
-docker compose build frontend
+step "Building saral-ui image (only if changed)…"
+buildUiImage
 
 step "Recreating frontend container…"
 docker compose up -d frontend

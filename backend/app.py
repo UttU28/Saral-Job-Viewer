@@ -106,7 +106,7 @@ async def _appLifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Saral Job Viewer API", version="1.0.0", lifespan=_appLifespan)
-# PlaceTrack Gmail: unread fetch, classify-one, apply-labels (BaharMil / oneSided)
+# PlaceTrack Gmail: connect, resume, sent recipients, draft + send
 app.include_router(gmailRouter)
 app.include_router(placetrackRouter)
 

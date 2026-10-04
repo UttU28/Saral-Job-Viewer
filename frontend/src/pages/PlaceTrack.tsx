@@ -25,7 +25,7 @@ import {
   type PipelineFilters,
 } from "@/lib/placetrack/pipeline-filters";
 import { normalizePipelineData } from "@/lib/placetrack/pipeline-types";
-import { EMAILS_PATH, getPlaceTrackTab } from "@/lib/placetrack/routing";
+import { getPlaceTrackTab } from "@/lib/placetrack/routing";
 import { cn } from "@/lib/utils";
 
 function PipelineSkeleton() {
@@ -56,18 +56,11 @@ function PlaceTrackAdminDenied() {
 }
 
 function PlaceTrackShellContent() {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const tab = getPlaceTrackTab(location);
   const isMailTab = tab === "mail";
   const isPipelineTab = tab === "pipeline";
   useMailTemplates();
-
-  // Old nested /placetrack/emails (wouter nest strips prefix → "/emails") → top-level Emails
-  useEffect(() => {
-    if (location === "/emails" || location.startsWith("/emails?")) {
-      setLocation(EMAILS_PATH);
-    }
-  }, [location, setLocation]);
 
   const {
     data,
